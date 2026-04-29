@@ -1,0 +1,303 @@
+import { z } from "zod";
+
+const email = z.string().email();
+const name = z.string().min(1).max(255);
+const id = z.string().uuid();
+const version = z.number().int().nonnegative();
+
+export const registerBody = z.object({
+  email,
+  password: z.string().min(8).max(128),
+  name,
+  organizationName: z.string().min(1).max(255),
+});
+
+export const loginBody = z.object({
+  email,
+  password: z.string().min(1).max(128),
+});
+
+export const orgCreate = z.object({ name: z.string().min(1).max(255) });
+
+export const clientCreate = z.object({
+  organizationId: id,
+  name: z.string().min(1).max(255),
+  code: z.string().max(32).optional(),
+});
+export const clientPatch = clientCreate
+  .partial()
+  .required({ name: true })
+  .extend({ id, version: version.optional() });
+
+export const projectCreate = z.object({
+  organizationId: id,
+  clientId: id,
+  name: z.string().min(1).max(255),
+  code: z.string().max(64).optional(),
+  status: z
+    .enum(["draft", "active", "on_hold", "closed"])
+    .default("active"),
+  startAt: z.coerce.date().optional().nullable(),
+  endAt: z.coerce.date().optional().nullable(),
+});
+
+export const projectPatch = z
+  .object({
+    name: z.string().min(1).max(255).optional(),
+    code: z.string().max(64).optional().nullable(),
+    clientId: id.optional(),
+    status: z
+      .enum(["draft", "active", "on_hold", "closed"])
+      .optional(),
+    startAt: z.coerce.date().optional().nullable(),
+    endAt: z.coerce.date().optional().nullable(),
+    version,
+  })
+  .strict();
+
+export const milestoneCreate = z.object({
+  projectId: id,
+  name: name,
+  startAt: z.coerce.date().optional().nullable(),
+  endAt: z.coerce.date().optional().nullable(),
+  orderIndex: z.number().int().min(0).default(0),
+});
+export const milestonePatch = z
+  .object({
+    name: z.string().min(1).max(255).optional(),
+    startAt: z.coerce.date().optional().nullable(),
+    endAt: z.coerce.date().optional().nullable(),
+    orderIndex: z.number().int().min(0).optional(),
+    version,
+  })
+  .strict();
+
+export const taskCreate = z.object({
+  projectId: id,
+  milestoneId: id,
+  title: z.string().min(1).max(500),
+  description: z.string().max(10000).optional().nullable(),
+  startAt: z.coerce.date().optional().nullable(),
+  endAt: z.coerce.date().optional().nullable(),
+  estHours: z.coerce.number().nonnegative().optional().nullable(),
+  percentComplete: z.number().min(0).max(100).default(0),
+  useDerivedPercent: z.boolean().default(true),
+  orderIndex: z.number().int().min(0).default(0),
+  assigneeId: id.nullable().optional(),
+});
+
+export const taskPatch = z
+  .object({
+    milestoneId: id.optional(),
+    title: z.string().min(1).max(500).optional(),
+    description: z.string().max(10000).optional().nullable(),
+    startAt: z.coerce.date().optional().nullable(),
+    endAt: z.coerce.date().optional().nullable(),
+    estHours: z.coerce.number().nonnegative().optional().nullable(),
+    actualHours: z.coerce.number().nonnegative().optional().nullable(),
+    percentComplete: z.number().min(0).max(100).optional(),
+    useDerivedPercent: z.boolean().optional(),
+    orderIndex: z.number().int().min(0).optional(),
+    assigneeId: id.nullable().optional(),
+    version,
+  })
+  .strict();
+
+export const todoCreate = z.object({
+  taskId: id,
+  title: z.string().min(1).max(500),
+  status: z
+    .enum(["backlog", "in_progress", "blocked", "done"])
+    .default("backlog"),
+  dueAt: z.coerce.date().optional().nullable(),
+  priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
+  orderIndex: z.number().int().min(0).default(0),
+  assigneeId: id.nullable().optional(),
+});
+
+export const todoPatch = z
+  .object({
+    title: z.string().min(1).max(500).optional(),
+    status: z
+      .enum(["backlog", "in_progress", "blocked", "done"])
+      .optional(),
+    dueAt: z.coerce.date().optional().nullable(),
+    priority: z
+      .enum(["low", "normal", "high", "urgent"])
+      .optional(),
+    orderIndex: z.number().int().min(0).optional(),
+    assigneeId: id.nullable().optional(),
+    version,
+  })
+  .strict();
+
+export const timeEntryCreate = z.object({
+  taskId: id,
+  todoId: id.optional().nullable(),
+  startedAt: z.coerce.date().optional().nullable(),
+  endedAt: z.coerce.date().optional().nullable(),
+  durationMinutes: z.number().int().positive().optional().nullable(),
+  note: z.string().max(5000).optional().nullable(),
+});
+export const timeEntryPatch = z
+  .object({
+    startedAt: z.coerce.date().optional().nullable(),
+    endedAt: z.coerce.date().optional().nullable(),
+    durationMinutes: z.number().int().positive().optional().nullable(),
+    note: z.string().max(5000).optional().nullable(),
+    version,
+  })
+  .strict();
+
+const rfqStatus = z.enum([
+  "draft",
+  "rfq_sent",
+  "quoted",
+  "ordered",
+  "closed",
+  "cancelled",
+]);
+
+export const procurementCreate = z.object({
+  projectId: id,
+  taskId: id.nullable().optional(),
+  title: z.string().min(1).max(500),
+  status: rfqStatus.default("draft"),
+  needBy: z.coerce.date().optional().nullable(),
+  sapPoNumber: z.string().max(32).optional().nullable(),
+});
+export const procurementPatch = z
+  .object({
+    taskId: id.nullable().optional(),
+    title: z.string().min(1).max(500).optional(),
+    status: rfqStatus.optional(),
+    needBy: z.coerce.date().optional().nullable(),
+    sapPoNumber: z.string().max(32).optional().nullable(),
+    version,
+  })
+  .strict();
+
+export const procurementLineCreate = z.object({
+  procurementId: id,
+  description: z.string().min(1).max(2000),
+  quantity: z.string().regex(/^\d*\.?\d+$/).or(z.number().nonnegative()),
+  unit: z.string().max(32).optional().nullable(),
+  estUnitPrice: z
+    .union([z.string(), z.number().nonnegative()])
+    .optional()
+    .nullable(),
+  orderIndex: z.number().int().min(0).default(0),
+});
+export const procurementLinePatch = z
+  .object({
+    description: z.string().min(1).max(2000).optional(),
+    quantity: z
+      .union([z.string(), z.number().nonnegative()])
+      .optional()
+      .transform((v) => (v === undefined ? v : String(v))),
+    unit: z.string().max(32).optional().nullable(),
+    estUnitPrice: z
+      .union([z.string(), z.number().nonnegative()])
+      .optional()
+      .nullable(),
+    orderIndex: z.number().int().min(0).optional(),
+    version,
+  })
+  .strict();
+
+export const projectMemberAdd = z.object({
+  userId: id,
+  role: z.enum(["viewer", "member", "pm", "admin"]).default("member"),
+});
+export const projectMemberPatch = z.object({
+  role: z.enum(["viewer", "member", "pm", "admin"]),
+});
+
+export const taskDependencyCreate = z.object({
+  taskId: id,
+  predecessorTaskId: id,
+  type: z.enum(["FS", "SS", "FF", "SF"]).default("FS"),
+});
+
+export const savedFilterCreate = z.object({
+  name: z.string().min(1).max(255),
+  projectId: id.nullable().optional(),
+  kind: z.enum([
+    "tasks",
+    "todos",
+    "time",
+    "rfq",
+    "projects",
+  ]).default("todos"),
+  filterJson: z.string().min(0).max(20000).default("{}"),
+  isDefault: z.boolean().default(false),
+});
+export const savedFilterPatch = z
+  .object({
+    name: z.string().min(1).max(255).optional(),
+    filterJson: z.string().min(0).max(20000).optional(),
+    isDefault: z.boolean().optional(),
+    version,
+  })
+  .strict();
+
+export const documentLinkCreate = z.object({
+  projectId: id,
+  kind: z
+    .enum([
+      "drawing",
+      "program",
+      "photo",
+      "other",
+    ])
+    .default("other"),
+  label: z.string().min(1).max(500),
+  url: z.string().url().max(2000),
+});
+export const documentLinkPatch = z
+  .object({
+    kind: z
+      .enum(["drawing", "program", "photo", "other"])
+      .optional(),
+    label: z.string().min(1).max(500).optional(),
+    url: z.string().url().max(2000).optional(),
+    version,
+  })
+  .strict();
+
+export const handoverCreate = z.object({
+  projectId: id,
+  asBuilt: z.string().max(20000).optional().nullable(),
+  spares: z.string().max(20000).optional().nullable(),
+  supportNotes: z.string().max(20000).optional().nullable(),
+});
+export const handoverPatch = z
+  .object({
+    asBuilt: z.string().max(20000).optional().nullable(),
+    spares: z.string().max(20000).optional().nullable(),
+    supportNotes: z.string().max(20000).optional().nullable(),
+    version,
+  })
+  .strict();
+
+export const commentCreate = z.object({
+  body: z.string().min(1).max(10000),
+  parentType: z.enum([
+    "project",
+    "task",
+    "todo",
+    "procurement",
+  ]),
+  parentId: z.string().uuid(),
+});
+
+export const orgUserInvite = z.object({
+  email: email,
+  name: name,
+  projectRole: z
+    .enum(["viewer", "member", "pm", "admin"])
+    .default("member"),
+  globalRole: z
+    .enum(["member", "org_admin"])
+    .default("member"),
+});

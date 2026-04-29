@@ -1,0 +1,21 @@
+# Dedicated host / LAN: Postgres only; API + web run via `pnpm dev` on host, or add services later.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: projecterp-postgres
+    environment:
+      POSTGRES_USER: projecterp
+      POSTGRES_PASSWORD: projecterp
+      POSTGRES_DB: projecterp
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - projecterp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U projecterp -d projecterp"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  projecterp_pgdata:

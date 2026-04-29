@@ -1,0 +1,9 @@
+@import "frappe-gantt/dist/frappe-gantt.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Frappe Gantt in flex layout */
+.gantt-container {
+  font-family: inherit;
+}
