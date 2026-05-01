@@ -1,0 +1,16 @@
+.git
+.github
+**/.DS_Store
+**/node_modules
+**/dist
+.turbo
+.env
+.env.*
+!.env.example
+*.log
+playwright-report
+test-results
+e2e
+agent-transcripts
+mcps
+.cursor

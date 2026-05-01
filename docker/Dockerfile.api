@@ -1,0 +1,30 @@
+# API image: pnpm deploy bundle + drizzle-kit migrate on startup
+FROM node:20-bookworm-slim AS builder
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/db/package.json ./packages/db/
+COPY packages/validators/package.json ./packages/validators/
+COPY apps/web/package.json ./apps/web/
+COPY packages/validators ./packages/validators
+COPY packages/db ./packages/db
+COPY apps/api ./apps/api
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @project-erp/validators build && \
+    pnpm --filter @project-erp/db build && \
+    pnpm --filter @project-erp/api build
+RUN pnpm --filter @project-erp/api deploy --prod /deploy
+
+FROM node:20-bookworm-slim AS runner
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /deploy /app
+COPY docker/api-entrypoint.sh /api-entrypoint.sh
+RUN chmod +x /api-entrypoint.sh
+ENV NODE_ENV=production
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+ENTRYPOINT ["/api-entrypoint.sh"]
