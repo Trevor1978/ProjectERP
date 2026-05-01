@@ -1,4 +1,5 @@
 # Production / Coolify: Postgres + API + nginx (SPA + /api proxy).
+# Step-by-step: docs/COOLIFY.md
 # Set in Coolify / env: POSTGRES_PASSWORD, SESSION_SECRET, WEB_ORIGIN (public https URL).
 #
 # Point your Coolify domain at the "web" service port 80. The browser uses same-origin
