@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useMe } from "../hooks/useMe";
+import type { User } from "../types";
 import { TodoKanban } from "./TodoKanban";
 
 type Client = { id: string; name: string; code: string | null; version: number };
@@ -139,8 +141,12 @@ type TableRow = {
 
 type EditTarget = { tab: Tab; id: string } | null;
 
+const newRowInputClass = "w-full min-w-[6rem] rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-sm placeholder:text-slate-400";
+
 export function CrudWorkspace() {
   const qc = useQueryClient();
+  const { data: meRes } = useMe();
+  const me = meRes?.user ?? null;
   const [tab, setTab] = useState<Tab>("projects");
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
 
@@ -912,10 +918,32 @@ export function CrudWorkspace() {
           />
         </div>
       ) : (
-        <FilterSortTable key={tab} dataHeaders={current.dataHeaders} rows={current.rows} />
+        <FilterSortTable
+          key={tab}
+          dataHeaders={current.dataHeaders}
+          rows={current.rows}
+          appendRow={
+            <CrudAppendRow
+              tab={tab}
+              totalColumns={current.dataHeaders.length + 1}
+              me={me}
+              clients={clients}
+              projects={projects}
+              milestones={milestones}
+              tasks={tasks}
+              todos={todos}
+              procurement={procurement}
+              refreshClients={refreshClients}
+              refreshProjects={refreshProjects}
+              refreshSchedule={refreshSchedule}
+              refreshTime={refreshTime}
+              refreshProcurement={refreshProcurement}
+            />
+          }
+        />
       )}
       <p className="text-xs text-slate-500">
-        Click a cell to edit inline, or use <strong>Edit</strong> for all fields in a form. Time entries: you can only change your own unless you are an org admin.
+        Use the dashed <strong>new row</strong> at the bottom of each table to create records, click a cell to edit inline, or use <strong>Edit</strong> for all fields in a form. Time entries: you can only change your own unless you are an org admin.
       </p>
 
       {editTarget && (
@@ -948,7 +976,554 @@ const PAGE_SIZE_OPTIONS = [
   { value: "all", label: "All" },
 ] as const;
 
-function FilterSortTable({ dataHeaders, rows }: { dataHeaders: string[]; rows: TableRow[] }) {
+function CrudAppendRow({
+  tab,
+  totalColumns,
+  me,
+  clients,
+  projects,
+  milestones,
+  tasks,
+  todos,
+  procurement,
+  refreshClients,
+  refreshProjects,
+  refreshSchedule,
+  refreshTime,
+  refreshProcurement,
+}: {
+  tab: Tab;
+  totalColumns: number;
+  me: User | null;
+  clients: Client[];
+  projects: Project[];
+  milestones: Milestone[];
+  tasks: Task[];
+  todos: Todo[];
+  procurement: Procurement[];
+  refreshClients: () => Promise<void>;
+  refreshProjects: () => Promise<void>;
+  refreshSchedule: () => Promise<void>;
+  refreshTime: () => Promise<void>;
+  refreshProcurement: () => Promise<void>;
+}) {
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const [custName, setCustName] = useState("");
+  const [custCode, setCustCode] = useState("");
+
+  const [projClientId, setProjClientId] = useState(clients[0]?.id ?? "");
+  const [projName, setProjName] = useState("");
+  const [projCode, setProjCode] = useState("");
+  useEffect(() => {
+    if (clients.length && !clients.some((c) => c.id === projClientId)) {
+      setProjClientId(clients[0]!.id);
+    }
+  }, [clients, projClientId]);
+
+  const [msProjectId, setMsProjectId] = useState(projects[0]?.id ?? "");
+  const [msName, setMsName] = useState("");
+
+  const [tkProjectId, setTkProjectId] = useState(projects[0]?.id ?? "");
+  const msForTkProject = useMemo(
+    () => milestones.filter((m) => m.projectId === tkProjectId),
+    [milestones, tkProjectId],
+  );
+  const [tkMilestoneId, setTkMilestoneId] = useState(msForTkProject[0]?.id ?? "");
+  const [tkTitle, setTkTitle] = useState("");
+  useEffect(() => {
+    if (msForTkProject.length && !msForTkProject.some((m) => m.id === tkMilestoneId)) {
+      setTkMilestoneId(msForTkProject[0]!.id);
+    }
+  }, [msForTkProject, tkMilestoneId]);
+
+  const [tdTaskId, setTdTaskId] = useState(tasks[0]?.id ?? "");
+  const [tdTitle, setTdTitle] = useState("");
+
+  const [teTaskId, setTeTaskId] = useState(tasks[0]?.id ?? "");
+
+  const [prProjectId, setPrProjectId] = useState(projects[0]?.id ?? "");
+  const [prTitle, setPrTitle] = useState("");
+
+  const [lnProcId, setLnProcId] = useState(procurement[0]?.id ?? "");
+  const [lnDesc, setLnDesc] = useState("");
+  const [lnQty, setLnQty] = useState("1");
+  useEffect(() => {
+    if (procurement.length && !procurement.some((p) => p.id === lnProcId)) {
+      setLnProcId(procurement[0]!.id);
+    }
+  }, [procurement, lnProcId]);
+
+  useEffect(() => {
+    setErr(null);
+  }, [tab]);
+
+  if (tab === "todoKanban" || !me) return null;
+
+  const stickyActionsTd =
+    "sticky right-0 z-[1] border-l border-slate-100 bg-slate-50 p-2 align-top shadow-[inset_1px_0_0_0_rgb(241_245_249)]";
+
+  const createBtn = (onClick: () => void, disabled: boolean) => (
+    <button
+      type="button"
+      disabled={disabled || saving}
+      className="rounded border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+      onClick={() => {
+        setErr(null);
+        setSaving(true);
+        void Promise.resolve(onClick())
+          .catch((e: Error) => setErr(e.message))
+          .finally(() => setSaving(false));
+      }}
+    >
+      {saving ? "…" : "Create"}
+    </button>
+  );
+
+  if (tab === "customers") {
+    if (me.globalRole !== "org_admin") {
+      return (
+        <tr className="border-t bg-slate-50/90">
+          <td colSpan={totalColumns} className="p-2 text-xs text-slate-500">
+            Only <strong>org admins</strong> can add customers. Ask an admin or use an existing customer for new projects.
+          </td>
+        </tr>
+      );
+    }
+    return (
+      <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="New customer name"
+            value={custName}
+            onChange={(e) => setCustName(e.target.value)}
+          />
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Code (optional)"
+            value={custCode}
+            onChange={(e) => setCustCode(e.target.value)}
+          />
+        </td>
+        <td className={stickyActionsTd}>
+          {createBtn(async () => {
+            const name = custName.trim();
+            if (!name) throw new Error("Name is required");
+            await api("/api/clients", {
+              method: "POST",
+              body: JSON.stringify({
+                organizationId: me.organizationId,
+                name,
+                code: custCode.trim() || undefined,
+              }),
+            });
+            setCustName("");
+            setCustCode("");
+            await refreshClients();
+          }, !custName.trim())}
+          {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  if (tab === "projects") {
+    return (
+      <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Project name"
+            value={projName}
+            onChange={(e) => setProjName(e.target.value)}
+          />
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Code (optional)"
+            value={projCode}
+            onChange={(e) => setProjCode(e.target.value)}
+          />
+        </td>
+        <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={projClientId}
+            onChange={(e) => setProjClientId(e.target.value)}
+          >
+            {clients.length === 0 ? (
+              <option value="">No customers — add one first</option>
+            ) : (
+              clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))
+            )}
+          </select>
+        </td>
+        <td colSpan={4} className="p-2 align-middle text-xs text-slate-500">
+          Status defaults to <strong>active</strong>; edit dates inline after create.
+        </td>
+        <td className={stickyActionsTd}>
+          {createBtn(async () => {
+            const name = projName.trim();
+            if (!name) throw new Error("Name is required");
+            if (!projClientId) throw new Error("Select a customer");
+            await api("/api/projects", {
+              method: "POST",
+              body: JSON.stringify({
+                organizationId: me.organizationId,
+                clientId: projClientId,
+                name,
+                code: projCode.trim() || undefined,
+                status: "active",
+              }),
+            });
+            setProjName("");
+            setProjCode("");
+            await refreshProjects();
+          }, !projName.trim() || !projClientId)}
+          {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  if (tab === "milestones") {
+    return (
+      <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={msProjectId}
+            onChange={(e) => setMsProjectId(e.target.value)}
+          >
+            {projects.length === 0 ? (
+              <option value="">No projects</option>
+            ) : (
+              projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))
+            )}
+          </select>
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Milestone name"
+            value={msName}
+            onChange={(e) => setMsName(e.target.value)}
+          />
+        </td>
+        <td colSpan={3} className="p-2 align-middle text-xs text-slate-500">
+          Dates/order: edit inline after create.
+        </td>
+        <td className={stickyActionsTd}>
+          {createBtn(async () => {
+            const name = msName.trim();
+            if (!name) throw new Error("Name is required");
+            if (!msProjectId) throw new Error("Select a project");
+            await api("/api/milestones", {
+              method: "POST",
+              body: JSON.stringify({ projectId: msProjectId, name, orderIndex: 0 }),
+            });
+            setMsName("");
+            await refreshSchedule();
+          }, !msName.trim() || !msProjectId)}
+          {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  if (tab === "tasks") {
+    return (
+      <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={tkProjectId}
+            onChange={(e) => setTkProjectId(e.target.value)}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={tkMilestoneId}
+            onChange={(e) => setTkMilestoneId(e.target.value)}
+          >
+            {msForTkProject.length === 0 ? (
+              <option value="">Add a milestone first</option>
+            ) : (
+              msForTkProject.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))
+            )}
+          </select>
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Task title"
+            value={tkTitle}
+            onChange={(e) => setTkTitle(e.target.value)}
+          />
+        </td>
+        <td colSpan={4} className="p-2 align-middle text-xs text-slate-500">
+          % / assignee: edit after create.
+        </td>
+        <td className={stickyActionsTd}>
+          {createBtn(async () => {
+            const title = tkTitle.trim();
+            if (!title) throw new Error("Title is required");
+            if (!tkMilestoneId) throw new Error("Pick a milestone");
+            await api("/api/tasks", {
+              method: "POST",
+              body: JSON.stringify({
+                projectId: tkProjectId,
+                milestoneId: tkMilestoneId,
+                title,
+                percentComplete: 0,
+                useDerivedPercent: true,
+                orderIndex: 0,
+              }),
+            });
+            setTkTitle("");
+            await refreshSchedule();
+          }, !tkTitle.trim() || !tkMilestoneId || projects.length === 0)}
+          {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  if (tab === "todos") {
+    return (
+      <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={tdTaskId}
+            onChange={(e) => setTdTaskId(e.target.value)}
+          >
+            {tasks.length === 0 ? (
+              <option value="">No tasks</option>
+            ) : (
+              tasks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))
+            )}
+          </select>
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Todo title"
+            value={tdTitle}
+            onChange={(e) => setTdTitle(e.target.value)}
+          />
+        </td>
+        <td colSpan={5} className="p-2 align-middle text-xs text-slate-500">
+          Status defaults to <strong>backlog</strong>.
+        </td>
+        <td className={stickyActionsTd}>
+          {createBtn(async () => {
+            const title = tdTitle.trim();
+            if (!title) throw new Error("Title is required");
+            if (!tdTaskId) throw new Error("Select a task");
+            await api("/api/todos", {
+              method: "POST",
+              body: JSON.stringify({ taskId: tdTaskId, title }),
+            });
+            setTdTitle("");
+            await refreshSchedule();
+          }, !tdTitle.trim() || !tdTaskId)}
+          {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  if (tab === "timeEntries") {
+    return (
+      <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={teTaskId}
+            onChange={(e) => setTeTaskId(e.target.value)}
+          >
+            {tasks.length === 0 ? (
+              <option value="">No tasks</option>
+            ) : (
+              tasks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))
+            )}
+          </select>
+        </td>
+        <td colSpan={6} className="p-2 align-middle text-xs text-slate-500">
+          Log time on a task; add minutes and notes inline after create.
+        </td>
+        <td className={stickyActionsTd}>
+          {createBtn(async () => {
+            if (!teTaskId) throw new Error("Select a task");
+            await api("/api/time-entries", {
+              method: "POST",
+              body: JSON.stringify({ taskId: teTaskId }),
+            });
+            await refreshTime();
+          }, !teTaskId)}
+          {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  if (tab === "procurement") {
+    return (
+      <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={prProjectId}
+            onChange={(e) => setPrProjectId(e.target.value)}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td colSpan={1} className="p-2 align-top text-xs text-slate-400">
+          —
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="RFQ / procurement title"
+            value={prTitle}
+            onChange={(e) => setPrTitle(e.target.value)}
+          />
+        </td>
+        <td colSpan={3} className="p-2 align-middle text-xs text-slate-500">
+          Status <strong>draft</strong>; link a task after create.
+        </td>
+        <td className={stickyActionsTd}>
+          {createBtn(async () => {
+            const title = prTitle.trim();
+            if (!title) throw new Error("Title is required");
+            if (!prProjectId) throw new Error("Select a project");
+            await api("/api/procurement", {
+              method: "POST",
+              body: JSON.stringify({ projectId: prProjectId, title, status: "draft" }),
+            });
+            setPrTitle("");
+            await refreshProcurement();
+          }, !prTitle.trim() || !prProjectId)}
+          {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  if (tab === "procurementLines") {
+    return (
+      <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={lnProcId}
+            onChange={(e) => setLnProcId(e.target.value)}
+          >
+            {procurement.length === 0 ? (
+              <option value="">No procurement records</option>
+            ) : (
+              procurement.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))
+            )}
+          </select>
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Description"
+            value={lnDesc}
+            onChange={(e) => setLnDesc(e.target.value)}
+          />
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Qty"
+            value={lnQty}
+            onChange={(e) => setLnQty(e.target.value)}
+          />
+        </td>
+        <td colSpan={3} className="p-2 align-middle text-xs text-slate-500">
+          Unit/price/order: edit inline after create.
+        </td>
+        <td className={stickyActionsTd}>
+          {createBtn(async () => {
+            const description = lnDesc.trim();
+            if (!description) throw new Error("Description is required");
+            const qty = lnQty.trim() || "1";
+            if (!lnProcId) throw new Error("Select procurement");
+            await api("/api/procurement-lines", {
+              method: "POST",
+              body: JSON.stringify({
+                procurementId: lnProcId,
+                description,
+                quantity: qty,
+                orderIndex: 0,
+              }),
+            });
+            setLnDesc("");
+            setLnQty("1");
+            await refreshProcurement();
+          }, !lnDesc.trim() || !lnProcId)}
+          {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  return null;
+}
+
+function FilterSortTable({
+  dataHeaders,
+  rows,
+  appendRow,
+}: {
+  dataHeaders: string[];
+  rows: TableRow[];
+  appendRow?: ReactNode;
+}) {
   const [q, setQ] = useState("");
   const [sortCol, setSortCol] = useState(0);
   const [desc, setDesc] = useState(false);
@@ -1097,6 +1672,7 @@ function FilterSortTable({ dataHeaders, rows }: { dataHeaders: string[]; rows: T
                 </td>
               </tr>
             ))}
+            {appendRow}
           </tbody>
         </table>
         </div>
