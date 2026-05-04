@@ -48,6 +48,7 @@ export type Procurement = {
   projectId: string;
   title: string;
   status: string;
+  supplierId: string | null;
   sapPoNumber: string | null;
   version: number;
 };

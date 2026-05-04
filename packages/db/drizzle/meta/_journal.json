@@ -8,6 +8,13 @@
       "when": 1777608017213,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777869125245,
+      "tag": "0001_short_psynapse",
+      "breakpoints": true
     }
   ]
 }

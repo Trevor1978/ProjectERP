@@ -29,6 +29,17 @@ export const clientPatch = clientCreate
   .required({ name: true })
   .extend({ id, version: version.optional() });
 
+export const supplierCreate = z.object({
+  organizationId: id,
+  name: z.string().min(1).max(255),
+  code: z.string().max(32).optional(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+export const supplierPatch = supplierCreate
+  .partial()
+  .required({ name: true })
+  .extend({ id, version: version.optional() });
+
 export const projectCreate = z.object({
   organizationId: id,
   clientId: id,
@@ -161,6 +172,7 @@ const rfqStatus = z.enum([
 export const procurementCreate = z.object({
   projectId: id,
   taskId: id.nullable().optional(),
+  supplierId: id.nullable().optional(),
   title: z.string().min(1).max(500),
   status: rfqStatus.default("draft"),
   needBy: z.coerce.date().optional().nullable(),
@@ -169,6 +181,7 @@ export const procurementCreate = z.object({
 export const procurementPatch = z
   .object({
     taskId: id.nullable().optional(),
+    supplierId: id.nullable().optional(),
     title: z.string().min(1).max(500).optional(),
     status: rfqStatus.optional(),
     needBy: z.coerce.date().optional().nullable(),

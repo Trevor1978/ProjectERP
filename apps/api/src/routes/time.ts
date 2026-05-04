@@ -12,6 +12,10 @@ import { timeEntryCreate, timeEntryPatch } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
 import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
+import {
+  executeDeleteTimeEntry,
+  previewDeleteTimeEntry,
+} from "../lib/deleteResource.js";
 
 const app = new Hono();
 app.use("/*", requireAuth);
@@ -176,6 +180,36 @@ app.patch("/time-entries/:id", async (c) => {
     .set({ actualHours: totalMin / 60, updatedAt: new Date() })
     .where(eq(task.id, cur[0]!.taskId));
   return c.json({ timeEntry: row });
+});
+
+app.get("/time-entries/:id/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = await previewDeleteTimeEntry(a, id);
+  if ("status" in p) {
+    return c.json(
+      { error: p.status === 404 ? "Not found" : "Forbidden" },
+      p.status,
+    );
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/time-entries/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const ok = await executeDeleteTimeEntry(a, id);
+  if (!ok) {
+    const p = await previewDeleteTimeEntry(a, id);
+    if ("status" in p) {
+      return c.json(
+        { error: p.status === 404 ? "Not found" : "Forbidden" },
+        p.status,
+      );
+    }
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ ok: true });
 });
 
 app.get("/user-rates", async (c) => {

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useRef } from "react";
 import { api, apiForm } from "../lib/api";
+import { DeleteConfirmModal } from "./DeleteConfirmModal";
 
 type Line = {
   id: string;
@@ -10,10 +11,13 @@ type Line = {
   version: number;
 };
 
+type SupplierRow = { id: string; name: string };
+
 type RFQ = {
   id: string;
   title: string;
   status: string;
+  supplierId: string | null;
   sapPoNumber: string | null;
   version: number;
   sapLineCache: string | null;
@@ -29,13 +33,24 @@ export function RfqPanel({ projectId }: { projectId: string }) {
         lines: Line[];
       }>("/api/procurement?projectId=" + encodeURIComponent(projectId)),
   });
+  const { data: suppliersData } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: () => api<{ suppliers: SupplierRow[] }>("/api/suppliers"),
+  });
+  const suppliers = suppliersData?.suppliers ?? [];
+  const supplierName = useMemo(
+    () => new Map(suppliers.map((s) => [s.id, s.name] as const)),
+    [suppliers],
+  );
   const [title, setTitle] = useState("");
+  const [newSupplierId, setNewSupplierId] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newQty, setNewQty] = useState("1");
   const [newLineFor, setNewLineFor] = useState<string | null>(null);
   const dbfInputRef = useRef<HTMLInputElement>(null);
   const [dbfBusy, setDbfBusy] = useState(false);
   const [dbfMsg, setDbfMsg] = useState<string | null>(null);
+  const [deleteRfq, setDeleteRfq] = useState<{ id: string; title: string } | null>(null);
 
   const linesByPr = useMemo(() => {
     const m: Record<string, Line[]> = {};
@@ -58,9 +73,19 @@ export function RfqPanel({ projectId }: { projectId: string }) {
         projectId,
         title: title.trim(),
         status: "draft",
+        supplierId: newSupplierId || null,
       }),
     });
     setTitle("");
+    setNewSupplierId("");
+    await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+  }
+
+  async function saveSupplier(id: string, version: number, supplierId: string | null) {
+    await api("/api/procurement/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({ supplierId, version }),
+    });
     await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
   }
 
@@ -135,7 +160,22 @@ export function RfqPanel({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4 max-w-3xl">
-      <div className="flex gap-2 items-end">
+      <div className="flex flex-wrap gap-2 items-end">
+        <div>
+          <label className="text-xs text-slate-500">Supplier (optional)</label>
+          <select
+            className="border rounded px-2 py-1 w-56 block text-sm"
+            value={newSupplierId}
+            onChange={(e) => setNewSupplierId(e.target.value)}
+          >
+            <option value="">(none)</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="text-xs text-slate-500">New RFQ / quotation request</label>
           <input
@@ -186,9 +226,32 @@ export function RfqPanel({ projectId }: { projectId: string }) {
           const lines = linesByPr[p.id] ?? [];
           return (
             <li key={p.id} className="bg-white border rounded p-3 space-y-2">
-              <div className="font-medium">{p.title}</div>
-              <div className="text-xs text-slate-500">
-                Status: {p.status}
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="font-medium">{p.title}</div>
+                <button
+                  type="button"
+                  className="shrink-0 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+                  onClick={() => setDeleteRfq({ id: p.id, title: p.title })}
+                >
+                  Delete RFQ
+                </button>
+              </div>
+              <div className="text-xs text-slate-500">Status: {p.status}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs text-slate-500">Supplier</label>
+                <select
+                  className="border rounded px-2 py-0.5 text-sm max-w-[14rem]"
+                  value={p.supplierId ?? ""}
+                  onChange={(e) => void saveSupplier(p.id, p.version, e.target.value || null)}
+                  title={p.supplierId ? supplierName.get(p.supplierId) ?? "" : ""}
+                >
+                  <option value="">(none)</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="text-xs text-slate-500">SAP PO</label>
@@ -272,6 +335,21 @@ export function RfqPanel({ projectId }: { projectId: string }) {
           );
         })}
       </ul>
+
+      {deleteRfq ? (
+        <DeleteConfirmModal
+          open
+          recordTitle={deleteRfq.title}
+          previewPath={`/api/procurement/${deleteRfq.id}/delete-preview`}
+          deletePath={`/api/procurement/${deleteRfq.id}`}
+          onClose={() => setDeleteRfq(null)}
+          onDeleted={async () => {
+            await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+            await qc.invalidateQueries({ queryKey: ["proc-all"] });
+            await qc.invalidateQueries({ queryKey: ["crud-procurement", projectId] });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

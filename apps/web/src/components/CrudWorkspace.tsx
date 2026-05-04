@@ -6,8 +6,16 @@ import { api } from "../lib/api";
 import { useMe } from "../hooks/useMe";
 import type { User } from "../types";
 import { TodoKanban } from "./TodoKanban";
+import { DeleteConfirmModal } from "./DeleteConfirmModal";
 
 type Client = { id: string; name: string; code: string | null; version: number };
+type Supplier = {
+  id: string;
+  name: string;
+  code: string | null;
+  notes: string | null;
+  version: number;
+};
 type Project = {
   id: string;
   name: string;
@@ -69,6 +77,7 @@ type Procurement = {
   id: string;
   projectId: string;
   taskId: string | null;
+  supplierId: string | null;
   title: string;
   status: "draft" | "rfq_sent" | "quoted" | "ordered" | "closed" | "cancelled";
   needBy: string | null;
@@ -89,6 +98,7 @@ type OrgUser = { id: string; name: string };
 
 type Tab =
   | "customers"
+  | "suppliers"
   | "projects"
   | "milestones"
   | "tasks"
@@ -100,6 +110,7 @@ type Tab =
 
 const TABS: Tab[] = [
   "customers",
+  "suppliers",
   "projects",
   "milestones",
   "tasks",
@@ -112,6 +123,7 @@ const TABS: Tab[] = [
 
 const LABEL: Record<Tab, string> = {
   customers: "Customers",
+  suppliers: "Suppliers",
   projects: "Projects",
   milestones: "Milestones",
   tasks: "Tasks",
@@ -140,6 +152,57 @@ type TableRow = {
 };
 
 type EditTarget = { tab: Tab; id: string } | null;
+type DeleteTarget = { tab: Tab; id: string; label: string };
+
+function deletePreviewPath(tab: Tab, id: string): string {
+  switch (tab) {
+    case "customers":
+      return `/api/clients/${id}/delete-preview`;
+    case "suppliers":
+      return `/api/suppliers/${id}/delete-preview`;
+    case "projects":
+      return `/api/projects/${id}/delete-preview`;
+    case "milestones":
+      return `/api/milestones/${id}/delete-preview`;
+    case "tasks":
+      return `/api/tasks/${id}/delete-preview`;
+    case "todos":
+      return `/api/todos/${id}/delete-preview`;
+    case "timeEntries":
+      return `/api/time-entries/${id}/delete-preview`;
+    case "procurement":
+      return `/api/procurement/${id}/delete-preview`;
+    case "procurementLines":
+      return `/api/procurement-lines/${id}/delete-preview`;
+    default:
+      return "";
+  }
+}
+
+function deleteExecutePath(tab: Tab, id: string): string {
+  switch (tab) {
+    case "customers":
+      return `/api/clients/${id}`;
+    case "suppliers":
+      return `/api/suppliers/${id}`;
+    case "projects":
+      return `/api/projects/${id}`;
+    case "milestones":
+      return `/api/milestones/${id}`;
+    case "tasks":
+      return `/api/tasks/${id}`;
+    case "todos":
+      return `/api/todos/${id}`;
+    case "timeEntries":
+      return `/api/time-entries/${id}`;
+    case "procurement":
+      return `/api/procurement/${id}`;
+    case "procurementLines":
+      return `/api/procurement-lines/${id}`;
+    default:
+      return "";
+  }
+}
 
 const newRowInputClass = "w-full min-w-[6rem] rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-sm placeholder:text-slate-400";
 
@@ -149,10 +212,15 @@ export function CrudWorkspace() {
   const me = meRes?.user ?? null;
   const [tab, setTab] = useState<Tab>("projects");
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
   const { data: clientsData } = useQuery({
     queryKey: ["clients"],
     queryFn: () => api<{ clients: Client[] }>("/api/clients"),
+  });
+  const { data: suppliersData } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: () => api<{ suppliers: Supplier[] }>("/api/suppliers"),
   });
   const { data: projectsData } = useQuery({
     queryKey: ["projects"],
@@ -186,6 +254,7 @@ export function CrudWorkspace() {
   });
 
   const clients = clientsData?.clients ?? [];
+  const suppliers = suppliersData?.suppliers ?? [];
   const projects = projectsData?.projects ?? [];
   const milestones = milestonesData?.milestones ?? [];
   const tasks = tasksData?.tasks ?? [];
@@ -197,6 +266,7 @@ export function CrudWorkspace() {
 
   const projectName = useMemo(() => new Map(projects.map((p) => [p.id, p.name] as const)), [projects]);
   const clientName = useMemo(() => new Map(clients.map((c) => [c.id, c.name] as const)), [clients]);
+  const supplierName = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name] as const)), [suppliers]);
   const milestoneName = useMemo(() => new Map(milestones.map((m) => [m.id, m.name] as const)), [milestones]);
   const taskName = useMemo(() => new Map(tasks.map((t) => [t.id, t.title] as const)), [tasks]);
   const procName = useMemo(() => new Map(procurement.map((p) => [p.id, p.title] as const)), [procurement]);
@@ -204,6 +274,9 @@ export function CrudWorkspace() {
 
   async function refreshClients() {
     await qc.invalidateQueries({ queryKey: ["clients"] });
+  }
+  async function refreshSuppliers() {
+    await qc.invalidateQueries({ queryKey: ["suppliers"] });
   }
   async function refreshProjects() {
     await qc.invalidateQueries({ queryKey: ["projects"] });
@@ -220,18 +293,46 @@ export function CrudWorkspace() {
     await qc.invalidateQueries({ queryKey: ["proc-all"] });
   }
 
-  const editBtn = (t: Tab, id: string) => (
-    <button
-      type="button"
-      className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-sm font-medium text-blue-800 hover:bg-blue-100 whitespace-nowrap"
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setEditTarget({ tab: t, id });
-      }}
-    >
-      Edit
-    </button>
+  function canShowDeleteForRow(t: Tab, timeEntryUserId?: string): boolean {
+    if (!me || t === "todoKanban") {
+      return false;
+    }
+    if (t === "customers" || t === "suppliers") {
+      return me.globalRole === "org_admin";
+    }
+    if (t === "timeEntries") {
+      return me.globalRole === "org_admin" || timeEntryUserId === me.id;
+    }
+    return true;
+  }
+
+  const rowActions = (t: Tab, id: string, label: string, timeEntryUserId?: string) => (
+    <div className="flex flex-wrap justify-end gap-1">
+      <button
+        type="button"
+        className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-sm font-medium text-blue-800 hover:bg-blue-100 whitespace-nowrap"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setEditTarget({ tab: t, id });
+        }}
+      >
+        Edit
+      </button>
+      {canShowDeleteForRow(t, timeEntryUserId) && (
+        <button
+          type="button"
+          className="rounded border border-red-200 bg-red-50 px-2 py-1 text-sm font-medium text-red-800 hover:bg-red-100 whitespace-nowrap"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDeleteTarget({ tab: t, id, label });
+          }}
+        >
+          Delete
+        </button>
+      )}
+    </div>
   );
 
   const assigneeOptions = useMemo(
@@ -292,7 +393,7 @@ export function CrudWorkspace() {
       dataHeaders: ["Name", "Code"],
       rows: clients.map((c) => ({
         key: c.id,
-        action: editBtn("customers", c.id),
+        action: rowActions("customers", c.id, c.name),
         cells: [
           <InlineText
             key="n"
@@ -319,11 +420,60 @@ export function CrudWorkspace() {
         sort: [c.name, c.code ?? ""],
       })),
     },
+    suppliers: {
+      dataHeaders: ["Name", "Code", "Notes"],
+      rows: suppliers.map((s) => ({
+        key: s.id,
+        action: rowActions("suppliers", s.id, s.name),
+        cells: [
+          <InlineText
+            key="n"
+            value={s.name}
+            onSave={(v) =>
+              api("/api/suppliers/" + s.id, {
+                method: "PATCH",
+                body: JSON.stringify({ name: v, version: s.version }),
+              }).then(refreshSuppliers)
+            }
+          />,
+          <InlineText
+            key="code"
+            value={s.code ?? ""}
+            onSave={(v) =>
+              api("/api/suppliers/" + s.id, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  name: s.name,
+                  code: v || null,
+                  version: s.version,
+                }),
+              }).then(refreshSuppliers)
+            }
+          />,
+          <InlineText
+            key="notes"
+            value={s.notes ?? ""}
+            onSave={(v) =>
+              api("/api/suppliers/" + s.id, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  name: s.name,
+                  notes: v.trim() || null,
+                  version: s.version,
+                }),
+              }).then(refreshSuppliers)
+            }
+          />,
+        ],
+        search: `${s.name} ${s.code ?? ""} ${s.notes ?? ""}`,
+        sort: [s.name, s.code ?? "", s.notes ?? ""],
+      })),
+    },
     projects: {
       dataHeaders: ["Name", "Code", "Customer", "Status", "Start", "End", "Open"],
       rows: projects.map((p) => ({
         key: p.id,
-        action: editBtn("projects", p.id),
+        action: rowActions("projects", p.id, p.name),
         cells: [
           <InlineText
             key="n"
@@ -399,7 +549,7 @@ export function CrudWorkspace() {
       dataHeaders: ["Project", "Name", "Start", "End", "Order"],
       rows: milestones.map((m) => ({
         key: m.id,
-        action: editBtn("milestones", m.id),
+        action: rowActions("milestones", m.id, m.name),
         cells: [
           <span key="p">{projectName.get(m.projectId) ?? m.projectId}</span>,
           <InlineText
@@ -453,7 +603,7 @@ export function CrudWorkspace() {
         const msForProject = milestones.filter((x) => x.projectId === t.projectId);
         return {
           key: t.id,
-          action: editBtn("tasks", t.id),
+          action: rowActions("tasks", t.id, t.title),
           cells: [
             <span key="p">{projectName.get(t.projectId) ?? t.projectId}</span>,
             <InlineSelect
@@ -538,7 +688,7 @@ export function CrudWorkspace() {
       dataHeaders: ["Task", "Title", "Status", "Due", "Priority", "Order", "Assignee"],
       rows: todos.map((td) => ({
         key: td.id,
-        action: editBtn("todos", td.id),
+        action: rowActions("todos", td.id, td.title),
         cells: [
           <span key="tk">{taskName.get(td.taskId) ?? td.taskId}</span>,
           <InlineText
@@ -625,7 +775,7 @@ export function CrudWorkspace() {
       dataHeaders: ["Task", "Todo", "Minutes", "Start", "End", "User", "Note"],
       rows: timeEntries.map((te) => ({
         key: te.id,
-        action: editBtn("timeEntries", te.id),
+        action: rowActions("timeEntries", te.id, te.note?.trim() || "Time entry", te.userId),
         cells: [
           <span key="tk">{taskName.get(te.taskId) ?? te.taskId}</span>,
           <span key="td">
@@ -686,12 +836,12 @@ export function CrudWorkspace() {
       })),
     },
     procurement: {
-      dataHeaders: ["Project", "Task", "Title", "Status", "Need by", "SAP PO"],
+      dataHeaders: ["Project", "Task", "Supplier", "Title", "Status", "Need by", "SAP PO"],
       rows: procurement.map((p) => {
         const tasksForProject = tasks.filter((x) => x.projectId === p.projectId);
         return {
           key: p.id,
-          action: editBtn("procurement", p.id),
+          action: rowActions("procurement", p.id, p.title),
           cells: [
             <span key="pr">{projectName.get(p.projectId) ?? p.projectId}</span>,
             <InlineSelect
@@ -702,6 +852,17 @@ export function CrudWorkspace() {
                 api("/api/procurement/" + p.id, {
                   method: "PATCH",
                   body: JSON.stringify({ taskId: v || null, version: p.version }),
+                }).then(refreshProcurement)
+              }
+            />,
+            <InlineSelect
+              key="sup"
+              value={p.supplierId ?? ""}
+              options={[{ value: "", label: "(none)" }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]}
+              onSave={(v) =>
+                api("/api/procurement/" + p.id, {
+                  method: "PATCH",
+                  body: JSON.stringify({ supplierId: v || null, version: p.version }),
                 }).then(refreshProcurement)
               }
             />,
@@ -747,10 +908,11 @@ export function CrudWorkspace() {
               }
             />,
           ],
-          search: `${projectName.get(p.projectId) ?? ""} ${p.title} ${p.status}`,
+          search: `${projectName.get(p.projectId) ?? ""} ${supplierName.get(p.supplierId ?? "") ?? ""} ${p.title} ${p.status}`,
           sort: [
             projectName.get(p.projectId) ?? "",
             taskName.get(p.taskId ?? "") ?? "",
+            supplierName.get(p.supplierId ?? "") ?? "",
             p.title,
             p.status,
             p.needBy ?? "",
@@ -763,7 +925,7 @@ export function CrudWorkspace() {
       dataHeaders: ["Procurement", "Description", "Qty", "Unit", "Est price", "Order"],
       rows: procLines.map((l) => ({
         key: l.id,
-        action: editBtn("procurementLines", l.id),
+        action: rowActions("procurementLines", l.id, l.description.length > 48 ? l.description.slice(0, 48) + "…" : l.description),
         cells: [
           <span key="pr">{procName.get(l.procurementId) ?? l.procurementId}</span>,
           <InlineText
@@ -928,12 +1090,14 @@ export function CrudWorkspace() {
               totalColumns={current.dataHeaders.length + 1}
               me={me}
               clients={clients}
+              suppliers={suppliers}
               projects={projects}
               milestones={milestones}
               tasks={tasks}
               todos={todos}
               procurement={procurement}
               refreshClients={refreshClients}
+              refreshSuppliers={refreshSuppliers}
               refreshProjects={refreshProjects}
               refreshSchedule={refreshSchedule}
               refreshTime={refreshTime}
@@ -951,6 +1115,7 @@ export function CrudWorkspace() {
           target={editTarget}
           onClose={() => setEditTarget(null)}
           clients={clients}
+          suppliers={suppliers}
           projects={projects}
           milestones={milestones}
           tasks={tasks}
@@ -965,6 +1130,19 @@ export function CrudWorkspace() {
           }}
         />
       )}
+
+      {deleteTarget && deletePreviewPath(deleteTarget.tab, deleteTarget.id) ? (
+        <DeleteConfirmModal
+          open
+          recordTitle={deleteTarget.label}
+          previewPath={deletePreviewPath(deleteTarget.tab, deleteTarget.id)}
+          deletePath={deleteExecutePath(deleteTarget.tab, deleteTarget.id)}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={async () => {
+            await qc.invalidateQueries();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -981,12 +1159,14 @@ function CrudAppendRow({
   totalColumns,
   me,
   clients,
+  suppliers,
   projects,
   milestones,
   tasks,
   todos,
   procurement,
   refreshClients,
+  refreshSuppliers,
   refreshProjects,
   refreshSchedule,
   refreshTime,
@@ -996,12 +1176,14 @@ function CrudAppendRow({
   totalColumns: number;
   me: User | null;
   clients: Client[];
+  suppliers: Supplier[];
   projects: Project[];
   milestones: Milestone[];
   tasks: Task[];
   todos: Todo[];
   procurement: Procurement[];
   refreshClients: () => Promise<void>;
+  refreshSuppliers: () => Promise<void>;
   refreshProjects: () => Promise<void>;
   refreshSchedule: () => Promise<void>;
   refreshTime: () => Promise<void>;
@@ -1012,6 +1194,10 @@ function CrudAppendRow({
 
   const [custName, setCustName] = useState("");
   const [custCode, setCustCode] = useState("");
+
+  const [supName, setSupName] = useState("");
+  const [supCode, setSupCode] = useState("");
+  const [supNotes, setSupNotes] = useState("");
 
   const [projClientId, setProjClientId] = useState(clients[0]?.id ?? "");
   const [projName, setProjName] = useState("");
@@ -1044,6 +1230,7 @@ function CrudAppendRow({
   const [teTaskId, setTeTaskId] = useState(tasks[0]?.id ?? "");
 
   const [prProjectId, setPrProjectId] = useState(projects[0]?.id ?? "");
+  const [prSupplierId, setPrSupplierId] = useState("");
   const [prTitle, setPrTitle] = useState("");
 
   const [lnProcId, setLnProcId] = useState(procurement[0]?.id ?? "");
@@ -1054,6 +1241,12 @@ function CrudAppendRow({
       setLnProcId(procurement[0]!.id);
     }
   }, [procurement, lnProcId]);
+
+  useEffect(() => {
+    if (projects.length && !projects.some((p) => p.id === prProjectId)) {
+      setPrProjectId(projects[0]!.id);
+    }
+  }, [projects, prProjectId]);
 
   useEffect(() => {
     setErr(null);
@@ -1125,6 +1318,66 @@ function CrudAppendRow({
             setCustCode("");
             await refreshClients();
           }, !custName.trim())}
+          {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+        </td>
+      </tr>
+    );
+  }
+
+  if (tab === "suppliers") {
+    if (me.globalRole !== "org_admin") {
+      return (
+        <tr className="border-t bg-slate-50/90">
+          <td colSpan={totalColumns} className="p-2 text-xs text-slate-500">
+            Only <strong>org admins</strong> can add suppliers.
+          </td>
+        </tr>
+      );
+    }
+    return (
+      <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Supplier name"
+            value={supName}
+            onChange={(e) => setSupName(e.target.value)}
+          />
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Code (optional)"
+            value={supCode}
+            onChange={(e) => setSupCode(e.target.value)}
+          />
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Notes (optional)"
+            value={supNotes}
+            onChange={(e) => setSupNotes(e.target.value)}
+          />
+        </td>
+        <td className={stickyActionsTd}>
+          {createBtn(async () => {
+            const name = supName.trim();
+            if (!name) throw new Error("Name is required");
+            await api("/api/suppliers", {
+              method: "POST",
+              body: JSON.stringify({
+                organizationId: me.organizationId,
+                name,
+                code: supCode.trim() || undefined,
+                notes: supNotes.trim() || undefined,
+              }),
+            });
+            setSupName("");
+            setSupCode("");
+            setSupNotes("");
+            await refreshSuppliers();
+          }, !supName.trim())}
           {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
         </td>
       </tr>
@@ -1420,6 +1673,20 @@ function CrudAppendRow({
           —
         </td>
         <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={prSupplierId}
+            onChange={(e) => setPrSupplierId(e.target.value)}
+          >
+            <option value="">(no supplier)</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td className="p-2 align-top">
           <input
             className={newRowInputClass}
             placeholder="RFQ / procurement title"
@@ -1437,9 +1704,15 @@ function CrudAppendRow({
             if (!prProjectId) throw new Error("Select a project");
             await api("/api/procurement", {
               method: "POST",
-              body: JSON.stringify({ projectId: prProjectId, title, status: "draft" }),
+              body: JSON.stringify({
+                projectId: prProjectId,
+                title,
+                status: "draft",
+                supplierId: prSupplierId || null,
+              }),
             });
             setPrTitle("");
+            setPrSupplierId("");
             await refreshProcurement();
           }, !prTitle.trim() || !prProjectId)}
           {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
@@ -1794,6 +2067,7 @@ function EditDetailModal({
   target,
   onClose,
   clients,
+  suppliers,
   projects,
   milestones,
   tasks,
@@ -1807,6 +2081,7 @@ function EditDetailModal({
   target: NonNullable<EditTarget>;
   onClose: () => void;
   clients: Client[];
+  suppliers: Supplier[];
   projects: Project[];
   milestones: Milestone[];
   tasks: Task[];
@@ -1818,6 +2093,7 @@ function EditDetailModal({
   onSaved: () => Promise<void>;
 }) {
   const c = clients.find((x) => x.id === target.id);
+  const su = suppliers.find((x) => x.id === target.id);
   const p = projects.find((x) => x.id === target.id);
   const m = milestones.find((x) => x.id === target.id);
   const t = tasks.find((x) => x.id === target.id);
@@ -1828,6 +2104,9 @@ function EditDetailModal({
 
   if (target.tab === "customers" && c) {
     return <CustomerEditModal client={c} onClose={onClose} onSaved={onSaved} />;
+  }
+  if (target.tab === "suppliers" && su) {
+    return <SupplierEditModal supplier={su} onClose={onClose} onSaved={onSaved} />;
   }
   if (target.tab === "projects" && p) {
     return <ProjectEditModal project={p} clients={clients} onClose={onClose} onSaved={onSaved} />;
@@ -1867,6 +2146,7 @@ function EditDetailModal({
         row={pr}
         projectLabel={pl}
         tasks={tasks.filter((x) => x.projectId === pr.projectId)}
+        suppliers={suppliers}
         onClose={onClose}
         onSaved={onSaved}
       />
@@ -1928,6 +2208,68 @@ function CustomerEditModal({ client, onClose, onSaved }: { client: Client; onClo
       <input className="mb-2 w-full rounded border px-2 py-1" value={name} onChange={(e) => setName(e.target.value)} />
       <label className="block text-sm font-medium">Code</label>
       <input className="w-full rounded border px-2 py-1" value={code} onChange={(e) => setCode(e.target.value)} />
+    </ModalShell>
+  );
+}
+
+function SupplierEditModal({
+  supplier,
+  onClose,
+  onSaved,
+}: {
+  supplier: Supplier;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [name, setName] = useState(supplier.name);
+  const [code, setCode] = useState(supplier.code ?? "");
+  const [notes, setNotes] = useState(supplier.notes ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    setName(supplier.name);
+    setCode(supplier.code ?? "");
+    setNotes(supplier.notes ?? "");
+  }, [supplier]);
+  return (
+    <ModalShell
+      title="Edit supplier"
+      onClose={onClose}
+      footer={
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            disabled={saving || !name.trim()}
+            onClick={() => {
+              setErr(null);
+              setSaving(true);
+              void api("/api/suppliers/" + supplier.id, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  name: name.trim(),
+                  code: code.trim() || null,
+                  notes: notes.trim() || null,
+                  version: supplier.version,
+                }),
+              })
+                .then(onSaved)
+                .catch((e: Error) => setErr(e.message))
+                .finally(() => setSaving(false));
+            }}
+          >
+            Save
+          </button>
+        </div>
+      }
+    >
+      {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
+      <label className="block text-sm font-medium">Name</label>
+      <input className="mb-2 w-full rounded border px-2 py-1" value={name} onChange={(e) => setName(e.target.value)} />
+      <label className="block text-sm font-medium">Code</label>
+      <input className="mb-2 w-full rounded border px-2 py-1" value={code} onChange={(e) => setCode(e.target.value)} />
+      <label className="block text-sm font-medium">Notes</label>
+      <textarea className="w-full rounded border px-2 py-1" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
     </ModalShell>
   );
 }
@@ -2396,18 +2738,21 @@ function ProcurementEditModal({
   row,
   projectLabel,
   tasks,
+  suppliers,
   onClose,
   onSaved,
 }: {
   row: Procurement;
   projectLabel: string;
   tasks: Task[];
+  suppliers: Supplier[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
   const [title, setTitle] = useState(row.title);
   const [status, setStatus] = useState(row.status);
   const [taskId, setTaskId] = useState(row.taskId ?? "");
+  const [supplierId, setSupplierId] = useState(row.supplierId ?? "");
   const [needBy, setNeedBy] = useState(isoToLocal(row.needBy));
   const [sapPo, setSapPo] = useState(row.sapPoNumber ?? "");
   const [saving, setSaving] = useState(false);
@@ -2416,6 +2761,7 @@ function ProcurementEditModal({
     setTitle(row.title);
     setStatus(row.status);
     setTaskId(row.taskId ?? "");
+    setSupplierId(row.supplierId ?? "");
     setNeedBy(isoToLocal(row.needBy));
     setSapPo(row.sapPoNumber ?? "");
   }, [row]);
@@ -2438,6 +2784,7 @@ function ProcurementEditModal({
                   title: title.trim(),
                   status,
                   taskId: taskId || null,
+                  supplierId: supplierId || null,
                   needBy: localToIso(needBy),
                   sapPoNumber: sapPo.trim() || null,
                   version: row.version,
@@ -2463,6 +2810,19 @@ function ProcurementEditModal({
         {tasks.map((t) => (
           <option key={t.id} value={t.id}>
             {t.title}
+          </option>
+        ))}
+      </select>
+      <label className="block text-sm font-medium">Supplier</label>
+      <select
+        className="mb-2 w-full rounded border px-2 py-1"
+        value={supplierId}
+        onChange={(e) => setSupplierId(e.target.value)}
+      >
+        <option value="">(none)</option>
+        {suppliers.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
           </option>
         ))}
       </select>

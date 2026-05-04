@@ -1,8 +1,16 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { db, procurementRequest, procurementRequestLine, task, project, projectMember } from "@project-erp/db";
+import {
+  db,
+  procurementRequest,
+  procurementRequestLine,
+  task,
+  project,
+  projectMember,
+  supplier,
+} from "@project-erp/db";
 import {
   procurementCreate,
   procurementPatch,
@@ -12,6 +20,12 @@ import {
 import { requireAuth, type AuthUser } from "../lib/session.js";
 import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
+import {
+  executeDeleteProcurement,
+  executeDeleteProcurementLine,
+  previewDeleteProcurement,
+  previewDeleteProcurementLine,
+} from "../lib/deleteResource.js";
 import { fetchSapPoLines } from "../lib/sap.js";
 import {
   groupBomRowsByManufacturer,
@@ -21,6 +35,23 @@ import {
 
 const app = new Hono();
 app.use("/*", requireAuth);
+
+async function supplierIdForOrg(
+  a: AuthUser,
+  supplierId: string | null | undefined,
+): Promise<{ ok: true; supplierId: string | null } | { ok: false; message: string }> {
+  if (supplierId == null || supplierId === "") {
+    return { ok: true, supplierId: null };
+  }
+  const rows = await db
+    .select({ id: supplier.id })
+    .from(supplier)
+    .where(and(eq(supplier.id, supplierId), eq(supplier.organizationId, a.organizationId)));
+  if (rows.length === 0) {
+    return { ok: false, message: "Supplier not found" };
+  }
+  return { ok: true, supplierId };
+}
 
 app.get("/procurement", async (c) => {
   const a = c.get("auth") as AuthUser;
@@ -150,6 +181,7 @@ export async function handleProcurementImportDbf(c: Context) {
         .values({
           projectId,
           taskId: taskIdResolved,
+          supplierId: null,
           title,
           status: "draft",
           createdById: a.id,
@@ -202,11 +234,16 @@ app.post("/procurement", async (c) => {
       return c.json({ error: "Task not in project" }, 400);
     }
   }
+  const sid = await supplierIdForOrg(a, p.data.supplierId);
+  if (!sid.ok) {
+    return c.json({ error: sid.message }, 400);
+  }
   const [row] = await db
     .insert(procurementRequest)
     .values({
       projectId: p.data.projectId,
       taskId: p.data.taskId ?? null,
+      supplierId: sid.supplierId,
       title: p.data.title,
       status: p.data.status,
       needBy: p.data.needBy ?? null,
@@ -245,10 +282,19 @@ app.patch("/procurement/:id", async (c) => {
   if (p.data.version !== undefined && p.data.version !== cur[0]!.version) {
     return c.json({ error: "Version conflict" }, 409);
   }
+  let nextSupplierId = cur[0]!.supplierId;
+  if (p.data.supplierId !== undefined) {
+    const sid = await supplierIdForOrg(a, p.data.supplierId);
+    if (!sid.ok) {
+      return c.json({ error: sid.message }, 400);
+    }
+    nextSupplierId = sid.supplierId;
+  }
   const [row] = await db
     .update(procurementRequest)
     .set({
       taskId: p.data.taskId === undefined ? cur[0]!.taskId : p.data.taskId,
+      supplierId: nextSupplierId,
       title: p.data.title ?? cur[0]!.title,
       status: p.data.status ?? cur[0]!.status,
       needBy: p.data.needBy === undefined ? cur[0]!.needBy : p.data.needBy,
@@ -386,6 +432,46 @@ app.post("/procurement/:id/sap-refresh", async (c) => {
     })
     .where(eq(procurementRequest.id, id));
   return c.json({ lines: result.lines, fetchedAt: result.fetchedAt });
+});
+
+app.get("/procurement/:id/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = await previewDeleteProcurement(a, id);
+  if ("status" in p) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/procurement/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const ok = await executeDeleteProcurement(a, id);
+  if (!ok) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/procurement-lines/:id/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = await previewDeleteProcurementLine(a, id);
+  if ("status" in p) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/procurement-lines/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const ok = await executeDeleteProcurementLine(a, id);
+  if (!ok) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ ok: true });
 });
 
 export const procurementApp = app;

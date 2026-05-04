@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { Milestone, Task, Todo } from "../types";
+import { useMe } from "../hooks/useMe";
+import { DeleteConfirmModal } from "./DeleteConfirmModal";
 
 type CrudTab =
   | "milestones"
@@ -13,16 +15,66 @@ type CrudTab =
 
 type TimeEntry = {
   id: string;
+  userId: string;
   taskId: string;
   durationMinutes: number | null;
   note: string | null;
   version: number;
 };
 
+type ProjectDeleteKind =
+  | "milestone"
+  | "task"
+  | "todo"
+  | "timeEntry"
+  | "procurement"
+  | "procurementLine";
+
+function projectDeletePreviewPath(kind: ProjectDeleteKind, id: string): string {
+  switch (kind) {
+    case "milestone":
+      return `/api/milestones/${id}/delete-preview`;
+    case "task":
+      return `/api/tasks/${id}/delete-preview`;
+    case "todo":
+      return `/api/todos/${id}/delete-preview`;
+    case "timeEntry":
+      return `/api/time-entries/${id}/delete-preview`;
+    case "procurement":
+      return `/api/procurement/${id}/delete-preview`;
+    case "procurementLine":
+      return `/api/procurement-lines/${id}/delete-preview`;
+    default:
+      return "";
+  }
+}
+
+function projectDeleteExecutePath(kind: ProjectDeleteKind, id: string): string {
+  switch (kind) {
+    case "milestone":
+      return `/api/milestones/${id}`;
+    case "task":
+      return `/api/tasks/${id}`;
+    case "todo":
+      return `/api/todos/${id}`;
+    case "timeEntry":
+      return `/api/time-entries/${id}`;
+    case "procurement":
+      return `/api/procurement/${id}`;
+    case "procurementLine":
+      return `/api/procurement-lines/${id}`;
+    default:
+      return "";
+  }
+}
+
+type SupplierRow = { id: string; name: string };
+
 type Procurement = {
   id: string;
   title: string;
   status: string;
+  supplierId: string | null;
   version: number;
 };
 
@@ -57,7 +109,14 @@ export function ProjectCrudTables({
   onRefresh: () => void;
 }) {
   const qc = useQueryClient();
+  const { data: meRes } = useMe();
+  const me = meRes?.user ?? null;
   const [tab, setTab] = useState<CrudTab>("milestones");
+  const [deleteTarget, setDeleteTarget] = useState<{
+    kind: ProjectDeleteKind;
+    id: string;
+    label: string;
+  } | null>(null);
   const [newMilestoneName, setNewMilestoneName] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskMilestoneId, setNewTaskMilestoneId] = useState(milestones[0]?.id ?? "");
@@ -67,6 +126,7 @@ export function ProjectCrudTables({
   const [newTimeTaskId, setNewTimeTaskId] = useState(tasks[0]?.id ?? "");
   const [newTimeNote, setNewTimeNote] = useState("");
   const [newProcTitle, setNewProcTitle] = useState("");
+  const [newProcSupplierId, setNewProcSupplierId] = useState("");
   const [newLineProcId, setNewLineProcId] = useState("");
   const [newLineDescription, setNewLineDescription] = useState("");
   const [newLineQty, setNewLineQty] = useState("1");
@@ -96,10 +156,23 @@ export function ProjectCrudTables({
       ),
   });
 
+  const { data: suppliersData } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: () => api<{ suppliers: SupplierRow[] }>("/api/suppliers"),
+  });
+  const suppliers = suppliersData?.suppliers ?? [];
+
   async function refreshAll() {
     onRefresh();
     await qc.invalidateQueries({ queryKey: ["crud-time-entries", projectId] });
     await qc.invalidateQueries({ queryKey: ["crud-procurement", projectId] });
+  }
+
+  function showTimeEntryDelete(entry: TimeEntry): boolean {
+    if (!me) {
+      return false;
+    }
+    return me.globalRole === "org_admin" || entry.userId === me.id;
   }
 
   return (
@@ -148,7 +221,17 @@ export function ProjectCrudTables({
                     />
                   </td>
                   <td className="p-2">{m.orderIndex}</td>
-                  <td className="p-2 text-slate-400">Update only</td>
+                  <td className="p-2">
+                    <button
+                      type="button"
+                      className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+                      onClick={() =>
+                        setDeleteTarget({ kind: "milestone", id: m.id, label: m.name })
+                      }
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
               <tr className="border-t bg-slate-50">
@@ -252,7 +335,18 @@ export function ProjectCrudTables({
                       }}
                     />
                   </td>
-                  <td className="p-2 text-slate-400">#{idx + 1}</td>
+                  <td className="p-2">
+                    <span className="mr-2 text-xs text-slate-400">#{idx + 1}</span>
+                    <button
+                      type="button"
+                      className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+                      onClick={() =>
+                        setDeleteTarget({ kind: "task", id: t.id, label: t.title })
+                      }
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
               <tr className="border-t bg-slate-50">
@@ -354,7 +448,17 @@ export function ProjectCrudTables({
                       <option value="done">done</option>
                     </select>
                   </td>
-                  <td className="p-2 text-slate-400">Update only</td>
+                  <td className="p-2">
+                    <button
+                      type="button"
+                      className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+                      onClick={() =>
+                        setDeleteTarget({ kind: "todo", id: td.id, label: td.title })
+                      }
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
               <tr className="border-t bg-slate-50">
@@ -450,7 +554,25 @@ export function ProjectCrudTables({
                       }}
                     />
                   </td>
-                  <td className="p-2 text-slate-400">Update only</td>
+                  <td className="p-2">
+                    {showTimeEntryDelete(entry) ? (
+                      <button
+                        type="button"
+                        className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+                        onClick={() =>
+                          setDeleteTarget({
+                            kind: "timeEntry",
+                            id: entry.id,
+                            label: entry.note?.trim() || "Time entry",
+                          })
+                        }
+                      >
+                        Delete
+                      </button>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               <tr className="border-t bg-slate-50">
@@ -522,6 +644,7 @@ export function ProjectCrudTables({
             <thead className="bg-slate-100 text-left">
               <tr>
                 <th className="p-2">Title</th>
+                <th className="p-2">Supplier</th>
                 <th className="p-2">Status</th>
                 <th className="p-2">Action</th>
               </tr>
@@ -543,6 +666,28 @@ export function ProjectCrudTables({
                   </td>
                   <td className="p-2">
                     <select
+                      className="border rounded px-2 py-1 w-full min-w-[8rem] max-w-[14rem]"
+                      value={p.supplierId ?? ""}
+                      onChange={(e) => {
+                        void api("/api/procurement/" + p.id, {
+                          method: "PATCH",
+                          body: JSON.stringify({
+                            supplierId: e.target.value || null,
+                            version: p.version,
+                          }),
+                        }).then(() => void refreshAll());
+                      }}
+                    >
+                      <option value="">(none)</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="p-2">
+                    <select
                       className="border rounded px-2 py-1"
                       value={p.status}
                       onChange={(e) => {
@@ -560,7 +705,17 @@ export function ProjectCrudTables({
                       <option value="cancelled">cancelled</option>
                     </select>
                   </td>
-                  <td className="p-2 text-slate-400">Update only</td>
+                  <td className="p-2">
+                    <button
+                      type="button"
+                      className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+                      onClick={() =>
+                        setDeleteTarget({ kind: "procurement", id: p.id, label: p.title })
+                      }
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
               <tr className="border-t bg-slate-50">
@@ -571,6 +726,20 @@ export function ProjectCrudTables({
                     value={newProcTitle}
                     onChange={(e) => setNewProcTitle(e.target.value)}
                   />
+                </td>
+                <td className="p-2">
+                  <select
+                    className="w-full border rounded px-2 py-1 min-w-[8rem] max-w-[14rem]"
+                    value={newProcSupplierId}
+                    onChange={(e) => setNewProcSupplierId(e.target.value)}
+                  >
+                    <option value="">(none)</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td className="p-2">draft</td>
                 <td className="p-2">
@@ -585,9 +754,11 @@ export function ProjectCrudTables({
                           projectId,
                           title: newProcTitle.trim(),
                           status: "draft",
+                          supplierId: newProcSupplierId || null,
                         }),
                       }).then(async () => {
                         setNewProcTitle("");
+                        setNewProcSupplierId("");
                         await refreshAll();
                       });
                     }}
@@ -643,7 +814,24 @@ export function ProjectCrudTables({
                       }}
                     />
                   </td>
-                  <td className="p-2 text-slate-400">Update only</td>
+                  <td className="p-2">
+                    <button
+                      type="button"
+                      className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+                      onClick={() =>
+                        setDeleteTarget({
+                          kind: "procurementLine",
+                          id: line.id,
+                          label:
+                            line.description.length > 48
+                              ? line.description.slice(0, 48) + "…"
+                              : line.description,
+                        })
+                      }
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
               <tr className="border-t bg-slate-50">
@@ -716,6 +904,21 @@ export function ProjectCrudTables({
           Task milestone: {milestoneMap.get(tasks[0]!.milestoneId) ?? "—"} (reference)
         </p>
       )}
+
+      {deleteTarget && projectDeletePreviewPath(deleteTarget.kind, deleteTarget.id) ? (
+        <DeleteConfirmModal
+          open
+          recordTitle={deleteTarget.label}
+          previewPath={projectDeletePreviewPath(deleteTarget.kind, deleteTarget.id)}
+          deletePath={projectDeleteExecutePath(deleteTarget.kind, deleteTarget.id)}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={async () => {
+            await refreshAll();
+            await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+            await qc.invalidateQueries({ queryKey: ["proc-all"] });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

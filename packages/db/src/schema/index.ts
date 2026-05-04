@@ -85,6 +85,25 @@ export const client = pgTable("client", {
     .defaultNow(),
 });
 
+export const supplier = pgTable("supplier", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  code: text("code"),
+  notes: text("notes"),
+  version: integer("version").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const project = pgTable("project", {
   id: text("id")
     .primaryKey()
@@ -330,6 +349,9 @@ export const procurementRequest = pgTable("procurement_request", {
     .notNull()
     .references(() => project.id, { onDelete: "cascade" }),
   taskId: text("task_id").references(() => task.id, { onDelete: "set null" }),
+  supplierId: text("supplier_id").references(() => supplier.id, {
+    onDelete: "set null",
+  }),
   title: text("title").notNull(),
   status: text("status", {
     enum: [

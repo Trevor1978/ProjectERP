@@ -4,6 +4,7 @@ import {
   db,
   user as userTable,
   client,
+  supplier,
   project,
   projectMember,
   milestone,
@@ -12,8 +13,24 @@ import {
   todo,
 } from "@project-erp/db";
 import {
+  executeDeleteClient,
+  executeDeleteMilestone,
+  executeDeleteProject,
+  executeDeleteSupplier,
+  executeDeleteTask,
+  executeDeleteTodo,
+  previewDeleteClient,
+  previewDeleteMilestone,
+  previewDeleteProject,
+  previewDeleteSupplier,
+  previewDeleteTask,
+  previewDeleteTodo,
+} from "../lib/deleteResource.js";
+import {
   clientCreate,
   clientPatch,
+  supplierCreate,
+  supplierPatch,
   projectCreate,
   projectPatch,
   milestoneCreate,
@@ -239,6 +256,79 @@ app.patch("/clients/:id", async (c) => {
     .returning();
   await writeAudit(a, "client.update", "client", id, p.data);
   return c.json({ client: u });
+});
+
+app.get("/suppliers", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const rows = await db
+    .select()
+    .from(supplier)
+    .where(eq(supplier.organizationId, a.organizationId))
+    .orderBy(desc(supplier.updatedAt));
+  return c.json({ suppliers: rows });
+});
+
+app.post("/suppliers", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const p = supplierCreate.safeParse(await c.req.json());
+  if (!p.success) {
+    return c.json({ error: p.error.flatten() }, 400);
+  }
+  if (p.data.organizationId !== a.organizationId) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  if (a.globalRole !== "org_admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const [row] = await db
+    .insert(supplier)
+    .values({
+      name: p.data.name,
+      code: p.data.code,
+      notes: p.data.notes ?? null,
+      organizationId: a.organizationId,
+    })
+    .returning();
+  if (!row) {
+    return c.json({ error: "Failed" }, 500);
+  }
+  await writeAudit(a, "supplier.create", "supplier", row.id, { name: row.name });
+  return c.json({ supplier: row });
+});
+
+app.patch("/suppliers/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  if (a.globalRole !== "org_admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const id = c.req.param("id");
+  const p = supplierPatch.safeParse({ ...(await c.req.json()), id });
+  if (!p.success) {
+    return c.json({ error: p.error.flatten() }, 400);
+  }
+  const cur = await db
+    .select()
+    .from(supplier)
+    .where(and(eq(supplier.id, id), eq(supplier.organizationId, a.organizationId)));
+  if (cur.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  if (p.data.version !== undefined && p.data.version !== cur[0]!.version) {
+    return c.json({ error: "Version conflict" }, 409);
+  }
+  const [u] = await db
+    .update(supplier)
+    .set({
+      name: p.data.name ?? cur[0]!.name,
+      code: p.data.code === undefined ? cur[0]!.code : p.data.code,
+      notes: p.data.notes === undefined ? cur[0]!.notes : p.data.notes,
+      version: (cur[0]!.version ?? 0) + 1,
+      updatedAt: new Date(),
+    })
+    .where(eq(supplier.id, id))
+    .returning();
+  await writeAudit(a, "supplier.update", "supplier", id, p.data);
+  return c.json({ supplier: u });
 });
 
 app.post("/projects", async (c) => {
@@ -770,6 +860,144 @@ app.patch("/todos/:id", async (c) => {
     .returning();
   await syncTaskPercentFromTodos(t[0]!.id);
   return c.json({ todo: row });
+});
+
+app.get("/clients/:id/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = await previewDeleteClient(a, id);
+  if ("status" in p) {
+    return c.json({ error: p.status === 404 ? "Not found" : "Forbidden" }, p.status);
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/clients/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const ok = await executeDeleteClient(a, id);
+  if (!ok) {
+    const p = await previewDeleteClient(a, id);
+    if ("status" in p) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    if (!p.canDelete) {
+      return c.json({ error: p.blockedReason ?? "Cannot delete" }, 409);
+    }
+    return c.json({ error: "Cannot delete" }, 409);
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/suppliers/:id/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = await previewDeleteSupplier(a, id);
+  if ("status" in p) {
+    return c.json({ error: p.status === 404 ? "Not found" : "Forbidden" }, p.status);
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/suppliers/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const ok = await executeDeleteSupplier(a, id);
+  if (!ok) {
+    const p = await previewDeleteSupplier(a, id);
+    if ("status" in p) {
+      return c.json({ error: p.status === 404 ? "Not found" : "Forbidden" }, p.status);
+    }
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/projects/:projectId/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("projectId");
+  const p = await previewDeleteProject(a, id);
+  if ("status" in p) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/projects/:projectId", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("projectId");
+  const ok = await executeDeleteProject(a, id);
+  if (!ok) {
+    const p = await previewDeleteProject(a, id);
+    if ("status" in p) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    if (!p.canDelete) {
+      return c.json({ error: p.blockedReason ?? "Forbidden" }, 403);
+    }
+    return c.json({ error: "Could not delete project" }, 409);
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/milestones/:id/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = await previewDeleteMilestone(a, id);
+  if ("status" in p) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/milestones/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const ok = await executeDeleteMilestone(a, id);
+  if (!ok) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/tasks/:id/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = await previewDeleteTask(a, id);
+  if ("status" in p) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/tasks/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const ok = await executeDeleteTask(a, id);
+  if (!ok) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/todos/:id/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = await previewDeleteTodo(a, id);
+  if ("status" in p) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/todos/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const ok = await executeDeleteTodo(a, id);
+  if (!ok) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ ok: true });
 });
 
 export const workApp = app;

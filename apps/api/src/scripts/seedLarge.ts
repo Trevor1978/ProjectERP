@@ -259,6 +259,8 @@ async function main() {
       rfqRows.push({
         id: randomUUID(),
         projectId: p.id!,
+        taskId: null,
+        supplierId: null,
         title: `${p.name} RFQ ${i + 1}`,
         status: "draft",
         sapPoNumber: null,

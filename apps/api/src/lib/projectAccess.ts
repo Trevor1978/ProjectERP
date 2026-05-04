@@ -43,3 +43,24 @@ export async function requireProject(
   }
   return p;
 }
+
+/** Org admin, or project PM / admin — for destructive changes such as deleting a project. */
+export async function canEditProjectDestructive(
+  auth: AuthUser,
+  projectId: string,
+): Promise<boolean> {
+  if (auth.globalRole === "org_admin") {
+    return true;
+  }
+  const m = await db
+    .select()
+    .from(projectMember)
+    .where(
+      and(
+        eq(projectMember.projectId, projectId),
+        eq(projectMember.userId, auth.id),
+      ),
+    );
+  const role = m[0]?.role;
+  return role === "pm" || role === "admin";
+}
