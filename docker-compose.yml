@@ -1,5 +1,4 @@
-# Local dev: Postgres only (port 15432 on loopback). Run API + web with `pnpm dev` on the host.
-# Production / Coolify: use docker-compose.prod.yml (Postgres + API + nginx web with /api proxy).
+# Dedicated host / LAN: Postgres only; API + web run via `pnpm dev` on host, or add services later.
 services:
   postgres:
     image: postgres:16-alpine
