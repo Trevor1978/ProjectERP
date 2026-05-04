@@ -4,7 +4,10 @@ Place example **`.dbf`** files here for local testing (e.g. `NotcherXPBsum.dbf`)
 
 ## Import behavior
 
-The API route `POST /api/procurement/import-dbf` (multipart: `projectId`, `file`, optional `taskId`):
+The API accepts Elecdes BOM uploads as multipart (`projectId`, `file`, optional `taskId`):
+
+- **`POST /api/bom-dbf-import`** (used by the web UI — registered on the root app to avoid 404s with some reverse-proxy setups)
+- **`POST /api/procurement/import-dbf`** (same behavior, alternate path)
 
 1. Reads all non-deleted DBF rows.
 2. Groups rows by **manufacturer**, using the first matching column name (case-insensitive):  

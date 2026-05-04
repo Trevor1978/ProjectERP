@@ -5,7 +5,7 @@ import { authMiddleware } from "./lib/session.js";
 import { authApp } from "./routes/auth.js";
 import { workApp } from "./routes/work.js";
 import { timeApp } from "./routes/time.js";
-import { procurementApp } from "./routes/procurement.js";
+import { procurementApp, handleProcurementImportDbf } from "./routes/procurement.js";
 import { orgApp } from "./routes/org.js";
 import { extraApp } from "./routes/extra.js";
 
@@ -26,6 +26,8 @@ app.use(
 app.use("/*", authMiddleware);
 app.get("/api/health", (c) => c.json({ ok: true, service: "project-erp-api" }));
 app.route("/api/auth", authApp);
+/** Same handler as POST /api/procurement/import-dbf — root path avoids 404 with some nginx / nested-route setups. */
+app.post("/api/bom-dbf-import", handleProcurementImportDbf);
 app.route("/api", workApp);
 app.route("/api", timeApp);
 app.route("/api", procurementApp);

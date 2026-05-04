@@ -96,7 +96,7 @@ export function RfqPanel({ projectId }: { projectId: string }) {
       const res = await apiForm<{
         created: { id: string; title: string; lineCount: number }[];
         rowCount: number;
-      }>("/api/procurement/import-dbf", fd);
+      }>("/api/bom-dbf-import", fd);
       setDbfMsg(
         `Imported ${res.created.length} RFQ(s) from ${res.rowCount} BOM row(s).`,
       );

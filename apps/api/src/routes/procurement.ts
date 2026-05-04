@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, procurementRequest, procurementRequestLine, task, project, projectMember } from "@project-erp/db";
@@ -80,7 +81,8 @@ const importDbfForm = z.object({
   taskId: z.string().uuid().optional().nullable(),
 });
 
-app.post("/procurement/import-dbf", async (c) => {
+/** Shared by `POST /api/procurement/import-dbf` and root `POST /api/bom-dbf-import` (avoids some proxy/router quirks). */
+export async function handleProcurementImportDbf(c: Context) {
   const a = c.get("auth") as AuthUser;
   const body = await c.req.parseBody();
   const projectIdRaw = body["projectId"];
@@ -177,7 +179,9 @@ app.post("/procurement/import-dbf", async (c) => {
   });
 
   return c.json({ created, rowCount: records.length });
-});
+}
+
+app.post("/procurement/import-dbf", handleProcurementImportDbf);
 
 app.post("/procurement", async (c) => {
   const a = c.get("auth") as AuthUser;
