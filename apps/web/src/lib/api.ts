@@ -22,6 +22,30 @@ function apiBase(): string {
 
 const base = apiBase();
 
+/** POST multipart (do not set Content-Type — browser sets boundary). */
+export async function apiForm<T>(path: string, form: FormData): Promise<T> {
+  const r = await fetch(`${base}${path}`, {
+    method: "POST",
+    body: form,
+    credentials: "include",
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    let err: unknown;
+    try {
+      err = JSON.parse(t) as { error?: unknown };
+    } catch {
+      err = t;
+    }
+    throw new Error(
+      typeof err === "object" && err && "error" in err
+        ? String((err as { error: string }).error)
+        : t || r.statusText,
+    );
+  }
+  return r.json() as Promise<T>;
+}
+
 export async function api<T>(
   path: string,
   init?: RequestInit,

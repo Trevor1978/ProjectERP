@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { asc, desc, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 import { db, procurementRequest, procurementRequestLine, task, project, projectMember } from "@project-erp/db";
 import {
   procurementCreate,
@@ -11,6 +12,11 @@ import { requireAuth, type AuthUser } from "../lib/session.js";
 import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
 import { fetchSapPoLines } from "../lib/sap.js";
+import {
+  groupBomRowsByManufacturer,
+  readDbfRecordsFromBuffer,
+  procurementTitleForManufacturer,
+} from "../lib/bomDbfImport.js";
 
 const app = new Hono();
 app.use("/*", requireAuth);
@@ -65,6 +71,112 @@ app.get("/procurement", async (c) => {
         .orderBy(asc(procurementRequestLine.orderIndex))
     : [];
   return c.json({ procurement: rows, lines });
+});
+
+const MAX_DBF_BYTES = 30 * 1024 * 1024;
+
+const importDbfForm = z.object({
+  projectId: z.string().uuid(),
+  taskId: z.string().uuid().optional().nullable(),
+});
+
+app.post("/procurement/import-dbf", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const body = await c.req.parseBody();
+  const projectIdRaw = body["projectId"];
+  const taskIdRaw = body["taskId"];
+  const file = body["file"];
+  const parsed = importDbfForm.safeParse({
+    projectId: typeof projectIdRaw === "string" ? projectIdRaw : "",
+    taskId:
+      typeof taskIdRaw === "string" && taskIdRaw.trim()
+        ? taskIdRaw.trim()
+        : null,
+  });
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const { projectId, taskId } = parsed.data;
+  if (!(file instanceof File)) {
+    return c.json({ error: "Expected multipart field \"file\" (DBF)" }, 400);
+  }
+  const buf = Buffer.from(await file.arrayBuffer());
+  if (buf.length === 0) {
+    return c.json({ error: "Empty file" }, 400);
+  }
+  if (buf.length > MAX_DBF_BYTES) {
+    return c.json({ error: "DBF file too large (max 30MB)" }, 400);
+  }
+
+  const pr = await requireProject(a, projectId);
+  if ("error" in pr) {
+    return c.json({ error: pr.error }, pr.status);
+  }
+
+  let taskIdResolved: string | null = null;
+  if (taskId) {
+    const t = await db.select().from(task).where(eq(task.id, taskId));
+    if (t.length === 0 || t[0]!.projectId !== projectId) {
+      return c.json({ error: "taskId not in this project" }, 400);
+    }
+    taskIdResolved = taskId;
+  }
+
+  let records: Record<string, unknown>[] = [];
+  let fieldNames: string[] = [];
+  try {
+    const r = await readDbfRecordsFromBuffer(buf);
+    records = r.records;
+    fieldNames = r.fieldNames;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: `Could not read DBF: ${msg}` }, 400);
+  }
+
+  if (records.length === 0) {
+    return c.json({ error: "No data rows in DBF" }, 400);
+  }
+
+  const byMfg = groupBomRowsByManufacturer(records, fieldNames);
+  const created: { id: string; title: string; lineCount: number }[] = [];
+
+  await db.transaction(async (tx) => {
+    for (const [mfg, lines] of byMfg) {
+      const title = procurementTitleForManufacturer(mfg);
+      const [row] = await tx
+        .insert(procurementRequest)
+        .values({
+          projectId,
+          taskId: taskIdResolved,
+          title,
+          status: "draft",
+          createdById: a.id,
+        })
+        .returning();
+      if (!row) {
+        throw new Error("Failed to insert procurement");
+      }
+      for (let i = 0; i < lines.length; i++) {
+        const ln = lines[i]!;
+        await tx.insert(procurementRequestLine).values({
+          procurementId: row.id,
+          description: ln.description,
+          quantity: ln.quantity,
+          unit: ln.unit,
+          orderIndex: i,
+        });
+      }
+      created.push({ id: row.id, title: row.title, lineCount: lines.length });
+    }
+  });
+
+  await writeAudit(a, "procurement.import_dbf", "project", projectId, {
+    fileName: file.name,
+    manufacturers: created.length,
+    lines: created.reduce((s, x) => s + x.lineCount, 0),
+  });
+
+  return c.json({ created, rowCount: records.length });
 });
 
 app.post("/procurement", async (c) => {

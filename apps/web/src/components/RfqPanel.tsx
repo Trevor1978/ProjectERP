@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
-import { api } from "../lib/api";
+import { useState, useMemo, useRef } from "react";
+import { api, apiForm } from "../lib/api";
 
 type Line = {
   id: string;
@@ -33,6 +33,9 @@ export function RfqPanel({ projectId }: { projectId: string }) {
   const [newTitle, setNewTitle] = useState("");
   const [newQty, setNewQty] = useState("1");
   const [newLineFor, setNewLineFor] = useState<string | null>(null);
+  const dbfInputRef = useRef<HTMLInputElement>(null);
+  const [dbfBusy, setDbfBusy] = useState(false);
+  const [dbfMsg, setDbfMsg] = useState<string | null>(null);
 
   const linesByPr = useMemo(() => {
     const m: Record<string, Line[]> = {};
@@ -75,6 +78,36 @@ export function RfqPanel({ projectId }: { projectId: string }) {
   async function refreshSap(id: string) {
     await api("/api/procurement/" + id + "/sap-refresh", { method: "POST" });
     await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+  }
+
+  async function importDbf() {
+    const input = dbfInputRef.current;
+    const file = input?.files?.[0];
+    if (!file) {
+      setDbfMsg("Choose a .dbf file first.");
+      return;
+    }
+    setDbfBusy(true);
+    setDbfMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("projectId", projectId);
+      fd.append("file", file);
+      const res = await apiForm<{
+        created: { id: string; title: string; lineCount: number }[];
+        rowCount: number;
+      }>("/api/procurement/import-dbf", fd);
+      setDbfMsg(
+        `Imported ${res.created.length} RFQ(s) from ${res.rowCount} BOM row(s).`,
+      );
+      if (input) input.value = "";
+      await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+      await qc.invalidateQueries({ queryKey: ["proc-all"] });
+    } catch (e) {
+      setDbfMsg((e as Error).message);
+    } finally {
+      setDbfBusy(false);
+    }
   }
 
   async function addLine(procurementId: string) {
@@ -124,6 +157,29 @@ export function RfqPanel({ projectId }: { projectId: string }) {
         >
           Add RFQ
         </button>
+      </div>
+      <div className="rounded border border-dashed border-slate-300 bg-slate-50/80 p-3 space-y-2">
+        <div className="text-sm font-medium text-slate-800">Import Elecdes BOM (.dbf)</div>
+        <p className="text-xs text-slate-600">
+          One procurement (RFQ) is created per distinct manufacturer column (MFG / MANUFACTURER / VENDOR, etc.); each
+          BOM line becomes a line item.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <input ref={dbfInputRef} type="file" accept=".dbf,.DBF" className="text-sm max-w-full" />
+          <button
+            type="button"
+            disabled={dbfBusy}
+            className="px-3 py-1.5 rounded border border-slate-800 bg-white text-sm font-medium hover:bg-slate-100 disabled:opacity-50"
+            onClick={() => void importDbf()}
+          >
+            {dbfBusy ? "Importing…" : "Import DBF"}
+          </button>
+        </div>
+        {dbfMsg && (
+          <p className={"text-xs " + (dbfMsg.startsWith("Imported") ? "text-green-800" : "text-red-600")}>
+            {dbfMsg}
+          </p>
+        )}
       </div>
       <ul className="space-y-4">
         {data?.procurement.map((p) => {
