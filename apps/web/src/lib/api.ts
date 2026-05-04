@@ -1,4 +1,26 @@
-const base = import.meta.env.VITE_API_URL || "";
+/** Same-origin `/api` when unset. Ignores baked-in localhost API URL on LAN/IP deploys (browser "localhost" is the user device, not the server). */
+function apiBase(): string {
+  const env = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  if (!env) return "";
+  if (import.meta.env.PROD && typeof window !== "undefined") {
+    try {
+      const apiHost = new URL(env).hostname;
+      const pageHost = window.location.hostname;
+      if (
+        (apiHost === "localhost" || apiHost === "127.0.0.1") &&
+        pageHost !== "localhost" &&
+        pageHost !== "127.0.0.1"
+      ) {
+        return "";
+      }
+    } catch {
+      /* invalid VITE_API_URL */
+    }
+  }
+  return env;
+}
+
+const base = apiBase();
 
 export async function api<T>(
   path: string,
