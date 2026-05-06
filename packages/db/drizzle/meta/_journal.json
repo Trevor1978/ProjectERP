@@ -15,6 +15,13 @@
       "when": 1777869125245,
       "tag": "0001_short_psynapse",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777930640837,
+      "tag": "0002_oval_tusk",
+      "breakpoints": true
     }
   ]
 }

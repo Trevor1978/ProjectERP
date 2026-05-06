@@ -8,6 +8,7 @@ type Line = {
   procurementId: string;
   description: string;
   quantity: string;
+  received: boolean;
   version: number;
 };
 
@@ -279,10 +280,31 @@ export function RfqPanel({ projectId }: { projectId: string }) {
                 <div className="text-xs font-medium text-slate-600 mb-1">
                   Line items
                 </div>
-                <ul className="text-sm list-disc pl-4 space-y-0.5">
+                <ul className="text-sm space-y-1 pl-0 list-none">
                   {lines.map((l) => (
-                    <li key={l.id}>
-                      {l.description} · qty {l.quantity}
+                    <li key={l.id} className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-1 shrink-0"
+                        title="Received"
+                        checked={l.received}
+                        onChange={(e) => {
+                          void api("/api/procurement-lines/" + l.id, {
+                            method: "PATCH",
+                            body: JSON.stringify({
+                              received: e.target.checked,
+                              version: l.version,
+                            }),
+                          }).then(async () => {
+                            await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+                            await qc.invalidateQueries({ queryKey: ["proc-all"] });
+                            await qc.invalidateQueries({ queryKey: ["crud-procurement", projectId] });
+                          });
+                        }}
+                      />
+                      <span className={l.received ? "text-slate-600" : ""}>
+                        {l.description} · qty {l.quantity}
+                      </span>
                     </li>
                   ))}
                 </ul>

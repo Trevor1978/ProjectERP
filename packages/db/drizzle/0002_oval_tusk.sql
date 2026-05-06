@@ -1,0 +1,1 @@
+ALTER TABLE "procurement_request_line" ADD COLUMN "received" boolean DEFAULT false NOT NULL;

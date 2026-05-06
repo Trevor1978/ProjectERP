@@ -284,6 +284,7 @@ async function main() {
         unit: "ea",
         estUnitPrice: 100 + i * 25,
         orderIndex: i,
+        received: false,
         version: 0,
       });
     }

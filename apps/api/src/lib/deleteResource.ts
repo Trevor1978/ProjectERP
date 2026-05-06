@@ -24,6 +24,7 @@ import {
 } from "./commentCleanup.js";
 import { syncTaskPercentFromTodos } from "./deriveTaskPercent.js";
 import { writeAudit } from "./audit.js";
+import { syncProcurementStatusFromLineReceipts } from "./syncProcurementReceiveStatus.js";
 
 export type DeletePreviewResponse = {
   canDelete: boolean;
@@ -460,8 +461,10 @@ export async function executeDeleteProcurementLine(a: AuthUser, lineId: string):
   if ("error" in pr) {
     return false;
   }
+  const procurementId = cur[0]!.procurementId;
   await db.delete(procurementRequestLine).where(eq(procurementRequestLine.id, lineId));
   await writeAudit(a, "procurement_line.delete", "procurement_request_line", lineId, {});
+  await syncProcurementStatusFromLineReceipts(procurementId);
   return true;
 }
 

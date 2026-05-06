@@ -83,6 +83,7 @@ type ProcurementLine = {
   procurementId: string;
   description: string;
   quantity: string;
+  received: boolean;
   version: number;
 };
 
@@ -780,6 +781,7 @@ export function ProjectCrudTables({
                 <th className="p-2">Procurement</th>
                 <th className="p-2">Description</th>
                 <th className="p-2">Qty</th>
+                <th className="p-2">Received</th>
                 <th className="p-2">Action</th>
               </tr>
             </thead>
@@ -811,6 +813,22 @@ export function ProjectCrudTables({
                           body: JSON.stringify({ quantity, version: line.version }),
                         });
                         await refreshAll();
+                      }}
+                    />
+                  </td>
+                  <td className="p-2 align-middle">
+                    <input
+                      type="checkbox"
+                      title="Received"
+                      checked={line.received}
+                      onChange={(e) => {
+                        void api("/api/procurement-lines/" + line.id, {
+                          method: "PATCH",
+                          body: JSON.stringify({
+                            received: e.target.checked,
+                            version: line.version,
+                          }),
+                        }).then(() => void refreshAll());
                       }}
                     />
                   </td>
@@ -865,6 +883,7 @@ export function ProjectCrudTables({
                     placeholder="1"
                   />
                 </td>
+                <td className="p-2 text-xs text-slate-400">—</td>
                 <td className="p-2">
                   <button
                     type="button"

@@ -92,6 +92,7 @@ type ProcurementLine = {
   unit: string | null;
   estUnitPrice: number | null;
   orderIndex: number;
+  received: boolean;
   version: number;
 };
 type OrgUser = { id: string; name: string };
@@ -213,6 +214,7 @@ export function CrudWorkspace() {
   const [tab, setTab] = useState<Tab>("projects");
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [procurementDetailId, setProcurementDetailId] = useState<string | null>(null);
 
   const { data: clientsData } = useQuery({
     queryKey: ["clients"],
@@ -306,8 +308,27 @@ export function CrudWorkspace() {
     return true;
   }
 
-  const rowActions = (t: Tab, id: string, label: string, timeEntryUserId?: string) => (
+  const rowActions = (
+    t: Tab,
+    id: string,
+    label: string,
+    timeEntryUserId?: string,
+    opts?: { onOpenDetail?: () => void },
+  ) => (
     <div className="flex flex-wrap justify-end gap-1">
+      {opts?.onOpenDetail && (
+        <button
+          type="button"
+          className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-sm font-medium text-white hover:bg-slate-800 whitespace-nowrap"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            opts.onOpenDetail!();
+          }}
+        >
+          Open
+        </button>
+      )}
       <button
         type="button"
         className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-sm font-medium text-blue-800 hover:bg-blue-100 whitespace-nowrap"
@@ -841,7 +862,9 @@ export function CrudWorkspace() {
         const tasksForProject = tasks.filter((x) => x.projectId === p.projectId);
         return {
           key: p.id,
-          action: rowActions("procurement", p.id, p.title),
+          action: rowActions("procurement", p.id, p.title, undefined, {
+            onOpenDetail: () => setProcurementDetailId(p.id),
+          }),
           cells: [
             <span key="pr">{projectName.get(p.projectId) ?? p.projectId}</span>,
             <InlineSelect
@@ -922,7 +945,7 @@ export function CrudWorkspace() {
       }),
     },
     procurementLines: {
-      dataHeaders: ["Procurement", "Description", "Qty", "Unit", "Est price", "Order"],
+      dataHeaders: ["Procurement", "Description", "Qty", "Unit", "Est price", "Received", "Order"],
       rows: procLines.map((l) => ({
         key: l.id,
         action: rowActions("procurementLines", l.id, l.description.length > 48 ? l.description.slice(0, 48) + "…" : l.description),
@@ -968,6 +991,16 @@ export function CrudWorkspace() {
               }).then(refreshProcurement)
             }
           />,
+          <InlineCheckbox
+            key="rcv"
+            value={l.received}
+            onSave={(v) =>
+              api("/api/procurement-lines/" + l.id, {
+                method: "PATCH",
+                body: JSON.stringify({ received: v, version: l.version }),
+              }).then(refreshProcurement)
+            }
+          />,
           <InlineNumber
             key="ord"
             value={l.orderIndex}
@@ -979,13 +1012,14 @@ export function CrudWorkspace() {
             }
           />,
         ],
-        search: `${procName.get(l.procurementId) ?? ""} ${l.description} ${l.quantity}`,
+        search: `${procName.get(l.procurementId) ?? ""} ${l.description} ${l.quantity} ${l.received ? "received" : ""}`,
         sort: [
           procName.get(l.procurementId) ?? "",
           l.description,
           l.quantity,
           l.unit ?? "",
           l.estUnitPrice ?? 0,
+          l.received ? 1 : 0,
           l.orderIndex,
         ],
       })),
@@ -1143,6 +1177,28 @@ export function CrudWorkspace() {
           }}
         />
       ) : null}
+
+      {procurementDetailId ? (() => {
+        const d = procurement.find((x) => x.id === procurementDetailId);
+        if (!d) {
+          return null;
+        }
+        const lineRows = procLines
+          .filter((l) => l.procurementId === d.id)
+          .slice()
+          .sort((a, b) => a.orderIndex - b.orderIndex);
+        return (
+          <ProcurementDetailModal
+            procurement={d}
+            lines={lineRows}
+            projectLabel={projectName.get(d.projectId) ?? d.projectId}
+            tasks={tasks.filter((t) => t.projectId === d.projectId)}
+            suppliers={suppliers}
+            onClose={() => setProcurementDetailId(null)}
+            onRefresh={refreshProcurement}
+          />
+        );
+      })() : null}
     </div>
   );
 }
@@ -1999,11 +2055,14 @@ function ModalShell({
   onClose,
   children,
   footer,
+  wide,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /** Wider panel for dense tables (e.g. procurement detail). */
+  wide?: boolean;
 }) {
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -2035,7 +2094,7 @@ function ModalShell({
       <div
         style={{
           width: "100%",
-          maxWidth: "32rem",
+          maxWidth: wide ? "56rem" : "32rem",
           maxHeight: "90vh",
           overflow: "auto",
           borderRadius: "0.5rem",
@@ -2734,6 +2793,340 @@ function TimeEntryEditModal({
   );
 }
 
+function ProcurementDetailLineRow({
+  line,
+  onSaved,
+}: {
+  line: ProcurementLine;
+  onSaved: () => Promise<void>;
+}) {
+  const [description, setDescription] = useState(line.description);
+  const [quantity, setQuantity] = useState(line.quantity);
+  const [unit, setUnit] = useState(line.unit ?? "");
+  const [estUnitPrice, setEstUnitPrice] = useState(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
+  const [orderIndex, setOrderIndex] = useState(String(line.orderIndex));
+  const [received, setReceived] = useState(line.received);
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    setDescription(line.description);
+    setQuantity(line.quantity);
+    setUnit(line.unit ?? "");
+    setEstUnitPrice(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
+    setOrderIndex(String(line.orderIndex));
+    setReceived(line.received);
+  }, [line]);
+  return (
+    <tr className="border-b align-top">
+      <td className="py-1 pr-2">
+        {err && <p className="mb-1 text-xs text-red-600">{err}</p>}
+        <textarea
+          className="w-full min-w-[12rem] rounded border px-2 py-1"
+          rows={2}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </td>
+      <td className="py-1 pr-2">
+        <input className="w-20 rounded border px-2 py-1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+      </td>
+      <td className="py-1 pr-2">
+        <input className="w-16 rounded border px-2 py-1" value={unit} onChange={(e) => setUnit(e.target.value)} />
+      </td>
+      <td className="py-1 pr-2">
+        <input
+          type="number"
+          className="w-24 rounded border px-2 py-1"
+          value={estUnitPrice}
+          onChange={(e) => setEstUnitPrice(e.target.value)}
+        />
+      </td>
+      <td className="py-1 pr-2">
+        <input type="number" className="w-14 rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
+      </td>
+      <td className="py-1 pr-2">
+        <input type="checkbox" checked={received} onChange={(e) => setReceived(e.target.checked)} />
+      </td>
+      <td className="py-1 whitespace-nowrap">
+        <button
+          type="button"
+          className="mr-1 rounded border bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50"
+          disabled={saving || removing || !description.trim()}
+          onClick={() => {
+            setErr(null);
+            setSaving(true);
+            void api("/api/procurement-lines/" + line.id, {
+              method: "PATCH",
+              body: JSON.stringify({
+                description: description.trim(),
+                quantity: quantity || "1",
+                unit: unit.trim() || null,
+                estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
+                orderIndex: Number(orderIndex) || 0,
+                received,
+                version: line.version,
+              }),
+            })
+              .then(onSaved)
+              .catch((e: Error) => setErr(e.message))
+              .finally(() => setSaving(false));
+          }}
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          className="rounded border px-2 py-1 text-xs text-red-700 disabled:opacity-50"
+          disabled={saving || removing}
+          onClick={() => {
+            if (!window.confirm("Remove this line?")) return;
+            setErr(null);
+            setRemoving(true);
+            void api("/api/procurement-lines/" + line.id, { method: "DELETE" })
+              .then(onSaved)
+              .catch((e: Error) => setErr(e.message))
+              .finally(() => setRemoving(false));
+          }}
+        >
+          Remove
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function ProcurementDetailModal({
+  procurement: row,
+  lines,
+  projectLabel,
+  tasks,
+  suppliers,
+  onClose,
+  onRefresh,
+}: {
+  procurement: Procurement;
+  lines: ProcurementLine[];
+  projectLabel: string;
+  tasks: Task[];
+  suppliers: Supplier[];
+  onClose: () => void;
+  onRefresh: () => Promise<void>;
+}) {
+  const [title, setTitle] = useState(row.title);
+  const [status, setStatus] = useState(row.status);
+  const [taskId, setTaskId] = useState(row.taskId ?? "");
+  const [supplierId, setSupplierId] = useState(row.supplierId ?? "");
+  const [needBy, setNeedBy] = useState(isoToLocal(row.needBy));
+  const [sapPo, setSapPo] = useState(row.sapPoNumber ?? "");
+  const [headerSaving, setHeaderSaving] = useState(false);
+  const [headerErr, setHeaderErr] = useState<string | null>(null);
+
+  const [newDesc, setNewDesc] = useState("");
+  const [newQty, setNewQty] = useState("1");
+  const [newUnit, setNewUnit] = useState("");
+  const [newEst, setNewEst] = useState("");
+  const [newOrder, setNewOrder] = useState(() =>
+    lines.length ? String(Math.max(...lines.map((l) => l.orderIndex)) + 1) : "0",
+  );
+  const [newReceived, setNewReceived] = useState(false);
+  const [lineAdding, setLineAdding] = useState(false);
+  const [lineErr, setLineErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTitle(row.title);
+    setStatus(row.status);
+    setTaskId(row.taskId ?? "");
+    setSupplierId(row.supplierId ?? "");
+    setNeedBy(isoToLocal(row.needBy));
+    setSapPo(row.sapPoNumber ?? "");
+  }, [row]);
+
+  useEffect(() => {
+    setNewOrder(lines.length ? String(Math.max(...lines.map((l) => l.orderIndex)) + 1) : "0");
+  }, [lines]);
+
+  return (
+    <ModalShell
+      wide
+      title={`Procurement: ${row.title}`}
+      onClose={onClose}
+      footer={null}
+    >
+      {headerErr && <p className="mb-2 text-sm text-red-600">{headerErr}</p>}
+      <p className="mb-2 text-sm text-slate-600">Project: {projectLabel}</p>
+      <div className="mb-4 grid gap-2 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <label className="block text-sm font-medium">Title</label>
+          <input className="w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Task</label>
+          <select className="w-full rounded border px-2 py-1" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+            <option value="">(none)</option>
+            {tasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Supplier</label>
+          <select className="w-full rounded border px-2 py-1" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+            <option value="">(none)</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Status</label>
+          <select className="w-full rounded border px-2 py-1" value={status} onChange={(e) => setStatus(e.target.value as Procurement["status"])}>
+            {PROC_STATUS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Need by</label>
+          <input type="datetime-local" className="w-full rounded border px-2 py-1" value={needBy} onChange={(e) => setNeedBy(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">SAP PO</label>
+          <input className="w-full rounded border px-2 py-1" value={sapPo} onChange={(e) => setSapPo(e.target.value)} />
+        </div>
+        <div className="sm:col-span-2">
+          <button
+            type="button"
+            className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            disabled={headerSaving || !title.trim()}
+            onClick={() => {
+              setHeaderErr(null);
+              setHeaderSaving(true);
+              void api("/api/procurement/" + row.id, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  title: title.trim(),
+                  status,
+                  taskId: taskId || null,
+                  supplierId: supplierId || null,
+                  needBy: localToIso(needBy),
+                  sapPoNumber: sapPo.trim() || null,
+                  version: row.version,
+                }),
+              })
+                .then(onRefresh)
+                .catch((e: Error) => setHeaderErr(e.message))
+                .finally(() => setHeaderSaving(false));
+            }}
+          >
+            Save header
+          </button>
+        </div>
+      </div>
+
+      <h3 className="mb-2 text-sm font-semibold text-slate-800">Line items</h3>
+      <div className="mb-4 overflow-x-auto rounded border">
+        <table className="w-full min-w-[36rem] border-collapse text-sm">
+          <thead>
+            <tr className="border-b bg-slate-50 text-left">
+              <th className="px-2 py-2 font-medium">Description</th>
+              <th className="px-2 py-2 font-medium">Qty</th>
+              <th className="px-2 py-2 font-medium">Unit</th>
+              <th className="px-2 py-2 font-medium">Est $</th>
+              <th className="px-2 py-2 font-medium">Order</th>
+              <th className="px-2 py-2 font-medium">Rcvd</th>
+              <th className="px-2 py-2 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-2 py-3 text-slate-500">
+                  No lines yet — add one below.
+                </td>
+              </tr>
+            ) : (
+              lines.map((l) => <ProcurementDetailLineRow key={l.id} line={l} onSaved={onRefresh} />)
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {lineErr && <p className="mb-2 text-sm text-red-600">{lineErr}</p>}
+      <div className="rounded border border-dashed border-slate-300 bg-slate-50/80 p-3">
+        <p className="mb-2 text-sm font-medium text-slate-700">Add line</p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2 lg:col-span-4">
+            <label className="block text-xs font-medium text-slate-600">Description</label>
+            <textarea className="w-full rounded border px-2 py-1" rows={2} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">Quantity</label>
+            <input className="w-full rounded border px-2 py-1" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">Unit</label>
+            <input className="w-full rounded border px-2 py-1" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">Est unit price</label>
+            <input type="number" className="w-full rounded border px-2 py-1" value={newEst} onChange={(e) => setNewEst(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">Order</label>
+            <input type="number" className="w-full rounded border px-2 py-1" value={newOrder} onChange={(e) => setNewOrder(e.target.value)} />
+          </div>
+          <div className="flex items-end pb-1">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={newReceived} onChange={(e) => setNewReceived(e.target.checked)} />
+              Received
+            </label>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="mt-2 rounded border bg-slate-800 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+          disabled={lineAdding || !newDesc.trim()}
+          onClick={() => {
+            setLineErr(null);
+            setLineAdding(true);
+            void api("/api/procurement-lines", {
+              method: "POST",
+              body: JSON.stringify({
+                procurementId: row.id,
+                description: newDesc.trim(),
+                quantity: newQty || "1",
+                unit: newUnit.trim() || null,
+                estUnitPrice: newEst.trim() ? Number(newEst) : null,
+                orderIndex: Number(newOrder) || 0,
+                received: newReceived,
+              }),
+            })
+              .then(async () => {
+                setNewDesc("");
+                setNewQty("1");
+                setNewUnit("");
+                setNewEst("");
+                setNewReceived(false);
+                await onRefresh();
+              })
+              .catch((e: Error) => setLineErr(e.message))
+              .finally(() => setLineAdding(false));
+          }}
+        >
+          Add line
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
 function ProcurementEditModal({
   row,
   projectLabel,
@@ -2860,6 +3253,7 @@ function ProcurementLineEditModal({
   const [unit, setUnit] = useState(line.unit ?? "");
   const [estUnitPrice, setEstUnitPrice] = useState(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
   const [orderIndex, setOrderIndex] = useState(String(line.orderIndex));
+  const [received, setReceived] = useState(line.received);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -2868,6 +3262,7 @@ function ProcurementLineEditModal({
     setUnit(line.unit ?? "");
     setEstUnitPrice(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
     setOrderIndex(String(line.orderIndex));
+    setReceived(line.received);
   }, [line]);
   return (
     <ModalShell
@@ -2890,6 +3285,7 @@ function ProcurementLineEditModal({
                   unit: unit.trim() || null,
                   estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
                   orderIndex: Number(orderIndex) || 0,
+                  received,
                   version: line.version,
                 }),
               })
@@ -2915,7 +3311,11 @@ function ProcurementLineEditModal({
       <label className="block text-sm font-medium">Est unit price</label>
       <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={estUnitPrice} onChange={(e) => setEstUnitPrice(e.target.value)} />
       <label className="block text-sm font-medium">Order</label>
-      <input type="number" className="w-full rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
+      <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input type="checkbox" checked={received} onChange={(e) => setReceived(e.target.checked)} />
+        Received
+      </label>
     </ModalShell>
   );
 }

@@ -395,6 +395,7 @@ export const procurementRequestLine = pgTable(
     unit: text("unit"),
     estUnitPrice: doublePrecision("est_unit_price"),
     orderIndex: integer("order_index").notNull().default(0),
+    received: boolean("received").notNull().default(false),
     version: integer("version").notNull().default(0),
   },
   (t) => [index("prline_proc").on(t.procurementId)],

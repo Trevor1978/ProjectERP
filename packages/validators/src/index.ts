@@ -200,6 +200,7 @@ export const procurementLineCreate = z.object({
     .optional()
     .nullable(),
   orderIndex: z.number().int().min(0).default(0),
+  received: z.boolean().optional().default(false),
 });
 export const procurementLinePatch = z
   .object({
@@ -214,6 +215,7 @@ export const procurementLinePatch = z
       .optional()
       .nullable(),
     orderIndex: z.number().int().min(0).optional(),
+    received: z.boolean().optional(),
     version,
   })
   .strict();

@@ -27,6 +27,7 @@ import {
   previewDeleteProcurementLine,
 } from "../lib/deleteResource.js";
 import { fetchSapPoLines } from "../lib/sap.js";
+import { syncProcurementStatusFromLineReceipts } from "../lib/syncProcurementReceiveStatus.js";
 import {
   groupBomRowsByManufacturer,
   readDbfRecordsFromBuffer,
@@ -343,8 +344,10 @@ app.post("/procurement-lines", async (c) => {
           ? null
           : Number(p.data.estUnitPrice),
       orderIndex: p.data.orderIndex,
+      received: p.data.received ?? false,
     })
     .returning();
+  await syncProcurementStatusFromLineReceipts(p.data.procurementId);
   return c.json({ line });
 });
 
@@ -394,10 +397,13 @@ app.patch("/procurement-lines/:id", async (c) => {
             ? null
             : Number(p.data.estUnitPrice),
       orderIndex: p.data.orderIndex ?? cur[0]!.orderIndex,
+      received:
+        p.data.received === undefined ? cur[0]!.received : p.data.received,
       version: (cur[0]!.version ?? 0) + 1,
     })
     .where(eq(procurementRequestLine.id, id))
     .returning();
+  await syncProcurementStatusFromLineReceipts(cur[0]!.procurementId);
   return c.json({ line });
 });
 
