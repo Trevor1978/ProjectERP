@@ -12,7 +12,8 @@
     "db:generate": "pnpm --filter @project-erp/db db:generate",
     "db:migrate": "pnpm --filter @project-erp/db db:migrate",
     "db:push": "pnpm --filter @project-erp/db db:push",
-    "db:studio": "pnpm --filter @project-erp/db db:studio"
+    "db:studio": "pnpm --filter @project-erp/db db:studio",
+    "deploy:production": "bash scripts/deploy-production.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

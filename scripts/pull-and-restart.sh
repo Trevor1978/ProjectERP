@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Pull latest code and restart local app for testing.
-# Default behavior: restart in background and write logs to ./.run/dev.log
+# Local dev only: pull, pnpm install, kill :3001/:5173, start `pnpm dev` (Vite + tsx).
+# For production (build + systemd + nginx static): use scripts/deploy-production.sh
+#
+# Default: restart in background, logs in ./.run/dev.log
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
