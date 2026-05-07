@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -79,7 +79,15 @@ type Procurement = {
   taskId: string | null;
   supplierId: string | null;
   title: string;
-  status: "draft" | "rfq_sent" | "quoted" | "ordered" | "closed" | "cancelled";
+  status:
+    | "draft"
+    | "rfq_sent"
+    | "quoted"
+    | "ordered"
+    | "partially_received"
+    | "closed"
+    | "cancelled";
+  fullyReceivedOverride: boolean;
   needBy: string | null;
   sapPoNumber: string | null;
   version: number;
@@ -92,7 +100,7 @@ type ProcurementLine = {
   unit: string | null;
   estUnitPrice: number | null;
   orderIndex: number;
-  received: boolean;
+  receivedQty: number;
   version: number;
 };
 type OrgUser = { id: string; name: string };
@@ -138,7 +146,15 @@ const LABEL: Record<Tab, string> = {
 const STATUS_OPTS = ["draft", "active", "on_hold", "closed"] as const;
 const TODO_STATUS = ["backlog", "in_progress", "blocked", "done"] as const;
 const TODO_PRIORITY = ["low", "normal", "high", "urgent"] as const;
-const PROC_STATUS = ["draft", "rfq_sent", "quoted", "ordered", "closed", "cancelled"] as const;
+const PROC_STATUS = [
+  "draft",
+  "rfq_sent",
+  "quoted",
+  "ordered",
+  "partially_received",
+  "closed",
+  "cancelled",
+] as const;
 
 const isoToLocal = (v: string | null | undefined) =>
   v ? new Date(v).toISOString().slice(0, 16) : "";
@@ -215,6 +231,21 @@ export function CrudWorkspace() {
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [procurementDetailId, setProcurementDetailId] = useState<string | null>(null);
+  const procurementMergeOrderRef = useRef<string[]>([]);
+  const [procurementMergeSelected, setProcurementMergeSelected] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [procurementMergeBusy, setProcurementMergeBusy] = useState(false);
+
+  const onProcurementFilteredRowsChange = useCallback((r: TableRow[]) => {
+    procurementMergeOrderRef.current = r.map((x) => x.key);
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "procurement") {
+      setProcurementMergeSelected(new Set());
+    }
+  }, [tab]);
 
   const { data: clientsData } = useQuery({
     queryKey: ["clients"],
@@ -945,7 +976,7 @@ export function CrudWorkspace() {
       }),
     },
     procurementLines: {
-      dataHeaders: ["Procurement", "Description", "Qty", "Unit", "Est price", "Received", "Order"],
+      dataHeaders: ["Procurement", "Description", "Qty", "Unit", "Est price", "Rcvd qty", "Order"],
       rows: procLines.map((l) => ({
         key: l.id,
         action: rowActions("procurementLines", l.id, l.description.length > 48 ? l.description.slice(0, 48) + "…" : l.description),
@@ -991,13 +1022,15 @@ export function CrudWorkspace() {
               }).then(refreshProcurement)
             }
           />,
-          <InlineCheckbox
+          <InlineNumber
             key="rcv"
-            value={l.received}
+            value={l.receivedQty}
+            min={0}
+            integer
             onSave={(v) =>
               api("/api/procurement-lines/" + l.id, {
                 method: "PATCH",
-                body: JSON.stringify({ received: v, version: l.version }),
+                body: JSON.stringify({ receivedQty: v, version: l.version }),
               }).then(refreshProcurement)
             }
           />,
@@ -1012,14 +1045,14 @@ export function CrudWorkspace() {
             }
           />,
         ],
-        search: `${procName.get(l.procurementId) ?? ""} ${l.description} ${l.quantity} ${l.received ? "received" : ""}`,
+        search: `${procName.get(l.procurementId) ?? ""} ${l.description} ${l.quantity} ${l.receivedQty}`,
         sort: [
           procName.get(l.procurementId) ?? "",
           l.description,
           l.quantity,
           l.unit ?? "",
           l.estUnitPrice ?? 0,
-          l.received ? 1 : 0,
+          l.receivedQty,
           l.orderIndex,
         ],
       })),
@@ -1118,10 +1151,94 @@ export function CrudWorkspace() {
           key={tab}
           dataHeaders={current.dataHeaders}
           rows={current.rows}
+          leadingColumn={
+            tab === "procurement"
+              ? {
+                  label: "Merge",
+                  renderCell: (r) => (
+                    <input
+                      type="checkbox"
+                      title="Select for merge"
+                      checked={procurementMergeSelected.has(r.key)}
+                      onChange={(e) => {
+                        setProcurementMergeSelected((prev) => {
+                          const n = new Set(prev);
+                          if (e.target.checked) {
+                            n.add(r.key);
+                          } else {
+                            n.delete(r.key);
+                          }
+                          return n;
+                        });
+                      }}
+                    />
+                  ),
+                }
+              : undefined
+          }
+          extraToolbar={
+            tab === "procurement" ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <button
+                  type="button"
+                  disabled={procurementMergeSelected.size < 2 || procurementMergeBusy}
+                  className="rounded border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+                  onClick={() => {
+                    const order = procurementMergeOrderRef.current.filter((id) =>
+                      procurementMergeSelected.has(id),
+                    );
+                    if (order.length < 2) {
+                      return;
+                    }
+                    const keepTitle = procurement.find((x) => x.id === order[0])?.title ?? order[0]!;
+                    const msg = `Merge ${order.length} procurements?\n\nThe first in the current table sort (“${keepTitle}”) keeps its title and settings. Other RFQs will be deleted and their line items appended.`;
+                    if (!window.confirm(msg)) {
+                      return;
+                    }
+                    setProcurementMergeBusy(true);
+                    void api("/api/procurement/merge", {
+                      method: "POST",
+                      body: JSON.stringify({ ids: order }),
+                    })
+                      .then(async () => {
+                        setProcurementMergeSelected(new Set());
+                        await refreshProcurement();
+                        await qc.invalidateQueries({ queryKey: ["rfq"] });
+                      })
+                      .catch((e: Error) => {
+                        window.alert(e.message);
+                      })
+                      .finally(() => setProcurementMergeBusy(false));
+                  }}
+                >
+                  {procurementMergeBusy ? "Merging…" : "Merge selected"}
+                </button>
+                {procurementMergeSelected.size > 0 ? (
+                  <button
+                    type="button"
+                    className="text-xs text-slate-600 underline decoration-slate-300 hover:text-slate-900"
+                    onClick={() => setProcurementMergeSelected(new Set())}
+                  >
+                    Clear selection
+                  </button>
+                ) : null}
+                <span className="text-xs text-slate-500">
+                  Same project only. Sort the table to choose which record is kept (first among selected).
+                </span>
+              </div>
+            ) : undefined
+          }
+          onFilteredRowsChange={
+            tab === "procurement" ? onProcurementFilteredRowsChange : undefined
+          }
           appendRow={
             <CrudAppendRow
               tab={tab}
-              totalColumns={current.dataHeaders.length + 1}
+              totalColumns={
+                tab === "procurement"
+                  ? current.dataHeaders.length + 2
+                  : current.dataHeaders.length + 1
+              }
               me={me}
               clients={clients}
               suppliers={suppliers}
@@ -1712,6 +1829,7 @@ function CrudAppendRow({
   if (tab === "procurement") {
     return (
       <tr className="border-t bg-slate-50/90">
+        <td className="w-10 p-2 align-top text-xs text-slate-400">—</td>
         <td className="p-2 align-top">
           <select
             className={newRowInputClass}
@@ -1848,10 +1966,16 @@ function FilterSortTable({
   dataHeaders,
   rows,
   appendRow,
+  leadingColumn,
+  extraToolbar,
+  onFilteredRowsChange,
 }: {
   dataHeaders: string[];
   rows: TableRow[];
   appendRow?: ReactNode;
+  leadingColumn?: { label: string; renderCell: (row: TableRow) => ReactNode };
+  extraToolbar?: ReactNode;
+  onFilteredRowsChange?: (rows: TableRow[]) => void;
 }) {
   const [q, setQ] = useState("");
   const [sortCol, setSortCol] = useState(0);
@@ -1872,6 +1996,10 @@ function FilterSortTable({
       return desc ? -cmp : cmp;
     });
   }, [rows, q, sortCol, desc]);
+
+  useEffect(() => {
+    onFilteredRowsChange?.(filtered);
+  }, [filtered, onFilteredRowsChange]);
 
   const total = filtered.length;
   const pageSizeNum = pageSize === "all" ? null : Number(pageSize);
@@ -1935,12 +2063,18 @@ function FilterSortTable({
           </select>
         </label>
         <span className="text-xs text-slate-400">Click column headers to sort</span>
+        {extraToolbar}
       </div>
       <div className="overflow-hidden rounded border border-slate-200 bg-white">
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-100 text-left">
             <tr>
+              {leadingColumn ? (
+                <th scope="col" className="w-10 whitespace-nowrap px-2 py-2 text-left text-xs font-medium text-slate-600">
+                  {leadingColumn.label}
+                </th>
+              ) : null}
               {dataHeaders.map((h, idx) => (
                 <th
                   key={`${h}-${idx}`}
@@ -1991,6 +2125,9 @@ function FilterSortTable({
           <tbody>
             {paginatedRows.map((r) => (
               <tr key={r.key} className="border-t">
+                {leadingColumn ? (
+                  <td className="p-2 align-top">{leadingColumn.renderCell(r)}</td>
+                ) : null}
                 {r.cells.map((c, ci) => (
                   <td key={ci} className="p-2 align-top">
                     {c}
@@ -2805,7 +2942,7 @@ function ProcurementDetailLineRow({
   const [unit, setUnit] = useState(line.unit ?? "");
   const [estUnitPrice, setEstUnitPrice] = useState(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
   const [orderIndex, setOrderIndex] = useState(String(line.orderIndex));
-  const [received, setReceived] = useState(line.received);
+  const [receivedQty, setReceivedQty] = useState(String(line.receivedQty));
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -2815,7 +2952,7 @@ function ProcurementDetailLineRow({
     setUnit(line.unit ?? "");
     setEstUnitPrice(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
     setOrderIndex(String(line.orderIndex));
-    setReceived(line.received);
+    setReceivedQty(String(line.receivedQty));
   }, [line]);
   return (
     <tr className="border-b align-top">
@@ -2846,7 +2983,14 @@ function ProcurementDetailLineRow({
         <input type="number" className="w-14 rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
       </td>
       <td className="py-1 pr-2">
-        <input type="checkbox" checked={received} onChange={(e) => setReceived(e.target.checked)} />
+        <input
+          type="number"
+          min={0}
+          step={1}
+          className="w-20 rounded border px-2 py-1"
+          value={receivedQty}
+          onChange={(e) => setReceivedQty(e.target.value)}
+        />
       </td>
       <td className="py-1 whitespace-nowrap">
         <button
@@ -2864,7 +3008,7 @@ function ProcurementDetailLineRow({
                 unit: unit.trim() || null,
                 estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
                 orderIndex: Number(orderIndex) || 0,
-                received,
+                receivedQty: Math.max(0, Math.trunc(Number(receivedQty) || 0)),
                 version: line.version,
               }),
             })
@@ -2929,7 +3073,10 @@ function ProcurementDetailModal({
   const [newOrder, setNewOrder] = useState(() =>
     lines.length ? String(Math.max(...lines.map((l) => l.orderIndex)) + 1) : "0",
   );
-  const [newReceived, setNewReceived] = useState(false);
+  const [newReceivedQty, setNewReceivedQty] = useState("0");
+  const [fullyReceivedOverride, setFullyReceivedOverride] = useState(
+    row.fullyReceivedOverride ?? false,
+  );
   const [lineAdding, setLineAdding] = useState(false);
   const [lineErr, setLineErr] = useState<string | null>(null);
 
@@ -2940,6 +3087,7 @@ function ProcurementDetailModal({
     setSupplierId(row.supplierId ?? "");
     setNeedBy(isoToLocal(row.needBy));
     setSapPo(row.sapPoNumber ?? "");
+    setFullyReceivedOverride(row.fullyReceivedOverride ?? false);
   }, [row]);
 
   useEffect(() => {
@@ -3001,6 +3149,22 @@ function ProcurementDetailModal({
           <input className="w-full rounded border px-2 py-1" value={sapPo} onChange={(e) => setSapPo(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={fullyReceivedOverride}
+              onChange={(e) => setFullyReceivedOverride(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Fully received (order)</span>
+              <span className="block text-xs font-normal text-slate-600">
+                Marks the PO closed as fully received even when line quantities do not match.
+              </span>
+            </span>
+          </label>
+        </div>
+        <div className="sm:col-span-2">
           <button
             type="button"
             className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
@@ -3017,6 +3181,7 @@ function ProcurementDetailModal({
                   supplierId: supplierId || null,
                   needBy: localToIso(needBy),
                   sapPoNumber: sapPo.trim() || null,
+                  fullyReceivedOverride,
                   version: row.version,
                 }),
               })
@@ -3040,7 +3205,7 @@ function ProcurementDetailModal({
               <th className="px-2 py-2 font-medium">Unit</th>
               <th className="px-2 py-2 font-medium">Est $</th>
               <th className="px-2 py-2 font-medium">Order</th>
-              <th className="px-2 py-2 font-medium">Rcvd</th>
+              <th className="px-2 py-2 font-medium">Rcvd qty</th>
               <th className="px-2 py-2 font-medium">Actions</th>
             </tr>
           </thead>
@@ -3082,11 +3247,16 @@ function ProcurementDetailModal({
             <label className="block text-xs font-medium text-slate-600">Order</label>
             <input type="number" className="w-full rounded border px-2 py-1" value={newOrder} onChange={(e) => setNewOrder(e.target.value)} />
           </div>
-          <div className="flex items-end pb-1">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={newReceived} onChange={(e) => setNewReceived(e.target.checked)} />
-              Received
-            </label>
+          <div>
+            <label className="block text-xs font-medium text-slate-600">Received qty</label>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              className="w-full rounded border px-2 py-1"
+              value={newReceivedQty}
+              onChange={(e) => setNewReceivedQty(e.target.value)}
+            />
           </div>
         </div>
         <button
@@ -3105,7 +3275,7 @@ function ProcurementDetailModal({
                 unit: newUnit.trim() || null,
                 estUnitPrice: newEst.trim() ? Number(newEst) : null,
                 orderIndex: Number(newOrder) || 0,
-                received: newReceived,
+                receivedQty: Math.max(0, Math.trunc(Number(newReceivedQty) || 0)),
               }),
             })
               .then(async () => {
@@ -3113,7 +3283,7 @@ function ProcurementDetailModal({
                 setNewQty("1");
                 setNewUnit("");
                 setNewEst("");
-                setNewReceived(false);
+                setNewReceivedQty("0");
                 await onRefresh();
               })
               .catch((e: Error) => setLineErr(e.message))
@@ -3148,6 +3318,9 @@ function ProcurementEditModal({
   const [supplierId, setSupplierId] = useState(row.supplierId ?? "");
   const [needBy, setNeedBy] = useState(isoToLocal(row.needBy));
   const [sapPo, setSapPo] = useState(row.sapPoNumber ?? "");
+  const [fullyReceivedOverride, setFullyReceivedOverride] = useState(
+    row.fullyReceivedOverride ?? false,
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -3157,6 +3330,7 @@ function ProcurementEditModal({
     setSupplierId(row.supplierId ?? "");
     setNeedBy(isoToLocal(row.needBy));
     setSapPo(row.sapPoNumber ?? "");
+    setFullyReceivedOverride(row.fullyReceivedOverride ?? false);
   }, [row]);
   return (
     <ModalShell
@@ -3180,6 +3354,7 @@ function ProcurementEditModal({
                   supplierId: supplierId || null,
                   needBy: localToIso(needBy),
                   sapPoNumber: sapPo.trim() || null,
+                  fullyReceivedOverride,
                   version: row.version,
                 }),
               })
@@ -3230,7 +3405,18 @@ function ProcurementEditModal({
       <label className="block text-sm font-medium">Need by</label>
       <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={needBy} onChange={(e) => setNeedBy(e.target.value)} />
       <label className="block text-sm font-medium">SAP PO</label>
-      <input className="w-full rounded border px-2 py-1" value={sapPo} onChange={(e) => setSapPo(e.target.value)} />
+      <input className="mb-2 w-full rounded border px-2 py-1" value={sapPo} onChange={(e) => setSapPo(e.target.value)} />
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={fullyReceivedOverride}
+          onChange={(e) => setFullyReceivedOverride(e.target.checked)}
+        />
+        <span>
+          Fully received (order) — closes the PO even if line quantities are incomplete.
+        </span>
+      </label>
     </ModalShell>
   );
 }
@@ -3253,7 +3439,7 @@ function ProcurementLineEditModal({
   const [unit, setUnit] = useState(line.unit ?? "");
   const [estUnitPrice, setEstUnitPrice] = useState(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
   const [orderIndex, setOrderIndex] = useState(String(line.orderIndex));
-  const [received, setReceived] = useState(line.received);
+  const [receivedQty, setReceivedQty] = useState(String(line.receivedQty));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -3262,7 +3448,7 @@ function ProcurementLineEditModal({
     setUnit(line.unit ?? "");
     setEstUnitPrice(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
     setOrderIndex(String(line.orderIndex));
-    setReceived(line.received);
+    setReceivedQty(String(line.receivedQty));
   }, [line]);
   return (
     <ModalShell
@@ -3285,7 +3471,7 @@ function ProcurementLineEditModal({
                   unit: unit.trim() || null,
                   estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
                   orderIndex: Number(orderIndex) || 0,
-                  received,
+                  receivedQty: Math.max(0, Math.trunc(Number(receivedQty) || 0)),
                   version: line.version,
                 }),
               })
@@ -3312,10 +3498,15 @@ function ProcurementLineEditModal({
       <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={estUnitPrice} onChange={(e) => setEstUnitPrice(e.target.value)} />
       <label className="block text-sm font-medium">Order</label>
       <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
-      <label className="flex items-center gap-2 text-sm font-medium">
-        <input type="checkbox" checked={received} onChange={(e) => setReceived(e.target.checked)} />
-        Received
-      </label>
+      <label className="block text-sm font-medium">Received qty</label>
+      <input
+        type="number"
+        min={0}
+        step={1}
+        className="w-full rounded border px-2 py-1"
+        value={receivedQty}
+        onChange={(e) => setReceivedQty(e.target.value)}
+      />
     </ModalShell>
   );
 }
@@ -3395,11 +3586,13 @@ function InlineNumber({
   onSave,
   min,
   max,
+  integer,
 }: {
   value: number;
   onSave: (v: number) => Promise<unknown>;
   min?: number;
   max?: number;
+  integer?: boolean;
 }) {
   const [v, setV] = useState(String(value));
   useEffect(() => setV(String(value)), [value]);
@@ -3410,10 +3603,18 @@ function InlineNumber({
       value={v}
       min={min}
       max={max}
+      step={integer ? 1 : undefined}
       onChange={(e) => setV(e.target.value)}
       onBlur={() => {
-        const n = Number(v);
-        if (Number.isFinite(n) && n !== value) void onSave(n);
+        let n = Number(v);
+        if (!Number.isFinite(n)) {
+          setV(String(value));
+          return;
+        }
+        if (integer) n = Math.trunc(n);
+        if (min !== undefined && n < min) n = min;
+        if (max !== undefined && n > max) n = max;
+        if (n !== value) void onSave(n);
         else setV(String(value));
       }}
     />

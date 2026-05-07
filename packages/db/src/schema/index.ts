@@ -359,12 +359,17 @@ export const procurementRequest = pgTable("procurement_request", {
       "rfq_sent",
       "quoted",
       "ordered",
+      "partially_received",
       "closed",
       "cancelled",
     ],
   })
     .notNull()
     .default("draft"),
+  /** When true, procurement is treated as fully received (closed) regardless of line quantities. */
+  fullyReceivedOverride: boolean("fully_received_override")
+    .notNull()
+    .default(false),
   needBy: timestamp("need_by", { withTimezone: true }),
   sapPoNumber: text("sap_po_number"),
   sapLineCache: text("sap_line_cache"), // JSON
@@ -395,7 +400,8 @@ export const procurementRequestLine = pgTable(
     unit: text("unit"),
     estUnitPrice: doublePrecision("est_unit_price"),
     orderIndex: integer("order_index").notNull().default(0),
-    received: boolean("received").notNull().default(false),
+    /** Integer units received; line is fully received when this equals ordered quantity (numeric). */
+    receivedQty: integer("received_qty").notNull().default(0),
     version: integer("version").notNull().default(0),
   },
   (t) => [index("prline_proc").on(t.procurementId)],

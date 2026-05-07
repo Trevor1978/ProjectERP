@@ -263,6 +263,7 @@ async function main() {
         supplierId: null,
         title: `${p.name} RFQ ${i + 1}`,
         status: "draft",
+        fullyReceivedOverride: false,
         sapPoNumber: null,
         version: 0,
         createdById: admin.id!,
@@ -284,7 +285,7 @@ async function main() {
         unit: "ea",
         estUnitPrice: 100 + i * 25,
         orderIndex: i,
-        received: false,
+        receivedQty: 0,
         version: 0,
       });
     }

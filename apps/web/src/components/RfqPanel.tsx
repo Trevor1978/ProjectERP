@@ -8,9 +8,16 @@ type Line = {
   procurementId: string;
   description: string;
   quantity: string;
-  received: boolean;
+  receivedQty: number;
   version: number;
 };
+
+function lineFullyReceived(qtyStr: string, receivedQty: number): boolean {
+  const q = Number(qtyStr);
+  if (!Number.isFinite(q)) return false;
+  if (q <= 0) return receivedQty <= 0;
+  return Math.abs(q - receivedQty) < 1e-9;
+}
 
 type SupplierRow = { id: string; name: string };
 
@@ -22,6 +29,7 @@ type RFQ = {
   sapPoNumber: string | null;
   version: number;
   sapLineCache: string | null;
+  fullyReceivedOverride?: boolean;
 };
 
 export function RfqPanel({ projectId }: { projectId: string }) {
@@ -99,6 +107,19 @@ export function RfqPanel({ projectId }: { projectId: string }) {
       }),
     });
     await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+  }
+
+  async function saveFullyReceivedOverride(id: string, v: number, value: boolean) {
+    await api("/api/procurement/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({
+        fullyReceivedOverride: value,
+        version: v,
+      }),
+    });
+    await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+    await qc.invalidateQueries({ queryKey: ["proc-all"] });
+    await qc.invalidateQueries({ queryKey: ["crud-procurement", projectId] });
   }
 
   async function refreshSap(id: string) {
@@ -271,6 +292,19 @@ export function RfqPanel({ projectId }: { projectId: string }) {
                   </button>
                 )}
               </div>
+              <label className="flex items-start gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={p.fullyReceivedOverride ?? false}
+                  onChange={(e) =>
+                    void saveFullyReceivedOverride(p.id, p.version, e.target.checked)
+                  }
+                />
+                <span>
+                  Fully received (order) — close as complete even if line quantities are short.
+                </span>
+              </label>
               {p.sapLineCache && (
                 <pre className="text-xs p-2 bg-slate-50 max-h-28 overflow-auto rounded">
                   {p.sapLineCache}
@@ -281,32 +315,41 @@ export function RfqPanel({ projectId }: { projectId: string }) {
                   Line items
                 </div>
                 <ul className="text-sm space-y-1 pl-0 list-none">
-                  {lines.map((l) => (
-                    <li key={l.id} className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        className="mt-1 shrink-0"
-                        title="Received"
-                        checked={l.received}
-                        onChange={(e) => {
-                          void api("/api/procurement-lines/" + l.id, {
-                            method: "PATCH",
-                            body: JSON.stringify({
-                              received: e.target.checked,
-                              version: l.version,
-                            }),
-                          }).then(async () => {
-                            await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
-                            await qc.invalidateQueries({ queryKey: ["proc-all"] });
-                            await qc.invalidateQueries({ queryKey: ["crud-procurement", projectId] });
-                          });
-                        }}
-                      />
-                      <span className={l.received ? "text-slate-600" : ""}>
-                        {l.description} · qty {l.quantity}
-                      </span>
-                    </li>
-                  ))}
+                  {lines.map((l) => {
+                    const full = lineFullyReceived(l.quantity, l.receivedQty);
+                    return (
+                      <li key={l.id} className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          className="w-16 shrink-0 rounded border px-1 py-0.5 text-sm"
+                          title="Received qty"
+                          defaultValue={l.receivedQty}
+                          key={`${l.id}-${l.version}`}
+                          onBlur={(e) => {
+                            const n = Math.max(0, Math.trunc(Number(e.target.value) || 0));
+                            if (n === l.receivedQty) return;
+                            void api("/api/procurement-lines/" + l.id, {
+                              method: "PATCH",
+                              body: JSON.stringify({
+                                receivedQty: n,
+                                version: l.version,
+                              }),
+                            }).then(async () => {
+                              await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+                              await qc.invalidateQueries({ queryKey: ["proc-all"] });
+                              await qc.invalidateQueries({ queryKey: ["crud-procurement", projectId] });
+                            });
+                          }}
+                        />
+                        <span className={full ? "text-slate-600" : ""}>
+                          {l.description} · order {l.quantity}
+                          {full ? " · full" : ""}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
                 {newLineFor === p.id ? (
                   <div className="mt-2 flex flex-wrap gap-2 items-end">

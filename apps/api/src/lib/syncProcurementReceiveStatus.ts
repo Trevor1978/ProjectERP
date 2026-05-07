@@ -1,21 +1,25 @@
 import { eq } from "drizzle-orm";
 import { db, procurementRequest, procurementRequestLine } from "@project-erp/db";
+import {
+  lineFullyReceived,
+  linePartiallyReceived,
+} from "./procurementReceipt.js";
+
+const RECEIVING_STATUSES = new Set([
+  "ordered",
+  "partially_received",
+  "closed",
+]);
 
 /**
- * When every line on a procurement is marked received, set procurement to `closed`.
- * When not all lines are received and status is `closed`, set back to `ordered` (e.g. new line or unchecked).
+ * Derives procurement status from line receipts and optional fully-received override.
+ * Override forces `closed`. Otherwise all lines fully received → `closed`;
+ * some receipt but not all complete → `partially_received` (when in receiving flow);
+ * no receipts after partial/closed → `ordered`.
  */
 export async function syncProcurementStatusFromLineReceipts(
   procurementId: string,
 ): Promise<void> {
-  const lines = await db
-    .select()
-    .from(procurementRequestLine)
-    .where(eq(procurementRequestLine.procurementId, procurementId));
-  if (lines.length === 0) {
-    return;
-  }
-  const allReceived = lines.every((l) => l.received);
   const prRows = await db
     .select()
     .from(procurementRequest)
@@ -24,22 +28,60 @@ export async function syncProcurementStatusFromLineReceipts(
     return;
   }
   const pr = prRows[0]!;
-  if (allReceived && pr.status !== "closed") {
-    await db
-      .update(procurementRequest)
-      .set({
-        status: "closed",
-        version: (pr.version ?? 0) + 1,
-        updatedAt: new Date(),
-      })
-      .where(eq(procurementRequest.id, procurementId));
+  if (pr.status === "cancelled") {
     return;
   }
-  if (!allReceived && pr.status === "closed") {
+
+  if (pr.fullyReceivedOverride) {
+    if (pr.status !== "closed") {
+      await db
+        .update(procurementRequest)
+        .set({
+          status: "closed",
+          version: (pr.version ?? 0) + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(procurementRequest.id, procurementId));
+    }
+    return;
+  }
+
+  const lines = await db
+    .select()
+    .from(procurementRequestLine)
+    .where(eq(procurementRequestLine.procurementId, procurementId));
+  if (lines.length === 0) {
+    return;
+  }
+
+  const allFull = lines.every((l) =>
+    lineFullyReceived(l.quantity, l.receivedQty),
+  );
+  const anyPartial = lines.some((l) =>
+    linePartiallyReceived(l.quantity, l.receivedQty),
+  );
+  const anyReceive = lines.some((l) => l.receivedQty > 0);
+
+  let nextStatus = pr.status;
+
+  if (allFull) {
+    nextStatus = "closed";
+  } else if (anyPartial && RECEIVING_STATUSES.has(pr.status)) {
+    nextStatus = "partially_received";
+  } else if (
+    !anyReceive &&
+    (pr.status === "partially_received" || pr.status === "closed")
+  ) {
+    nextStatus = "ordered";
+  } else {
+    return;
+  }
+
+  if (nextStatus !== pr.status) {
     await db
       .update(procurementRequest)
       .set({
-        status: "ordered",
+        status: nextStatus,
         version: (pr.version ?? 0) + 1,
         updatedAt: new Date(),
       })

@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, max } from "drizzle-orm";
 import { z } from "zod";
 import {
   db,
+  comment,
   procurementRequest,
   procurementRequestLine,
   task,
@@ -13,6 +14,7 @@ import {
 } from "@project-erp/db";
 import {
   procurementCreate,
+  procurementMerge,
   procurementPatch,
   procurementLineCreate,
   procurementLinePatch,
@@ -216,6 +218,109 @@ export async function handleProcurementImportDbf(c: Context) {
 
 app.post("/procurement/import-dbf", handleProcurementImportDbf);
 
+app.post("/procurement/merge", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const p = procurementMerge.safeParse(await c.req.json());
+  if (!p.success) {
+    return c.json({ error: p.error.flatten() }, 400);
+  }
+  const ids = p.data.ids;
+  if (new Set(ids).size !== ids.length) {
+    return c.json({ error: "Duplicate ids" }, 400);
+  }
+  const primaryId = ids[0]!;
+  const mergeIds = ids.slice(1);
+
+  const rows = await db
+    .select()
+    .from(procurementRequest)
+    .where(inArray(procurementRequest.id, ids));
+  if (rows.length !== ids.length) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const projectId = rows[0]!.projectId;
+  if (!rows.every((r) => r.projectId === projectId)) {
+    return c.json(
+      { error: "All procurements must belong to the same project" },
+      400,
+    );
+  }
+  const pr = await requireProject(a, projectId);
+  if ("error" in pr) {
+    return c.json({ error: pr.error }, pr.status);
+  }
+
+  const primaryRow = rows.find((r) => r.id === primaryId);
+  if (!primaryRow) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  let movedLineCount = 0;
+  await db.transaction(async (tx) => {
+    const [agg] = await tx
+      .select({ mx: max(procurementRequestLine.orderIndex) })
+      .from(procurementRequestLine)
+      .where(eq(procurementRequestLine.procurementId, primaryId));
+    let nextOrder =
+      agg?.mx == null ? 0 : Number(agg.mx) + 1;
+
+    for (const mid of mergeIds) {
+      const lines = await tx
+        .select()
+        .from(procurementRequestLine)
+        .where(eq(procurementRequestLine.procurementId, mid))
+        .orderBy(asc(procurementRequestLine.orderIndex));
+      for (const line of lines) {
+        await tx
+          .update(procurementRequestLine)
+          .set({
+            procurementId: primaryId,
+            orderIndex: nextOrder,
+            version: (line.version ?? 0) + 1,
+          })
+          .where(eq(procurementRequestLine.id, line.id));
+        nextOrder += 1;
+        movedLineCount += 1;
+      }
+    }
+
+    if (mergeIds.length > 0) {
+      await tx
+        .delete(comment)
+        .where(
+          and(
+            eq(comment.parentType, "procurement"),
+            inArray(comment.parentId, mergeIds),
+          ),
+        );
+    }
+    await tx
+      .delete(procurementRequest)
+      .where(inArray(procurementRequest.id, mergeIds));
+    await tx
+      .update(procurementRequest)
+      .set({
+        version: (primaryRow.version ?? 0) + 1,
+        updatedAt: new Date(),
+      })
+      .where(eq(procurementRequest.id, primaryId));
+  });
+
+  await syncProcurementStatusFromLineReceipts(primaryId);
+  const [primaryOut] = await db
+    .select()
+    .from(procurementRequest)
+    .where(eq(procurementRequest.id, primaryId));
+  await writeAudit(a, "procurement.merge", "procurement", primaryId, {
+    mergedIds: mergeIds,
+    movedLines: movedLineCount,
+  });
+  return c.json({
+    procurement: primaryOut,
+    movedLineCount,
+  });
+});
+
 app.post("/procurement", async (c) => {
   const a = c.get("auth") as AuthUser;
   const p = procurementCreate.safeParse(await c.req.json());
@@ -247,6 +352,7 @@ app.post("/procurement", async (c) => {
       supplierId: sid.supplierId,
       title: p.data.title,
       status: p.data.status,
+      fullyReceivedOverride: p.data.fullyReceivedOverride ?? false,
       needBy: p.data.needBy ?? null,
       sapPoNumber: p.data.sapPoNumber ?? null,
       createdById: a.id,
@@ -291,6 +397,13 @@ app.patch("/procurement/:id", async (c) => {
     }
     nextSupplierId = sid.supplierId;
   }
+  const nextOverride =
+    p.data.fullyReceivedOverride === undefined
+      ? cur[0]!.fullyReceivedOverride
+      : p.data.fullyReceivedOverride;
+  const overrideChanged =
+    p.data.fullyReceivedOverride !== undefined &&
+    p.data.fullyReceivedOverride !== cur[0]!.fullyReceivedOverride;
   const [row] = await db
     .update(procurementRequest)
     .set({
@@ -298,6 +411,7 @@ app.patch("/procurement/:id", async (c) => {
       supplierId: nextSupplierId,
       title: p.data.title ?? cur[0]!.title,
       status: p.data.status ?? cur[0]!.status,
+      fullyReceivedOverride: nextOverride,
       needBy: p.data.needBy === undefined ? cur[0]!.needBy : p.data.needBy,
       sapPoNumber:
         p.data.sapPoNumber === undefined
@@ -308,6 +422,14 @@ app.patch("/procurement/:id", async (c) => {
     })
     .where(eq(procurementRequest.id, id))
     .returning();
+  if (overrideChanged) {
+    await syncProcurementStatusFromLineReceipts(id);
+    const [afterSync] = await db
+      .select()
+      .from(procurementRequest)
+      .where(eq(procurementRequest.id, id));
+    return c.json({ procurement: afterSync ?? row });
+  }
   return c.json({ procurement: row });
 });
 
@@ -344,7 +466,7 @@ app.post("/procurement-lines", async (c) => {
           ? null
           : Number(p.data.estUnitPrice),
       orderIndex: p.data.orderIndex,
-      received: p.data.received ?? false,
+      receivedQty: p.data.receivedQty ?? 0,
     })
     .returning();
   await syncProcurementStatusFromLineReceipts(p.data.procurementId);
@@ -397,8 +519,10 @@ app.patch("/procurement-lines/:id", async (c) => {
             ? null
             : Number(p.data.estUnitPrice),
       orderIndex: p.data.orderIndex ?? cur[0]!.orderIndex,
-      received:
-        p.data.received === undefined ? cur[0]!.received : p.data.received,
+      receivedQty:
+        p.data.receivedQty === undefined
+          ? cur[0]!.receivedQty
+          : p.data.receivedQty,
       version: (cur[0]!.version ?? 0) + 1,
     })
     .where(eq(procurementRequestLine.id, id))

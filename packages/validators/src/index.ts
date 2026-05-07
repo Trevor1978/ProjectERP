@@ -165,6 +165,7 @@ const rfqStatus = z.enum([
   "rfq_sent",
   "quoted",
   "ordered",
+  "partially_received",
   "closed",
   "cancelled",
 ]);
@@ -177,6 +178,7 @@ export const procurementCreate = z.object({
   status: rfqStatus.default("draft"),
   needBy: z.coerce.date().optional().nullable(),
   sapPoNumber: z.string().max(32).optional().nullable(),
+  fullyReceivedOverride: z.boolean().optional().default(false),
 });
 export const procurementPatch = z
   .object({
@@ -186,6 +188,7 @@ export const procurementPatch = z
     status: rfqStatus.optional(),
     needBy: z.coerce.date().optional().nullable(),
     sapPoNumber: z.string().max(32).optional().nullable(),
+    fullyReceivedOverride: z.boolean().optional(),
     version,
   })
   .strict();
@@ -200,7 +203,7 @@ export const procurementLineCreate = z.object({
     .optional()
     .nullable(),
   orderIndex: z.number().int().min(0).default(0),
-  received: z.boolean().optional().default(false),
+  receivedQty: z.number().int().min(0).optional().default(0),
 });
 export const procurementLinePatch = z
   .object({
@@ -215,10 +218,15 @@ export const procurementLinePatch = z
       .optional()
       .nullable(),
     orderIndex: z.number().int().min(0).optional(),
-    received: z.boolean().optional(),
+    receivedQty: z.number().int().min(0).optional(),
     version,
   })
   .strict();
+
+/** First id is the kept procurement; remaining ids are merged into it (same project only). */
+export const procurementMerge = z.object({
+  ids: z.array(id).min(2),
+});
 
 export const projectMemberAdd = z.object({
   userId: id,

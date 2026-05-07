@@ -83,7 +83,7 @@ type ProcurementLine = {
   procurementId: string;
   description: string;
   quantity: string;
-  received: boolean;
+  receivedQty: number;
   version: number;
 };
 
@@ -131,6 +131,8 @@ export function ProjectCrudTables({
   const [newLineProcId, setNewLineProcId] = useState("");
   const [newLineDescription, setNewLineDescription] = useState("");
   const [newLineQty, setNewLineQty] = useState("1");
+  const [procMergeSelected, setProcMergeSelected] = useState<Set<string>>(() => new Set());
+  const [procMergeBusy, setProcMergeBusy] = useState(false);
 
   const taskMap = useMemo(
     () => new Map(tasks.map((t) => [t.id, t.title] as const)),
@@ -640,10 +642,62 @@ export function ProjectCrudTables({
       )}
 
       {tab === "procurement" && (
-        <div className="overflow-x-auto border rounded bg-white">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <button
+              type="button"
+              disabled={procMergeSelected.size < 2 || procMergeBusy}
+              className="rounded border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+              onClick={() => {
+                const list = procurementData?.procurement ?? [];
+                const ids = list.map((x) => x.id).filter((id) => procMergeSelected.has(id));
+                if (ids.length < 2) {
+                  return;
+                }
+                const keepTitle = list.find((x) => x.id === ids[0])?.title ?? ids[0]!;
+                if (
+                  !window.confirm(
+                    `Merge ${ids.length} procurements?\n\nThe first in this list (“${keepTitle}”) keeps its title and settings. Others are removed; line items move over.`,
+                  )
+                ) {
+                  return;
+                }
+                setProcMergeBusy(true);
+                void api("/api/procurement/merge", {
+                  method: "POST",
+                  body: JSON.stringify({ ids }),
+                })
+                  .then(async () => {
+                    setProcMergeSelected(new Set());
+                    await refreshAll();
+                    await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
+                  })
+                  .catch((e: Error) => {
+                    window.alert(e.message);
+                  })
+                  .finally(() => setProcMergeBusy(false));
+              }}
+            >
+              {procMergeBusy ? "Merging…" : "Merge selected"}
+            </button>
+            {procMergeSelected.size > 0 ? (
+              <button
+                type="button"
+                className="text-xs text-slate-600 underline decoration-slate-300 hover:text-slate-900"
+                onClick={() => setProcMergeSelected(new Set())}
+              >
+                Clear selection
+              </button>
+            ) : null}
+            <span className="text-xs text-slate-500">
+              List order (as loaded) decides which RFQ is kept — put that one first using refresh/sort in workspace if needed.
+            </span>
+          </div>
+          <div className="overflow-x-auto border rounded bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-100 text-left">
               <tr>
+                <th className="w-10 p-2 text-xs font-medium text-slate-600">Merge</th>
                 <th className="p-2">Title</th>
                 <th className="p-2">Supplier</th>
                 <th className="p-2">Status</th>
@@ -653,6 +707,24 @@ export function ProjectCrudTables({
             <tbody>
               {(procurementData?.procurement ?? []).map((p) => (
                 <tr key={p.id} className="border-t">
+                  <td className="p-2 align-middle">
+                    <input
+                      type="checkbox"
+                      title="Select for merge"
+                      checked={procMergeSelected.has(p.id)}
+                      onChange={(e) => {
+                        setProcMergeSelected((prev) => {
+                          const n = new Set(prev);
+                          if (e.target.checked) {
+                            n.add(p.id);
+                          } else {
+                            n.delete(p.id);
+                          }
+                          return n;
+                        });
+                      }}
+                    />
+                  </td>
                   <td className="p-2">
                     <InlineText
                       value={p.title}
@@ -702,6 +774,7 @@ export function ProjectCrudTables({
                       <option value="rfq_sent">rfq_sent</option>
                       <option value="quoted">quoted</option>
                       <option value="ordered">ordered</option>
+                      <option value="partially_received">partially_received</option>
                       <option value="closed">closed</option>
                       <option value="cancelled">cancelled</option>
                     </select>
@@ -720,6 +793,7 @@ export function ProjectCrudTables({
                 </tr>
               ))}
               <tr className="border-t bg-slate-50">
+                <td className="p-2 text-xs text-slate-400">—</td>
                 <td className="p-2">
                   <input
                     className="w-full border rounded px-2 py-1"
@@ -771,6 +845,7 @@ export function ProjectCrudTables({
             </tbody>
           </table>
         </div>
+        </div>
       )}
 
       {tab === "procurementLines" && (
@@ -781,7 +856,7 @@ export function ProjectCrudTables({
                 <th className="p-2">Procurement</th>
                 <th className="p-2">Description</th>
                 <th className="p-2">Qty</th>
-                <th className="p-2">Received</th>
+                <th className="p-2">Rcvd qty</th>
                 <th className="p-2">Action</th>
               </tr>
             </thead>
@@ -818,14 +893,20 @@ export function ProjectCrudTables({
                   </td>
                   <td className="p-2 align-middle">
                     <input
-                      type="checkbox"
-                      title="Received"
-                      checked={line.received}
-                      onChange={(e) => {
+                      type="number"
+                      min={0}
+                      step={1}
+                      title="Received qty"
+                      className="w-20 rounded border px-2 py-1"
+                      defaultValue={line.receivedQty}
+                      key={`${line.id}-${line.version}`}
+                      onBlur={(e) => {
+                        const n = Math.max(0, Math.trunc(Number(e.target.value) || 0));
+                        if (n === line.receivedQty) return;
                         void api("/api/procurement-lines/" + line.id, {
                           method: "PATCH",
                           body: JSON.stringify({
-                            received: e.target.checked,
+                            receivedQty: n,
                             version: line.version,
                           }),
                         }).then(() => void refreshAll());
