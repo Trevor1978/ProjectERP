@@ -102,7 +102,7 @@ export function ProjectPage() {
           {p.name}{" "}
           <span className="text-slate-500 text-base font-normal">({p.status})</span>
         </h1>
-        <Link to="/" className="text-sm text-slate-600">
+        <Link to="/workspace/projects" className="text-sm text-slate-600">
           &larr; All projects
         </Link>
       </div>

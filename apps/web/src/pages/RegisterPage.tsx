@@ -26,7 +26,7 @@ export function RegisterPage() {
         }),
       });
       await qc.invalidateQueries({ queryKey: ["me"] });
-      nav("/");
+      nav("/workspace/projects");
     } catch (x) {
       setErr(String(x));
     }

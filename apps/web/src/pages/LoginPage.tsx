@@ -19,7 +19,7 @@ export function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       await qc.invalidateQueries({ queryKey: ["me"] });
-      nav("/");
+      nav("/workspace/projects");
     } catch (x) {
       setErr(String(x));
     }

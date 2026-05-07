@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useMe } from "../hooks/useMe";
 import type { User } from "../types";
 import { TodoKanban } from "./TodoKanban";
+import { workspaceSlugToTab } from "../lib/workspaceNav";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
 
 type Client = { id: string; name: string; code: string | null; version: number };
@@ -112,23 +113,9 @@ type Tab =
   | "milestones"
   | "tasks"
   | "todos"
-  | "todoKanban"
   | "timeEntries"
   | "procurement"
   | "procurementLines";
-
-const TABS: Tab[] = [
-  "customers",
-  "suppliers",
-  "projects",
-  "milestones",
-  "tasks",
-  "todos",
-  "todoKanban",
-  "timeEntries",
-  "procurement",
-  "procurementLines",
-];
 
 const LABEL: Record<Tab, string> = {
   customers: "Customers",
@@ -137,7 +124,6 @@ const LABEL: Record<Tab, string> = {
   milestones: "Milestones",
   tasks: "Tasks",
   todos: "Todos",
-  todoKanban: "Todo Kanban",
   timeEntries: "Time entries",
   procurement: "Procurement",
   procurementLines: "Procurement lines",
@@ -237,6 +223,29 @@ export function CrudWorkspace() {
   );
   const [procurementMergeBusy, setProcurementMergeBusy] = useState(false);
 
+  const navigate = useNavigate();
+  const { table } = useParams<{ table: string }>();
+  const [todoView, setTodoView] = useState<"table" | "kanban">("table");
+
+  useEffect(() => {
+    if (!table) {
+      navigate("/workspace/projects", { replace: true });
+      return;
+    }
+    const t = workspaceSlugToTab(table);
+    if (!t) {
+      navigate("/workspace/projects", { replace: true });
+      return;
+    }
+    setTab(t);
+  }, [table, navigate]);
+
+  useEffect(() => {
+    if (tab !== "todos") {
+      setTodoView("table");
+    }
+  }, [tab]);
+
   const onProcurementFilteredRowsChange = useCallback((r: TableRow[]) => {
     procurementMergeOrderRef.current = r.map((x) => x.key);
   }, []);
@@ -327,7 +336,7 @@ export function CrudWorkspace() {
   }
 
   function canShowDeleteForRow(t: Tab, timeEntryUserId?: string): boolean {
-    if (!me || t === "todoKanban") {
+    if (!me) {
       return false;
     }
     if (t === "customers" || t === "suppliers") {
@@ -819,10 +828,6 @@ export function CrudWorkspace() {
         ],
       })),
     },
-    todoKanban: {
-      dataHeaders: [],
-      rows: [],
-    },
     timeEntries: {
       dataHeaders: ["Task", "Todo", "Minutes", "Start", "End", "User", "Note"],
       rows: timeEntries.map((te) => ({
@@ -1060,26 +1065,40 @@ export function CrudWorkspace() {
   };
 
   const current = rowsByTab[tab];
+  const showTodosKanban = tab === "todos" && todoView === "kanban";
+
+  const viewToggleClasses = (active: boolean) =>
+    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
+    (active ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50");
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">CRUD workspace (org-wide)</h1>
-      <nav className="flex flex-wrap gap-1 border-b border-slate-200">
-        {TABS.map((k) => (
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h1 className="text-2xl font-semibold">{LABEL[tab]}</h1>
+        <span className="text-xs text-slate-500">Org-wide</span>
+      </div>
+
+      {tab === "todos" && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+          <span className="text-sm font-medium text-slate-700">View</span>
           <button
-            key={k}
             type="button"
-            onClick={() => setTab(k)}
-            className={
-              "px-3 py-2 text-sm -mb-px " +
-              (tab === k ? "border-b-2 border-slate-900 font-medium" : "text-slate-500 hover:text-slate-800")
-            }
+            className={viewToggleClasses(todoView === "table")}
+            onClick={() => setTodoView("table")}
           >
-            {LABEL[k]}
+            Table
           </button>
-        ))}
-      </nav>
-      {tab === "todoKanban" ? (
+          <button
+            type="button"
+            className={viewToggleClasses(todoView === "kanban")}
+            onClick={() => setTodoView("kanban")}
+          >
+            Kanban
+          </button>
+        </div>
+      )}
+
+      {showTodosKanban ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <select
@@ -1425,7 +1444,7 @@ function CrudAppendRow({
     setErr(null);
   }, [tab]);
 
-  if (tab === "todoKanban" || !me) return null;
+  if (!me) return null;
 
   const stickyActionsTd =
     "sticky right-0 z-[1] border-l border-slate-100 bg-slate-50 p-2 align-top shadow-[inset_1px_0_0_0_rgb(241_245_249)]";

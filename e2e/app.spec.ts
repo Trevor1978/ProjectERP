@@ -55,6 +55,9 @@ test("end-to-end: register, then land on home with projects heading", async ({
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page).toHaveURL("/");
-  await expect(page.getByText("No projects yet")).toBeVisible();
+  await expect(page).toHaveURL("/workspace/projects");
+  await expect(page.getByPlaceholder("Project name")).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Workspace navigation" }),
+  ).toBeVisible();
 });
