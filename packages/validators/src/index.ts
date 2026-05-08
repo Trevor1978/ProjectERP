@@ -193,6 +193,7 @@ export const procurementPatch = z
 export const procurementLineCreate = z.object({
   procurementId: id,
   projectId: id,
+  partNumber: z.string().max(256).optional().nullable(),
   description: z.string().min(1).max(2000),
   quantity: z.string().regex(/^\d*\.?\d+$/).or(z.number().nonnegative()),
   unit: z.string().max(32).optional().nullable(),
@@ -206,6 +207,7 @@ export const procurementLineCreate = z.object({
 export const procurementLinePatch = z
   .object({
     projectId: id.optional(),
+    partNumber: z.string().max(256).optional().nullable(),
     description: z.string().min(1).max(2000).optional(),
     quantity: z
       .union([z.string(), z.number().nonnegative()])

@@ -82,6 +82,7 @@ type ProcurementLine = {
   id: string;
   procurementId: string;
   projectId: string;
+  partNumber: string | null;
   description: string;
   quantity: string;
   receivedQty: number;
@@ -130,6 +131,7 @@ export function ProjectCrudTables({
   const [newProcTitle, setNewProcTitle] = useState("");
   const [newProcSupplierId, setNewProcSupplierId] = useState("");
   const [newLineProcId, setNewLineProcId] = useState("");
+  const [newLinePart, setNewLinePart] = useState("");
   const [newLineDescription, setNewLineDescription] = useState("");
   const [newLineQty, setNewLineQty] = useState("1");
   const [procMergeSelected, setProcMergeSelected] = useState<Set<string>>(() => new Set());
@@ -854,6 +856,7 @@ export function ProjectCrudTables({
             <thead className="bg-slate-100 text-left">
               <tr>
                 <th className="p-2">Purchasing</th>
+                <th className="p-2">Part #</th>
                 <th className="p-2">Description</th>
                 <th className="p-2">Qty</th>
                 <th className="p-2">Rcvd qty</th>
@@ -866,6 +869,21 @@ export function ProjectCrudTables({
                   <td className="p-2">
                     {(procurementData?.procurement ?? []).find((p) => p.id === line.procurementId)?.title ??
                       line.procurementId}
+                  </td>
+                  <td className="p-2">
+                    <InlineText
+                      value={line.partNumber ?? ""}
+                      onSave={async (partNumber) => {
+                        await api("/api/procurement-lines/" + line.id, {
+                          method: "PATCH",
+                          body: JSON.stringify({
+                            partNumber: partNumber.trim() || null,
+                            version: line.version,
+                          }),
+                        });
+                        await refreshAll();
+                      }}
+                    />
                   </td>
                   <td className="p-2">
                     <InlineText
@@ -951,6 +969,14 @@ export function ProjectCrudTables({
                 <td className="p-2">
                   <input
                     className="w-full border rounded px-2 py-1"
+                    value={newLinePart}
+                    onChange={(e) => setNewLinePart(e.target.value)}
+                    placeholder="Part #"
+                  />
+                </td>
+                <td className="p-2">
+                  <input
+                    className="w-full border rounded px-2 py-1"
                     value={newLineDescription}
                     onChange={(e) => setNewLineDescription(e.target.value)}
                     placeholder="Line description"
@@ -980,11 +1006,13 @@ export function ProjectCrudTables({
                         body: JSON.stringify({
                           procurementId: newLineProcId,
                           projectId,
+                          partNumber: newLinePart.trim() || null,
                           description: newLineDescription.trim(),
                           quantity: newLineQty || "1",
                           orderIndex,
                         }),
                       }).then(async () => {
+                        setNewLinePart("");
                         setNewLineDescription("");
                         setNewLineQty("1");
                         await refreshAll();

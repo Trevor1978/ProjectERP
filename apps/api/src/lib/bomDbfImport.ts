@@ -69,6 +69,7 @@ function pickFromRow(
 
 export type BomDbfRow = {
   manufacturer: string;
+  partNumber: string | null;
   description: string;
   quantity: string;
   unit: string | null;
@@ -104,11 +105,13 @@ export function rowToBomParts(
 ): Omit<BomDbfRow, "manufacturer"> & { manufacturer: string } {
   const mfg =
     pickFromRow(row, lookup, MFG_ALIASES)?.trim() || "Unknown manufacturer";
+  const partRaw = pickFromRow(row, lookup, PART_ALIASES)?.trim();
+  const partNumber = partRaw ? truncate(partRaw, 256) : null;
   const description = rowToLineDescription(row, lookup);
   const qtyRaw = pickFromRow(row, lookup, QTY_ALIASES);
   const quantity = sanitizeQty(qtyRaw);
   const unit = pickFromRow(row, lookup, UNIT_ALIASES)?.trim() || null;
-  return { manufacturer: mfg, description, quantity, unit };
+  return { manufacturer: mfg, partNumber, description, quantity, unit };
 }
 
 /** Read DBF from buffer (temp file). Returns non-deleted records as plain objects. */
@@ -137,9 +140,9 @@ export function groupBomRowsByManufacturer(
   const lookup = buildFieldLookupFromNames(fieldNames);
   const map = new Map<string, BomDbfRow[]>();
   for (const row of records) {
-    const { manufacturer, description, quantity, unit } = rowToBomParts(row, lookup);
+    const { manufacturer, partNumber, description, quantity, unit } = rowToBomParts(row, lookup);
     const list = map.get(manufacturer) ?? [];
-    list.push({ manufacturer, description, quantity, unit });
+    list.push({ manufacturer, partNumber, description, quantity, unit });
     map.set(manufacturer, list);
   }
   return map;

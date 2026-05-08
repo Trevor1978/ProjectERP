@@ -36,6 +36,13 @@
       "when": 1778200000000,
       "tag": "0004_cross_project_purchasing",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778300000000,
+      "tag": "0005_procurement_line_part_number",
+      "breakpoints": true
     }
   ]
 }

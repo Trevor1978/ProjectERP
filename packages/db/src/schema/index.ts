@@ -397,6 +397,7 @@ export const procurementRequestLine = pgTable(
     projectId: text("project_id")
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
+    partNumber: text("part_number"),
     description: text("description").notNull(),
     quantity: text("quantity").notNull().default("1"), // string for large decimals
     unit: text("unit"),

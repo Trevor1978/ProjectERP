@@ -7,6 +7,7 @@ type Line = {
   id: string;
   procurementId: string;
   projectId: string;
+  partNumber: string | null;
   description: string;
   quantity: string;
   receivedQty: number;
@@ -55,6 +56,7 @@ export function RfqPanel({ projectId }: { projectId: string }) {
   const [title, setTitle] = useState("");
   const [newSupplierId, setNewSupplierId] = useState("");
   const [newTitle, setNewTitle] = useState("");
+  const [newPart, setNewPart] = useState("");
   const [newQty, setNewQty] = useState("1");
   const [newLineFor, setNewLineFor] = useState<string | null>(null);
   const dbfInputRef = useRef<HTMLInputElement>(null);
@@ -166,12 +168,14 @@ export function RfqPanel({ projectId }: { projectId: string }) {
       body: JSON.stringify({
         procurementId,
         projectId,
+        partNumber: newPart.trim() || null,
         description: newTitle.trim(),
         quantity: newQty || "1",
         orderIndex: (linesByPr[procurementId] ?? []).length,
       }),
     });
     setNewTitle("");
+    setNewPart("");
     setNewQty("1");
     setNewLineFor(null);
     await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
@@ -345,6 +349,10 @@ export function RfqPanel({ projectId }: { projectId: string }) {
                           }}
                         />
                         <span className={full ? "text-slate-600" : ""}>
+                          {l.partNumber ? (
+                            <span className="font-medium text-slate-800">{l.partNumber}</span>
+                          ) : null}
+                          {l.partNumber ? " · " : ""}
                           {l.description} · order {l.quantity}
                           {full ? " · full" : ""}
                         </span>
@@ -354,6 +362,12 @@ export function RfqPanel({ projectId }: { projectId: string }) {
                 </ul>
                 {newLineFor === p.id ? (
                   <div className="mt-2 flex flex-wrap gap-2 items-end">
+                    <input
+                      className="border rounded px-2 py-1 text-sm w-28 shrink-0"
+                      value={newPart}
+                      onChange={(e) => setNewPart(e.target.value)}
+                      placeholder="Part #"
+                    />
                     <input
                       className="border rounded px-2 py-1 text-sm flex-1 min-w-[200px]"
                       value={newTitle}
@@ -379,6 +393,7 @@ export function RfqPanel({ projectId }: { projectId: string }) {
                       onClick={() => {
                         setNewLineFor(null);
                         setNewTitle("");
+                        setNewPart("");
                       }}
                     >
                       Cancel
@@ -391,6 +406,7 @@ export function RfqPanel({ projectId }: { projectId: string }) {
                     onClick={() => {
                       setNewLineFor(p.id);
                       setNewTitle("");
+                      setNewPart("");
                     }}
                   >
                     + Line item

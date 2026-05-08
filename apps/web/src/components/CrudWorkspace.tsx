@@ -95,6 +95,7 @@ type ProcurementLine = {
   id: string;
   procurementId: string;
   projectId: string;
+  partNumber: string | null;
   description: string;
   quantity: string;
   unit: string | null;
@@ -895,7 +896,7 @@ export function CrudWorkspace() {
       })),
     },
     procurement: {
-      dataHeaders: ["Projects", "Supplier", "Title", "Status", "Need by", "SAP PO"],
+      dataHeaders: ["Supplier", "Title", "Status", "Need by", "SAP PO"],
       rows: procurement.map((p) => {
         const linkedProjects = Array.from(
           new Set(
@@ -910,7 +911,6 @@ export function CrudWorkspace() {
             onOpenDetail: () => setProcurementDetailId(p.id),
           }),
           cells: [
-            <span key="pr">{linkedProjects.length ? linkedProjects.join(", ") : "—"}</span>,
             <InlineSelect
               key="sup"
               value={p.supplierId ?? ""}
@@ -966,7 +966,6 @@ export function CrudWorkspace() {
           ],
           search: `${linkedProjects.join(" ")} ${supplierName.get(p.supplierId ?? "") ?? ""} ${p.title} ${p.status}`,
           sort: [
-            linkedProjects.join(", "),
             supplierName.get(p.supplierId ?? "") ?? "",
             p.title,
             p.status,
@@ -977,7 +976,17 @@ export function CrudWorkspace() {
       }),
     },
     procurementLines: {
-      dataHeaders: ["Project", "Purchasing", "Description", "Qty", "Unit", "Est price", "Rcvd qty", "Order"],
+      dataHeaders: [
+        "Project",
+        "Purchasing",
+        "Part #",
+        "Description",
+        "Qty",
+        "Unit",
+        "Est price",
+        "Rcvd qty",
+        "Order",
+      ],
       rows: procLines.map((l) => ({
         key: l.id,
         action: rowActions("procurementLines", l.id, l.description.length > 48 ? l.description.slice(0, 48) + "…" : l.description),
@@ -994,6 +1003,16 @@ export function CrudWorkspace() {
             }
           />,
           <span key="pr">{procName.get(l.procurementId) ?? l.procurementId}</span>,
+          <InlineText
+            key="pn"
+            value={l.partNumber ?? ""}
+            onSave={(v) =>
+              api("/api/procurement-lines/" + l.id, {
+                method: "PATCH",
+                body: JSON.stringify({ partNumber: v.trim() || null, version: l.version }),
+              }).then(refreshProcurement)
+            }
+          />,
           <InlineText
             key="d"
             value={l.description}
@@ -1057,10 +1076,11 @@ export function CrudWorkspace() {
             }
           />,
         ],
-        search: `${projectName.get(l.projectId) ?? ""} ${procName.get(l.procurementId) ?? ""} ${l.description} ${l.quantity} ${l.receivedQty}`,
+        search: `${projectName.get(l.projectId) ?? ""} ${procName.get(l.procurementId) ?? ""} ${l.partNumber ?? ""} ${l.description} ${l.quantity} ${l.receivedQty}`,
         sort: [
           projectName.get(l.projectId) ?? "",
           procName.get(l.procurementId) ?? "",
+          l.partNumber ?? "",
           l.description,
           l.quantity,
           l.unit ?? "",
@@ -1250,7 +1270,7 @@ export function CrudWorkspace() {
                   </button>
                 ) : null}
                 <span className="text-xs text-slate-500">
-                  Same project only. Sort the table to choose which purchasing record is kept (first among selected).
+                  Sort the table to choose which purchasing record is kept (first among selected).
                 </span>
               </div>
             ) : undefined
@@ -1433,6 +1453,7 @@ function CrudAppendRow({
 
   const [lnProcId, setLnProcId] = useState(procurement[0]?.id ?? "");
   const [lnProjectId, setLnProjectId] = useState(projects[0]?.id ?? "");
+  const [lnPart, setLnPart] = useState("");
   const [lnDesc, setLnDesc] = useState("");
   const [lnQty, setLnQty] = useState("1");
   useEffect(() => {
@@ -1939,6 +1960,14 @@ function CrudAppendRow({
         <td className="p-2 align-top">
           <input
             className={newRowInputClass}
+            placeholder="Part #"
+            value={lnPart}
+            onChange={(e) => setLnPart(e.target.value)}
+          />
+        </td>
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
             placeholder="Description"
             value={lnDesc}
             onChange={(e) => setLnDesc(e.target.value)}
@@ -1966,11 +1995,13 @@ function CrudAppendRow({
               body: JSON.stringify({
                 procurementId: lnProcId,
                 projectId: lnProjectId,
+                partNumber: lnPart.trim() || null,
                 description,
                 quantity: qty,
                 orderIndex: 0,
               }),
             });
+            setLnPart("");
             setLnDesc("");
             setLnQty("1");
             await refreshProcurement();
@@ -2961,6 +2992,7 @@ function ProcurementDetailLineRow({
   line: ProcurementLine;
   onSaved: () => Promise<void>;
 }) {
+  const [partNumber, setPartNumber] = useState(line.partNumber ?? "");
   const [description, setDescription] = useState(line.description);
   const [quantity, setQuantity] = useState(line.quantity);
   const [unit, setUnit] = useState(line.unit ?? "");
@@ -2971,6 +3003,7 @@ function ProcurementDetailLineRow({
   const [removing, setRemoving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
+    setPartNumber(line.partNumber ?? "");
     setDescription(line.description);
     setQuantity(line.quantity);
     setUnit(line.unit ?? "");
@@ -2980,6 +3013,14 @@ function ProcurementDetailLineRow({
   }, [line]);
   return (
     <tr className="border-b align-top">
+      <td className="py-1 pr-2">
+        <input
+          className="w-full min-w-[6rem] rounded border px-2 py-1"
+          value={partNumber}
+          onChange={(e) => setPartNumber(e.target.value)}
+          placeholder="Part #"
+        />
+      </td>
       <td className="py-1 pr-2">
         {err && <p className="mb-1 text-xs text-red-600">{err}</p>}
         <textarea
@@ -3027,6 +3068,7 @@ function ProcurementDetailLineRow({
             void api("/api/procurement-lines/" + line.id, {
               method: "PATCH",
               body: JSON.stringify({
+                partNumber: partNumber.trim() || null,
                 description: description.trim(),
                 quantity: quantity || "1",
                 unit: unit.trim() || null,
@@ -3087,6 +3129,7 @@ function ProcurementDetailModal({
   const [headerSaving, setHeaderSaving] = useState(false);
   const [headerErr, setHeaderErr] = useState<string | null>(null);
 
+  const [newPart, setNewPart] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newQty, setNewQty] = useState("1");
   const [newUnit, setNewUnit] = useState("");
@@ -3213,6 +3256,7 @@ function ProcurementDetailModal({
         <table className="w-full min-w-[36rem] border-collapse text-sm">
           <thead>
             <tr className="border-b bg-slate-50 text-left">
+              <th className="px-2 py-2 font-medium">Part #</th>
               <th className="px-2 py-2 font-medium">Description</th>
               <th className="px-2 py-2 font-medium">Qty</th>
               <th className="px-2 py-2 font-medium">Unit</th>
@@ -3225,7 +3269,7 @@ function ProcurementDetailModal({
           <tbody>
             {lines.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-2 py-3 text-slate-500">
+                <td colSpan={8} className="px-2 py-3 text-slate-500">
                   No lines yet — add one below.
                 </td>
               </tr>
@@ -3254,7 +3298,11 @@ function ProcurementDetailModal({
               ))}
             </select>
           </div>
-          <div className="sm:col-span-2 lg:col-span-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-600">Part #</label>
+            <input className="w-full rounded border px-2 py-1" value={newPart} onChange={(e) => setNewPart(e.target.value)} />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
             <label className="block text-xs font-medium text-slate-600">Description</label>
             <textarea className="w-full rounded border px-2 py-1" rows={2} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
           </div>
@@ -3298,6 +3346,7 @@ function ProcurementDetailModal({
               body: JSON.stringify({
                 procurementId: row.id,
                 projectId: newProjectId,
+                partNumber: newPart.trim() || null,
                 description: newDesc.trim(),
                 quantity: newQty || "1",
                 unit: newUnit.trim() || null,
@@ -3307,6 +3356,7 @@ function ProcurementDetailModal({
               }),
             })
               .then(async () => {
+                setNewPart("");
                 setNewDesc("");
                 setNewQty("1");
                 setNewUnit("");
@@ -3446,6 +3496,7 @@ function ProcurementLineEditModal({
   onSaved: () => Promise<void>;
 }) {
   const [projectId, setProjectId] = useState(line.projectId);
+  const [partNumber, setPartNumber] = useState(line.partNumber ?? "");
   const [description, setDescription] = useState(line.description);
   const [quantity, setQuantity] = useState(line.quantity);
   const [unit, setUnit] = useState(line.unit ?? "");
@@ -3456,6 +3507,7 @@ function ProcurementLineEditModal({
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     setProjectId(line.projectId);
+    setPartNumber(line.partNumber ?? "");
     setDescription(line.description);
     setQuantity(line.quantity);
     setUnit(line.unit ?? "");
@@ -3480,6 +3532,7 @@ function ProcurementLineEditModal({
                 method: "PATCH",
                 body: JSON.stringify({
                   projectId,
+                  partNumber: partNumber.trim() || null,
                   description: description.trim(),
                   quantity: quantity || "1",
                   unit: unit.trim() || null,
@@ -3509,6 +3562,8 @@ function ProcurementLineEditModal({
           </option>
         ))}
       </select>
+      <label className="block text-sm font-medium">Part #</label>
+      <input className="mb-2 w-full rounded border px-2 py-1" value={partNumber} onChange={(e) => setPartNumber(e.target.value)} />
       <label className="block text-sm font-medium">Description</label>
       <textarea className="mb-2 w-full rounded border px-2 py-1" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
       <label className="block text-sm font-medium">Quantity</label>

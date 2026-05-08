@@ -229,6 +229,7 @@ export async function handleProcurementImportDbf(c: Context) {
         await tx.insert(procurementRequestLine).values({
           procurementId: row.id,
           projectId,
+          partNumber: ln.partNumber ?? null,
           description: ln.description,
           quantity: ln.quantity,
           unit: ln.unit,
@@ -487,6 +488,7 @@ app.post("/procurement-lines", async (c) => {
     .values({
       procurementId: p.data.procurementId,
       projectId: p.data.projectId,
+      partNumber: p.data.partNumber ?? null,
       description: p.data.description,
       quantity: qty,
       unit: p.data.unit ?? null,
@@ -545,6 +547,8 @@ app.patch("/procurement-lines/:id", async (c) => {
     .update(procurementRequestLine)
     .set({
       projectId: nextProjectId,
+      partNumber:
+        p.data.partNumber === undefined ? cur[0]!.partNumber : p.data.partNumber,
       description: p.data.description ?? cur[0]!.description,
       quantity: qty,
       unit: p.data.unit === undefined ? cur[0]!.unit : p.data.unit,

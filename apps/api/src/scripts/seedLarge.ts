@@ -280,6 +280,7 @@ async function main() {
         id: randomUUID(),
         procurementId: r.id!,
         projectId: pick(projectRows).id!,
+        partNumber: `PN-${String(i + 1).padStart(4, "0")}`,
         description: `Item ${i + 1}`,
         quantity: String(1 + i),
         unit: "ea",
