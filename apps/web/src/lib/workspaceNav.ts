@@ -8,8 +8,8 @@ export type WorkspaceTableSlug =
   | "tasks"
   | "todos"
   | "time-entries"
-  | "procurement"
-  | "procurement-lines";
+  | "purchasing"
+  | "purchasing-lines";
 
 export type WorkspaceTab =
   | "customers"
@@ -30,8 +30,8 @@ export const WORKSPACE_NAV_ITEMS: { slug: WorkspaceTableSlug; label: string }[] 
   { slug: "tasks", label: "Tasks" },
   { slug: "todos", label: "Todos" },
   { slug: "time-entries", label: "Time entries" },
-  { slug: "procurement", label: "Procurement" },
-  { slug: "procurement-lines", label: "Procurement lines" },
+  { slug: "purchasing", label: "Purchasing" },
+  { slug: "purchasing-lines", label: "Purchasing lines" },
 ];
 
 export function workspaceSlugToTab(slug: string): WorkspaceTab | null {
@@ -50,8 +50,10 @@ export function workspaceSlugToTab(slug: string): WorkspaceTab | null {
       return "todos";
     case "time-entries":
       return "timeEntries";
+    case "purchasing":
     case "procurement":
       return "procurement";
+    case "purchasing-lines":
     case "procurement-lines":
       return "procurementLines";
     default:
@@ -64,7 +66,9 @@ export function workspaceTabToSlug(tab: WorkspaceTab): WorkspaceTableSlug {
     case "timeEntries":
       return "time-entries";
     case "procurementLines":
-      return "procurement-lines";
+      return "purchasing-lines";
+    case "procurement":
+      return "purchasing";
     default:
       return tab as WorkspaceTableSlug;
   }

@@ -125,8 +125,8 @@ const LABEL: Record<Tab, string> = {
   tasks: "Tasks",
   todos: "Todos",
   timeEntries: "Time entries",
-  procurement: "Procurement",
-  procurementLines: "Procurement lines",
+  procurement: "Purchasing",
+  procurementLines: "Purchasing lines",
 };
 
 const STATUS_OPTS = ["draft", "active", "on_hold", "closed"] as const;
@@ -981,7 +981,7 @@ export function CrudWorkspace() {
       }),
     },
     procurementLines: {
-      dataHeaders: ["Procurement", "Description", "Qty", "Unit", "Est price", "Rcvd qty", "Order"],
+      dataHeaders: ["Purchasing", "Description", "Qty", "Unit", "Est price", "Rcvd qty", "Order"],
       rows: procLines.map((l) => ({
         key: l.id,
         action: rowActions("procurementLines", l.id, l.description.length > 48 ? l.description.slice(0, 48) + "…" : l.description),
@@ -1210,7 +1210,7 @@ export function CrudWorkspace() {
                       return;
                     }
                     const keepTitle = procurement.find((x) => x.id === order[0])?.title ?? order[0]!;
-                    const msg = `Merge ${order.length} procurements?\n\nThe first in the current table sort (“${keepTitle}”) keeps its title and settings. Other RFQs will be deleted and their line items appended.`;
+                    const msg = `Merge ${order.length} purchasing records?\n\nThe first in the current table sort (“${keepTitle}”) keeps its title and settings. Other requests will be deleted and their line items appended.`;
                     if (!window.confirm(msg)) {
                       return;
                     }
@@ -1242,7 +1242,7 @@ export function CrudWorkspace() {
                   </button>
                 ) : null}
                 <span className="text-xs text-slate-500">
-                  Same project only. Sort the table to choose which record is kept (first among selected).
+                  Same project only. Sort the table to choose which purchasing record is kept (first among selected).
                 </span>
               </div>
             ) : undefined
@@ -1882,7 +1882,7 @@ function CrudAppendRow({
         <td className="p-2 align-top">
           <input
             className={newRowInputClass}
-            placeholder="RFQ / procurement title"
+            placeholder="RFQ / PO title"
             value={prTitle}
             onChange={(e) => setPrTitle(e.target.value)}
           />
@@ -1924,7 +1924,7 @@ function CrudAppendRow({
             onChange={(e) => setLnProcId(e.target.value)}
           >
             {procurement.length === 0 ? (
-              <option value="">No procurement records</option>
+              <option value="">No purchasing records</option>
             ) : (
               procurement.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -1958,7 +1958,7 @@ function CrudAppendRow({
             const description = lnDesc.trim();
             if (!description) throw new Error("Description is required");
             const qty = lnQty.trim() || "1";
-            if (!lnProcId) throw new Error("Select procurement");
+            if (!lnProcId) throw new Error("Select a purchasing record");
             await api("/api/procurement-lines", {
               method: "POST",
               body: JSON.stringify({
@@ -2217,7 +2217,7 @@ function ModalShell({
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  /** Wider panel for dense tables (e.g. procurement detail). */
+  /** Wider panel for dense tables (e.g. purchasing detail). */
   wide?: boolean;
 }) {
   useEffect(() => {
@@ -3116,7 +3116,7 @@ function ProcurementDetailModal({
   return (
     <ModalShell
       wide
-      title={`Procurement: ${row.title}`}
+      title={`Purchasing: ${row.title}`}
       onClose={onClose}
       footer={null}
     >
@@ -3353,7 +3353,7 @@ function ProcurementEditModal({
   }, [row]);
   return (
     <ModalShell
-      title="Edit procurement"
+      title="Edit purchasing"
       onClose={onClose}
       footer={
         <div className="mt-4">
@@ -3471,7 +3471,7 @@ function ProcurementLineEditModal({
   }, [line]);
   return (
     <ModalShell
-      title="Edit procurement line"
+      title="Edit purchasing line"
       onClose={onClose}
       footer={
         <div className="mt-4">
@@ -3505,7 +3505,7 @@ function ProcurementLineEditModal({
       }
     >
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
-      <p className="mb-2 text-sm text-slate-600">Procurement: {procurementTitle}</p>
+      <p className="mb-2 text-sm text-slate-600">Purchasing: {procurementTitle}</p>
       <p className="mb-2 text-sm text-slate-600">Project: {projectLabel}</p>
       <label className="block text-sm font-medium">Description</label>
       <textarea className="mb-2 w-full rounded border px-2 py-1" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />

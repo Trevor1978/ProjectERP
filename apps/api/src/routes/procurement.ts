@@ -241,7 +241,7 @@ app.post("/procurement/merge", async (c) => {
   const projectId = rows[0]!.projectId;
   if (!rows.every((r) => r.projectId === projectId)) {
     return c.json(
-      { error: "All procurements must belong to the same project" },
+      { error: "All purchasing records must belong to the same project" },
       400,
     );
   }

@@ -21,8 +21,8 @@ const ICON_BY_SLUG: Record<WorkspaceTableSlug, LucideIcon> = {
   tasks: ClipboardList,
   todos: ListChecks,
   "time-entries": Clock,
-  procurement: ShoppingCart,
-  "procurement-lines": ListTree,
+  purchasing: ShoppingCart,
+  "purchasing-lines": ListTree,
 };
 
 /** Tile backgrounds — icon uses white foreground */
@@ -34,8 +34,8 @@ const TILE_STYLE: Record<WorkspaceTableSlug, { className: string }> = {
   tasks: { className: "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/25" },
   todos: { className: "bg-gradient-to-br from-cyan-500 to-blue-600 shadow-cyan-500/25" },
   "time-entries": { className: "bg-gradient-to-br from-violet-500 to-purple-600 shadow-violet-500/25" },
-  procurement: { className: "bg-gradient-to-br from-lime-600 to-green-700 shadow-lime-600/25" },
-  "procurement-lines": { className: "bg-gradient-to-br from-slate-600 to-slate-800 shadow-slate-600/25" },
+  purchasing: { className: "bg-gradient-to-br from-lime-600 to-green-700 shadow-lime-600/25" },
+  "purchasing-lines": { className: "bg-gradient-to-br from-slate-600 to-slate-800 shadow-slate-600/25" },
 };
 
 export function LauncherPage() {

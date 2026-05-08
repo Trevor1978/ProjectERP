@@ -145,7 +145,7 @@ export function RfqPanel({ projectId }: { projectId: string }) {
         rowCount: number;
       }>("/api/bom-dbf-import", fd);
       setDbfMsg(
-        `Imported ${res.created.length} RFQ(s) from ${res.rowCount} BOM row(s).`,
+        `Imported ${res.created.length} purchasing record(s) from ${res.rowCount} BOM row(s).`,
       );
       if (input) input.value = "";
       await qc.invalidateQueries({ queryKey: ["rfq", projectId] });
@@ -177,7 +177,7 @@ export function RfqPanel({ projectId }: { projectId: string }) {
   }
 
   if (isLoading) {
-    return <p className="text-slate-500">Loading RFQs…</p>;
+    return <p className="text-slate-500">Loading purchasing…</p>;
   }
 
   return (
@@ -199,7 +199,7 @@ export function RfqPanel({ projectId }: { projectId: string }) {
           </select>
         </div>
         <div>
-          <label className="text-xs text-slate-500">New RFQ / quotation request</label>
+          <label className="text-xs text-slate-500">New purchasing / quotation request</label>
           <input
             className="border rounded px-2 py-1 w-64 block"
             value={title}
@@ -217,13 +217,13 @@ export function RfqPanel({ projectId }: { projectId: string }) {
           onClick={() => void createRfq()}
           className="px-3 py-1.5 bg-slate-800 text-white rounded text-sm"
         >
-          Add RFQ
+          Add purchasing
         </button>
       </div>
       <div className="rounded border border-dashed border-slate-300 bg-slate-50/80 p-3 space-y-2">
         <div className="text-sm font-medium text-slate-800">Import Elecdes BOM (.dbf)</div>
         <p className="text-xs text-slate-600">
-          One procurement (RFQ) is created per distinct manufacturer column (MFG / MANUFACTURER / VENDOR, etc.); each
+          One purchasing record (RFQ) is created per distinct manufacturer column (MFG / MANUFACTURER / VENDOR, etc.); each
           BOM line becomes a line item.
         </p>
         <div className="flex flex-wrap items-end gap-2">
@@ -255,7 +255,7 @@ export function RfqPanel({ projectId }: { projectId: string }) {
                   className="shrink-0 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
                   onClick={() => setDeleteRfq({ id: p.id, title: p.title })}
                 >
-                  Delete RFQ
+                  Delete
                 </button>
               </div>
               <div className="text-xs text-slate-500">Status: {p.status}</div>

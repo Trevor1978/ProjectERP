@@ -56,7 +56,7 @@ T2=$(json -X POST "$API/api/tasks" -d "{\"projectId\":\"$PID\",\"milestoneId\":\
 json -X POST "$API/api/task-dependencies" -d "{\"taskId\":\"$T2\",\"predecessorTaskId\":\"$TID\",\"type\":\"FS\"}" | jq -e '.taskDependency' >/dev/null
 echo "OK"
 
-echo "== 10) RFQ + SAP echo =="
+echo "== 10) Purchasing + SAP echo =="
 RID=$(json -X POST "$API/api/procurement" -d "{\"projectId\":\"$PID\",\"title\":\"Buy parts\",\"status\":\"draft\"}" | jq -r '.procurement.id')
 json -X PATCH "$API/api/procurement/$RID" -d "{\"sapPoNumber\":\"4500000001\",\"version\":0}" >/dev/null
 json -X POST "$API/api/procurement/$RID/sap-refresh" | jq -e '.lines | length > 0' >/dev/null

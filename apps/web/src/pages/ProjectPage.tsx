@@ -37,7 +37,7 @@ const TAB_LABEL: Record<Tab, string> = {
   todos: "Todo Kanban",
   todosTable: "Todo table",
   time: "Time",
-  rfq: "RFQ / PO",
+  rfq: "Purchasing / PO",
   team: "Team",
   workspace: "Budget & docs",
   crudTables: "CRUD tables",

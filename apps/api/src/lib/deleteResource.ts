@@ -104,7 +104,7 @@ export async function previewDeleteSupplier(
   const bullets: string[] = ["Permanently removes this supplier from your organization."];
   if (n > 0) {
     bullets.unshift(
-      `${n} procurement record(s) will keep their RFQ data but will no longer show this supplier (link cleared).`,
+      `${n} purchasing record(s) will keep their RFQ data but will no longer show this supplier (link cleared).`,
     );
   }
   return { canDelete: true, blockedReason: null, bullets, recordLabel: s.name };
@@ -171,11 +171,11 @@ export async function previewDeleteProject(
     `${Number(nt[0]?.n ?? 0)} task(s)`,
     `${nTodo} todo(s)`,
     `${nTe} time entr${nTe === 1 ? "y" : "ies"}`,
-    `${Number(nPr[0]?.n ?? 0)} procurement / RFQ record(s) with ${nLines} total line item(s)`,
+    `${Number(nPr[0]?.n ?? 0)} purchasing record(s) (RFQ/PO) with ${nLines} total line item(s)`,
     `${Number(nMem[0]?.n ?? 0)} project member row(s)`,
     `${Number(nBudget[0]?.n ?? 0)} budget row(s)`,
     "Task dependencies, saved filters, document links, handover, and project–asset links tied to this project (cascaded by the database).",
-    "Comments on this project, its tasks, todos, and RFQs will be removed so nothing is left orphaned.",
+    "Comments on this project, its tasks, todos, and purchasing records will be removed so nothing is left orphaned.",
   ];
   if (!canDel) {
     return {
@@ -395,9 +395,9 @@ export async function previewDeleteProcurement(
     canDelete: true,
     blockedReason: null,
     bullets: [
-      `• ${Number(nLines?.n ?? 0)} procurement line item(s) will be deleted with this RFQ.`,
-      "• Comments on this procurement will be removed.",
-      cur[0]!.taskId ? "• The link from a task to this RFQ will be cleared when the RFQ is removed." : "",
+      `• ${Number(nLines?.n ?? 0)} purchasing line item(s) will be deleted with this record.`,
+      "• Comments on this purchasing record will be removed.",
+      cur[0]!.taskId ? "• The link from a task to this record will be cleared when it is removed." : "",
     ].filter(Boolean),
     recordLabel: cur[0]!.title,
   };
@@ -440,7 +440,7 @@ export async function previewDeleteProcurementLine(
   return {
     canDelete: true,
     blockedReason: null,
-    bullets: ["• Only this line row is removed; the parent RFQ and other lines stay."],
+    bullets: ["• Only this line row is removed; the parent purchasing record and other lines stay."],
     recordLabel: cur[0]!.description.slice(0, 80) + (cur[0]!.description.length > 80 ? "…" : ""),
   };
 }

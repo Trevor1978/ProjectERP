@@ -92,8 +92,8 @@ const TAB_LABEL: Record<CrudTab, string> = {
   tasks: "Tasks",
   todos: "Todos",
   timeEntries: "Time entries",
-  procurement: "Procurement",
-  procurementLines: "Procurement lines",
+  procurement: "Purchasing",
+  procurementLines: "Purchasing lines",
 };
 
 export function ProjectCrudTables({
@@ -657,7 +657,7 @@ export function ProjectCrudTables({
                 const keepTitle = list.find((x) => x.id === ids[0])?.title ?? ids[0]!;
                 if (
                   !window.confirm(
-                    `Merge ${ids.length} procurements?\n\nThe first in this list (“${keepTitle}”) keeps its title and settings. Others are removed; line items move over.`,
+                    `Merge ${ids.length} purchasing records?\n\nThe first in this list (“${keepTitle}”) keeps its title and settings. Others are removed; line items move over.`,
                   )
                 ) {
                   return;
@@ -690,7 +690,7 @@ export function ProjectCrudTables({
               </button>
             ) : null}
             <span className="text-xs text-slate-500">
-              List order (as loaded) decides which RFQ is kept — put that one first using refresh/sort in workspace if needed.
+              List order (as loaded) decides which purchasing record is kept — put that one first using refresh/sort in workspace if needed.
             </span>
           </div>
           <div className="overflow-x-auto border rounded bg-white">
@@ -797,7 +797,7 @@ export function ProjectCrudTables({
                 <td className="p-2">
                   <input
                     className="w-full border rounded px-2 py-1"
-                    placeholder="New procurement title"
+                    placeholder="New purchasing title"
                     value={newProcTitle}
                     onChange={(e) => setNewProcTitle(e.target.value)}
                   />
@@ -853,7 +853,7 @@ export function ProjectCrudTables({
           <table className="w-full text-sm">
             <thead className="bg-slate-100 text-left">
               <tr>
-                <th className="p-2">Procurement</th>
+                <th className="p-2">Purchasing</th>
                 <th className="p-2">Description</th>
                 <th className="p-2">Qty</th>
                 <th className="p-2">Rcvd qty</th>
@@ -940,7 +940,7 @@ export function ProjectCrudTables({
                     value={newLineProcId}
                     onChange={(e) => setNewLineProcId(e.target.value)}
                   >
-                    <option value="">Choose procurement</option>
+                    <option value="">Choose purchasing record</option>
                     {(procurementData?.procurement ?? []).map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.title}
