@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useMe } from "../hooks/useMe";
@@ -353,25 +353,31 @@ export function CrudWorkspace() {
     id: string,
     label: string,
     timeEntryUserId?: string,
-    opts?: { onOpenDetail?: () => void },
+    opts?: { onOpenDetail?: () => void; openHref?: string },
   ) => (
-    <div className="flex flex-wrap justify-end gap-1">
-      {opts?.onOpenDetail && (
-        <button
-          type="button"
-          className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-sm font-medium text-white hover:bg-slate-800 whitespace-nowrap"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            opts.onOpenDetail!();
-          }}
-        >
-          Open
-        </button>
-      )}
+    <div className="flex min-w-max flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
       <button
         type="button"
-        className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-sm font-medium text-blue-800 hover:bg-blue-100 whitespace-nowrap"
+        className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-800"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (opts?.onOpenDetail) {
+            opts.onOpenDetail();
+            return;
+          }
+          if (opts?.openHref) {
+            navigate(opts.openHref);
+            return;
+          }
+          setEditTarget({ tab: t, id });
+        }}
+      >
+        Open
+      </button>
+      <button
+        type="button"
+        className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-800 hover:bg-blue-100"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -383,7 +389,7 @@ export function CrudWorkspace() {
       {canShowDeleteForRow(t, timeEntryUserId) && (
         <button
           type="button"
-          className="rounded border border-red-200 bg-red-50 px-2 py-1 text-sm font-medium text-red-800 hover:bg-red-100 whitespace-nowrap"
+          className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -531,10 +537,10 @@ export function CrudWorkspace() {
       })),
     },
     projects: {
-      dataHeaders: ["Name", "Code", "Customer", "Status", "Start", "End", "Open"],
+      dataHeaders: ["Name", "Code", "Customer", "Status", "Start", "End"],
       rows: projects.map((p) => ({
         key: p.id,
-        action: rowActions("projects", p.id, p.name),
+        action: rowActions("projects", p.id, p.name, undefined, { openHref: `/p/${p.id}` }),
         cells: [
           <InlineText
             key="n"
@@ -598,9 +604,6 @@ export function CrudWorkspace() {
               }).then(refreshProjects)
             }
           />,
-          <Link key="o" to={`/p/${p.id}`} className="text-blue-700 hover:underline">
-            Open
-          </Link>,
         ],
         search: `${p.name} ${p.code ?? ""} ${clientName.get(p.clientId) ?? ""} ${p.status}`,
         sort: [p.name, p.code ?? "", clientName.get(p.clientId) ?? "", p.status, p.startAt ?? "", p.endAt ?? ""],
