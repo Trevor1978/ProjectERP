@@ -9,6 +9,8 @@ import { RegisterPage } from "./pages/RegisterPage";
 import { HomePage } from "./pages/HomePage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { WorkspaceLayout } from "./layouts/WorkspaceLayout";
+import { LauncherPage } from "./pages/LauncherPage";
+import { House } from "lucide-react";
 
 function Layout({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
@@ -31,8 +33,15 @@ function Layout({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
         <div className="flex items-center gap-6">
-          <Link to="/workspace/projects" className="font-semibold tracking-tight">
+          <Link to="/" className="font-semibold tracking-tight">
             Project ERP
+          </Link>
+          <Link
+            to="/"
+            className="flex items-center gap-1.5 text-sm text-slate-300 hover:text-white"
+          >
+            <House className="h-4 w-4 opacity-90" aria-hidden />
+            Home
           </Link>
           <Link to="/workspace/projects" className="text-sm text-slate-300 hover:text-white">
             Projects
@@ -99,7 +108,7 @@ export default function App() {
         element={
           <Layout>
             <AuthGate>
-              <Navigate to="/workspace/projects" replace />
+              <LauncherPage />
             </AuthGate>
           </Layout>
         }
@@ -127,7 +136,7 @@ export default function App() {
           </Layout>
         }
       />
-      <Route path="*" element={<Navigate to="/workspace/projects" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

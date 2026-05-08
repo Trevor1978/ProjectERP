@@ -28,7 +28,7 @@ test("register page shows form", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("end-to-end: register, then land on home with projects heading", async ({
+test("end-to-end: register, then land on launcher home", async ({
   page,
   request,
 }, testInfo) => {
@@ -52,12 +52,11 @@ test("end-to-end: register, then land on home with projects heading", async ({
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Register" }).click();
-  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Home" })).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page).toHaveURL("/workspace/projects");
-  await expect(page.getByPlaceholder("Project name")).toBeVisible();
+  await expect(page).toHaveURL("/");
   await expect(
-    page.getByRole("navigation", { name: "Workspace navigation" }),
+    page.locator("main").getByRole("link", { name: "Projects", exact: true }),
   ).toBeVisible();
 });
