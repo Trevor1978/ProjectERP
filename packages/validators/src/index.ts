@@ -171,8 +171,6 @@ const rfqStatus = z.enum([
 ]);
 
 export const procurementCreate = z.object({
-  projectId: id,
-  taskId: id.nullable().optional(),
   supplierId: id.nullable().optional(),
   title: z.string().min(1).max(500),
   status: rfqStatus.default("draft"),
@@ -182,7 +180,6 @@ export const procurementCreate = z.object({
 });
 export const procurementPatch = z
   .object({
-    taskId: id.nullable().optional(),
     supplierId: id.nullable().optional(),
     title: z.string().min(1).max(500).optional(),
     status: rfqStatus.optional(),
@@ -195,6 +192,7 @@ export const procurementPatch = z
 
 export const procurementLineCreate = z.object({
   procurementId: id,
+  projectId: id,
   description: z.string().min(1).max(2000),
   quantity: z.string().regex(/^\d*\.?\d+$/).or(z.number().nonnegative()),
   unit: z.string().max(32).optional().nullable(),
@@ -207,6 +205,7 @@ export const procurementLineCreate = z.object({
 });
 export const procurementLinePatch = z
   .object({
+    projectId: id.optional(),
     description: z.string().min(1).max(2000).optional(),
     quantity: z
       .union([z.string(), z.number().nonnegative()])
@@ -223,7 +222,7 @@ export const procurementLinePatch = z
   })
   .strict();
 
-/** First id is the kept procurement; remaining ids are merged into it (same project only). */
+/** First id is the kept procurement; remaining ids are merged into it. */
 export const procurementMerge = z.object({
   ids: z.array(id).min(2),
 });

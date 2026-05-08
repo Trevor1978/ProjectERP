@@ -345,10 +345,9 @@ export const procurementRequest = pgTable("procurement_request", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => randomUUID()),
-  projectId: text("project_id")
+  organizationId: text("organization_id")
     .notNull()
-    .references(() => project.id, { onDelete: "cascade" }),
-  taskId: text("task_id").references(() => task.id, { onDelete: "set null" }),
+    .references(() => organization.id, { onDelete: "cascade" }),
   supplierId: text("supplier_id").references(() => supplier.id, {
     onDelete: "set null",
   }),
@@ -395,6 +394,9 @@ export const procurementRequestLine = pgTable(
     procurementId: text("procurement_id")
       .notNull()
       .references(() => procurementRequest.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
     description: text("description").notNull(),
     quantity: text("quantity").notNull().default("1"), // string for large decimals
     unit: text("unit"),

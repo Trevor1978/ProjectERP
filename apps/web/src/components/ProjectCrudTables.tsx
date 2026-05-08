@@ -81,6 +81,7 @@ type Procurement = {
 type ProcurementLine = {
   id: string;
   procurementId: string;
+  projectId: string;
   description: string;
   quantity: string;
   receivedQty: number;
@@ -826,7 +827,6 @@ export function ProjectCrudTables({
                       void api("/api/procurement", {
                         method: "POST",
                         body: JSON.stringify({
-                          projectId,
                           title: newProcTitle.trim(),
                           status: "draft",
                           supplierId: newProcSupplierId || null,
@@ -979,6 +979,7 @@ export function ProjectCrudTables({
                         method: "POST",
                         body: JSON.stringify({
                           procurementId: newLineProcId,
+                          projectId,
                           description: newLineDescription.trim(),
                           quantity: newLineQty || "1",
                           orderIndex,

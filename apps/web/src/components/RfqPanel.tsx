@@ -6,6 +6,7 @@ import { DeleteConfirmModal } from "./DeleteConfirmModal";
 type Line = {
   id: string;
   procurementId: string;
+  projectId: string;
   description: string;
   quantity: string;
   receivedQty: number;
@@ -79,7 +80,6 @@ export function RfqPanel({ projectId }: { projectId: string }) {
     await api("/api/procurement", {
       method: "POST",
       body: JSON.stringify({
-        projectId,
         title: title.trim(),
         status: "draft",
         supplierId: newSupplierId || null,
@@ -165,6 +165,7 @@ export function RfqPanel({ projectId }: { projectId: string }) {
       method: "POST",
       body: JSON.stringify({
         procurementId,
+        projectId,
         description: newTitle.trim(),
         quantity: newQty || "1",
         orderIndex: (linesByPr[procurementId] ?? []).length,

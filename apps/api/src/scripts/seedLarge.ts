@@ -258,8 +258,7 @@ async function main() {
     for (let i = 0; i < rfqPerProject; i++) {
       rfqRows.push({
         id: randomUUID(),
-        projectId: p.id!,
-        taskId: null,
+        organizationId: orgRow.id,
         supplierId: null,
         title: `${p.name} RFQ ${i + 1}`,
         status: "draft",
@@ -280,6 +279,7 @@ async function main() {
       rfqLines.push({
         id: randomUUID(),
         procurementId: r.id!,
+        projectId: pick(projectRows).id!,
         description: `Item ${i + 1}`,
         quantity: String(1 + i),
         unit: "ea",

@@ -142,21 +142,13 @@ export async function previewDeleteProject(
   }
   const nPr = await db
     .select({ n: count() })
-    .from(procurementRequest)
-    .where(eq(procurementRequest.projectId, projectId));
-  const prIds = await db
-    .select({ id: procurementRequest.id })
-    .from(procurementRequest)
-    .where(eq(procurementRequest.projectId, projectId));
-  const pidList = prIds.map((x) => x.id);
-  let nLines = 0;
-  if (pidList.length > 0) {
-    const [ln] = await db
-      .select({ n: count() })
-      .from(procurementRequestLine)
-      .where(inArray(procurementRequestLine.procurementId, pidList));
-    nLines = Number(ln?.n ?? 0);
-  }
+    .from(procurementRequestLine)
+    .where(eq(procurementRequestLine.projectId, projectId));
+  const lineRows = await db
+    .select({ procurementId: procurementRequestLine.procurementId })
+    .from(procurementRequestLine)
+    .where(eq(procurementRequestLine.projectId, projectId));
+  const procurementIds = Array.from(new Set(lineRows.map((x) => x.procurementId)));
   const nMem = await db
     .select({ n: count() })
     .from(projectMember)
@@ -171,7 +163,7 @@ export async function previewDeleteProject(
     `${Number(nt[0]?.n ?? 0)} task(s)`,
     `${nTodo} todo(s)`,
     `${nTe} time entr${nTe === 1 ? "y" : "ies"}`,
-    `${Number(nPr[0]?.n ?? 0)} purchasing record(s) (RFQ/PO) with ${nLines} total line item(s)`,
+    `${procurementIds.length} purchasing record(s) (RFQ/PO) with ${Number(nPr[0]?.n ?? 0)} line item(s) linked to this project`,
     `${Number(nMem[0]?.n ?? 0)} project member row(s)`,
     `${Number(nBudget[0]?.n ?? 0)} budget row(s)`,
     "Task dependencies, saved filters, document links, handover, and project–asset links tied to this project (cascaded by the database).",
@@ -383,9 +375,30 @@ export async function previewDeleteProcurement(
   if (cur.length === 0) {
     return { status: 404 };
   }
-  const pr = await requireProject(a, cur[0]!.projectId);
-  if ("error" in pr) {
+  if (cur[0]!.organizationId !== a.organizationId) {
     return { status: 404 };
+  }
+  if (a.globalRole !== "org_admin") {
+    const memberProjects = await db
+      .select({ projectId: projectMember.projectId })
+      .from(projectMember)
+      .where(eq(projectMember.userId, a.id));
+    const pids = memberProjects.map((x) => x.projectId);
+    const allowed = pids.length
+      ? await db
+          .select({ id: procurementRequestLine.id })
+          .from(procurementRequestLine)
+          .where(
+            and(
+              eq(procurementRequestLine.procurementId, procurementId),
+              inArray(procurementRequestLine.projectId, pids),
+            ),
+          )
+          .limit(1)
+      : [];
+    if (allowed.length === 0) {
+      return { status: 404 };
+    }
   }
   const [nLines] = await db
     .select({ n: count() })
@@ -397,7 +410,6 @@ export async function previewDeleteProcurement(
     bullets: [
       `• ${Number(nLines?.n ?? 0)} purchasing line item(s) will be deleted with this record.`,
       "• Comments on this purchasing record will be removed.",
-      cur[0]!.taskId ? "• The link from a task to this record will be cleared when it is removed." : "",
     ].filter(Boolean),
     recordLabel: cur[0]!.title,
   };
@@ -408,9 +420,30 @@ export async function executeDeleteProcurement(a: AuthUser, procurementId: strin
   if (cur.length === 0) {
     return false;
   }
-  const pr = await requireProject(a, cur[0]!.projectId);
-  if ("error" in pr) {
+  if (cur[0]!.organizationId !== a.organizationId) {
     return false;
+  }
+  if (a.globalRole !== "org_admin") {
+    const memberProjects = await db
+      .select({ projectId: projectMember.projectId })
+      .from(projectMember)
+      .where(eq(projectMember.userId, a.id));
+    const pids = memberProjects.map((x) => x.projectId);
+    const allowed = pids.length
+      ? await db
+          .select({ id: procurementRequestLine.id })
+          .from(procurementRequestLine)
+          .where(
+            and(
+              eq(procurementRequestLine.procurementId, procurementId),
+              inArray(procurementRequestLine.projectId, pids),
+            ),
+          )
+          .limit(1)
+      : [];
+    if (allowed.length === 0) {
+      return false;
+    }
   }
   await deleteCommentsForProcurements(db, [procurementId]);
   await db.delete(procurementRequest).where(eq(procurementRequest.id, procurementId));
@@ -433,7 +466,10 @@ export async function previewDeleteProcurementLine(
   if (prq.length === 0) {
     return { status: 404 };
   }
-  const pr = await requireProject(a, prq[0]!.projectId);
+  if (prq[0]!.organizationId !== a.organizationId) {
+    return { status: 404 };
+  }
+  const pr = await requireProject(a, cur[0]!.projectId);
   if ("error" in pr) {
     return { status: 404 };
   }
@@ -457,7 +493,10 @@ export async function executeDeleteProcurementLine(a: AuthUser, lineId: string):
   if (prq.length === 0) {
     return false;
   }
-  const pr = await requireProject(a, prq[0]!.projectId);
+  if (prq[0]!.organizationId !== a.organizationId) {
+    return false;
+  }
+  const pr = await requireProject(a, cur[0]!.projectId);
   if ("error" in pr) {
     return false;
   }

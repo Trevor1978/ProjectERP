@@ -1,5 +1,5 @@
 import { and, eq, inArray, or } from "drizzle-orm";
-import { comment, db, procurementRequest, task, todo } from "@project-erp/db";
+import { comment, db, procurementRequest, procurementRequestLine, task, todo } from "@project-erp/db";
 
 type Db = typeof db;
 
@@ -46,7 +46,7 @@ export async function deleteCommentsForTodo(db: Db, todoId: string): Promise<voi
     .where(and(eq(comment.parentType, "todo"), eq(comment.parentId, todoId)));
 }
 
-/** Project-scoped comments: project itself, all tasks/todos, all procurement in project. */
+/** Project-scoped comments: project itself, all tasks/todos, all procurement touching project lines. */
 export async function deleteCommentsForProjectTree(
   db: Db,
   projectId: string,
@@ -62,10 +62,18 @@ export async function deleteCommentsForProjectTree(
   const taskIds = tasks.map((t) => t.id);
   await deleteCommentsForTasksAndTodos(db, taskIds);
 
-  const procs = await db
-    .select({ id: procurementRequest.id })
-    .from(procurementRequest)
-    .where(eq(procurementRequest.projectId, projectId));
+  const lineRows = await db
+    .select({ procurementId: procurementRequestLine.procurementId })
+    .from(procurementRequestLine)
+    .where(eq(procurementRequestLine.projectId, projectId));
+  const procurementIds = Array.from(new Set(lineRows.map((p) => p.procurementId)));
+  const procs =
+    procurementIds.length === 0
+      ? []
+      : await db
+          .select({ id: procurementRequest.id })
+          .from(procurementRequest)
+          .where(inArray(procurementRequest.id, procurementIds));
   await deleteCommentsForProcurements(
     db,
     procs.map((p) => p.id),

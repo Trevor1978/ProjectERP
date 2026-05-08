@@ -76,8 +76,6 @@ type TimeEntry = {
 };
 type Procurement = {
   id: string;
-  projectId: string;
-  taskId: string | null;
   supplierId: string | null;
   title: string;
   status:
@@ -96,6 +94,7 @@ type Procurement = {
 type ProcurementLine = {
   id: string;
   procurementId: string;
+  projectId: string;
   description: string;
   quantity: string;
   unit: string | null;
@@ -896,27 +895,22 @@ export function CrudWorkspace() {
       })),
     },
     procurement: {
-      dataHeaders: ["Project", "Task", "Supplier", "Title", "Status", "Need by", "SAP PO"],
+      dataHeaders: ["Projects", "Supplier", "Title", "Status", "Need by", "SAP PO"],
       rows: procurement.map((p) => {
-        const tasksForProject = tasks.filter((x) => x.projectId === p.projectId);
+        const linkedProjects = Array.from(
+          new Set(
+            procLines
+              .filter((l) => l.procurementId === p.id)
+              .map((l) => projectName.get(l.projectId) ?? l.projectId),
+          ),
+        );
         return {
           key: p.id,
           action: rowActions("procurement", p.id, p.title, undefined, {
             onOpenDetail: () => setProcurementDetailId(p.id),
           }),
           cells: [
-            <span key="pr">{projectName.get(p.projectId) ?? p.projectId}</span>,
-            <InlineSelect
-              key="tk"
-              value={p.taskId ?? ""}
-              options={[{ value: "", label: "(none)" }, ...tasksForProject.map((t) => ({ value: t.id, label: t.title }))]}
-              onSave={(v) =>
-                api("/api/procurement/" + p.id, {
-                  method: "PATCH",
-                  body: JSON.stringify({ taskId: v || null, version: p.version }),
-                }).then(refreshProcurement)
-              }
-            />,
+            <span key="pr">{linkedProjects.length ? linkedProjects.join(", ") : "—"}</span>,
             <InlineSelect
               key="sup"
               value={p.supplierId ?? ""}
@@ -970,10 +964,9 @@ export function CrudWorkspace() {
               }
             />,
           ],
-          search: `${projectName.get(p.projectId) ?? ""} ${supplierName.get(p.supplierId ?? "") ?? ""} ${p.title} ${p.status}`,
+          search: `${linkedProjects.join(" ")} ${supplierName.get(p.supplierId ?? "") ?? ""} ${p.title} ${p.status}`,
           sort: [
-            projectName.get(p.projectId) ?? "",
-            taskName.get(p.taskId ?? "") ?? "",
+            linkedProjects.join(", "),
             supplierName.get(p.supplierId ?? "") ?? "",
             p.title,
             p.status,
@@ -984,11 +977,22 @@ export function CrudWorkspace() {
       }),
     },
     procurementLines: {
-      dataHeaders: ["Purchasing", "Description", "Qty", "Unit", "Est price", "Rcvd qty", "Order"],
+      dataHeaders: ["Project", "Purchasing", "Description", "Qty", "Unit", "Est price", "Rcvd qty", "Order"],
       rows: procLines.map((l) => ({
         key: l.id,
         action: rowActions("procurementLines", l.id, l.description.length > 48 ? l.description.slice(0, 48) + "…" : l.description),
         cells: [
+          <InlineSelect
+            key="proj"
+            value={l.projectId}
+            options={projects.map((p) => ({ value: p.id, label: p.name }))}
+            onSave={(v) =>
+              api("/api/procurement-lines/" + l.id, {
+                method: "PATCH",
+                body: JSON.stringify({ projectId: v, version: l.version }),
+              }).then(refreshProcurement)
+            }
+          />,
           <span key="pr">{procName.get(l.procurementId) ?? l.procurementId}</span>,
           <InlineText
             key="d"
@@ -1053,8 +1057,9 @@ export function CrudWorkspace() {
             }
           />,
         ],
-        search: `${procName.get(l.procurementId) ?? ""} ${l.description} ${l.quantity} ${l.receivedQty}`,
+        search: `${projectName.get(l.projectId) ?? ""} ${procName.get(l.procurementId) ?? ""} ${l.description} ${l.quantity} ${l.receivedQty}`,
         sort: [
+          projectName.get(l.projectId) ?? "",
           procName.get(l.procurementId) ?? "",
           l.description,
           l.quantity,
@@ -1330,8 +1335,7 @@ export function CrudWorkspace() {
           <ProcurementDetailModal
             procurement={d}
             lines={lineRows}
-            projectLabel={projectName.get(d.projectId) ?? d.projectId}
-            tasks={tasks.filter((t) => t.projectId === d.projectId)}
+            projects={projects}
             suppliers={suppliers}
             onClose={() => setProcurementDetailId(null)}
             onRefresh={refreshProcurement}
@@ -1424,11 +1428,11 @@ function CrudAppendRow({
 
   const [teTaskId, setTeTaskId] = useState(tasks[0]?.id ?? "");
 
-  const [prProjectId, setPrProjectId] = useState(projects[0]?.id ?? "");
   const [prSupplierId, setPrSupplierId] = useState("");
   const [prTitle, setPrTitle] = useState("");
 
   const [lnProcId, setLnProcId] = useState(procurement[0]?.id ?? "");
+  const [lnProjectId, setLnProjectId] = useState(projects[0]?.id ?? "");
   const [lnDesc, setLnDesc] = useState("");
   const [lnQty, setLnQty] = useState("1");
   useEffect(() => {
@@ -1438,10 +1442,10 @@ function CrudAppendRow({
   }, [procurement, lnProcId]);
 
   useEffect(() => {
-    if (projects.length && !projects.some((p) => p.id === prProjectId)) {
-      setPrProjectId(projects[0]!.id);
+    if (projects.length && !projects.some((p) => p.id === lnProjectId)) {
+      setLnProjectId(projects[0]!.id);
     }
-  }, [projects, prProjectId]);
+  }, [projects, lnProjectId]);
 
   useEffect(() => {
     setErr(null);
@@ -1855,22 +1859,6 @@ function CrudAppendRow({
         <td className="p-2 align-top">
           <select
             className={newRowInputClass}
-            value={prProjectId}
-            onChange={(e) => setPrProjectId(e.target.value)}
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </td>
-        <td colSpan={1} className="p-2 align-top text-xs text-slate-400">
-          —
-        </td>
-        <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
             value={prSupplierId}
             onChange={(e) => setPrSupplierId(e.target.value)}
           >
@@ -1891,17 +1879,15 @@ function CrudAppendRow({
           />
         </td>
         <td colSpan={3} className="p-2 align-middle text-xs text-slate-500">
-          Status <strong>draft</strong>; link a task after create.
+          Status <strong>draft</strong>.
         </td>
         <td className={stickyActionsTd}>
           {createBtn(async () => {
             const title = prTitle.trim();
             if (!title) throw new Error("Title is required");
-            if (!prProjectId) throw new Error("Select a project");
             await api("/api/procurement", {
               method: "POST",
               body: JSON.stringify({
-                projectId: prProjectId,
                 title,
                 status: "draft",
                 supplierId: prSupplierId || null,
@@ -1910,7 +1896,7 @@ function CrudAppendRow({
             setPrTitle("");
             setPrSupplierId("");
             await refreshProcurement();
-          }, !prTitle.trim() || !prProjectId)}
+          }, !prTitle.trim())}
           {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
         </td>
       </tr>
@@ -1920,6 +1906,19 @@ function CrudAppendRow({
   if (tab === "procurementLines") {
     return (
       <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <select
+            className={newRowInputClass}
+            value={lnProjectId}
+            onChange={(e) => setLnProjectId(e.target.value)}
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </td>
         <td className="p-2 align-top">
           <select
             className={newRowInputClass}
@@ -1966,6 +1965,7 @@ function CrudAppendRow({
               method: "POST",
               body: JSON.stringify({
                 procurementId: lnProcId,
+                projectId: lnProjectId,
                 description,
                 quantity: qty,
                 orderIndex: 0,
@@ -1974,7 +1974,7 @@ function CrudAppendRow({
             setLnDesc("");
             setLnQty("1");
             await refreshProcurement();
-          }, !lnDesc.trim() || !lnProcId)}
+          }, !lnDesc.trim() || !lnProcId || !lnProjectId)}
           {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
         </td>
       </tr>
@@ -2358,12 +2358,9 @@ function EditDetailModal({
     );
   }
   if (target.tab === "procurement" && pr) {
-    const pl = projects.find((x) => x.id === pr.projectId)?.name ?? pr.projectId;
     return (
       <ProcurementEditModal
         row={pr}
-        projectLabel={pl}
-        tasks={tasks.filter((x) => x.projectId === pr.projectId)}
         suppliers={suppliers}
         onClose={onClose}
         onSaved={onSaved}
@@ -2372,9 +2369,14 @@ function EditDetailModal({
   }
   if (target.tab === "procurementLines" && ln) {
     const parent = procurement.find((x) => x.id === ln.procurementId);
-    const pl = parent ? projects.find((x) => x.id === parent.projectId)?.name ?? parent.projectId : ln.procurementId;
     return (
-      <ProcurementLineEditModal line={ln} procurementTitle={parent?.title ?? ln.procurementId} projectLabel={pl} onClose={onClose} onSaved={onSaved} />
+      <ProcurementLineEditModal
+        line={ln}
+        procurementTitle={parent?.title ?? ln.procurementId}
+        projects={projects}
+        onClose={onClose}
+        onSaved={onSaved}
+      />
     );
   }
 
@@ -3065,23 +3067,20 @@ function ProcurementDetailLineRow({
 function ProcurementDetailModal({
   procurement: row,
   lines,
-  projectLabel,
-  tasks,
+  projects,
   suppliers,
   onClose,
   onRefresh,
 }: {
   procurement: Procurement;
   lines: ProcurementLine[];
-  projectLabel: string;
-  tasks: Task[];
+  projects: Project[];
   suppliers: Supplier[];
   onClose: () => void;
   onRefresh: () => Promise<void>;
 }) {
   const [title, setTitle] = useState(row.title);
   const [status, setStatus] = useState(row.status);
-  const [taskId, setTaskId] = useState(row.taskId ?? "");
   const [supplierId, setSupplierId] = useState(row.supplierId ?? "");
   const [needBy, setNeedBy] = useState(isoToLocal(row.needBy));
   const [sapPo, setSapPo] = useState(row.sapPoNumber ?? "");
@@ -3095,6 +3094,7 @@ function ProcurementDetailModal({
   const [newOrder, setNewOrder] = useState(() =>
     lines.length ? String(Math.max(...lines.map((l) => l.orderIndex)) + 1) : "0",
   );
+  const [newProjectId, setNewProjectId] = useState(lines[0]?.projectId ?? projects[0]?.id ?? "");
   const [newReceivedQty, setNewReceivedQty] = useState("0");
   const [fullyReceivedOverride, setFullyReceivedOverride] = useState(
     row.fullyReceivedOverride ?? false,
@@ -3105,7 +3105,6 @@ function ProcurementDetailModal({
   useEffect(() => {
     setTitle(row.title);
     setStatus(row.status);
-    setTaskId(row.taskId ?? "");
     setSupplierId(row.supplierId ?? "");
     setNeedBy(isoToLocal(row.needBy));
     setSapPo(row.sapPoNumber ?? "");
@@ -3115,6 +3114,11 @@ function ProcurementDetailModal({
   useEffect(() => {
     setNewOrder(lines.length ? String(Math.max(...lines.map((l) => l.orderIndex)) + 1) : "0");
   }, [lines]);
+  useEffect(() => {
+    if (projects.length && !projects.some((p) => p.id === newProjectId)) {
+      setNewProjectId(projects[0]!.id);
+    }
+  }, [projects, newProjectId]);
 
   return (
     <ModalShell
@@ -3124,22 +3128,10 @@ function ProcurementDetailModal({
       footer={null}
     >
       {headerErr && <p className="mb-2 text-sm text-red-600">{headerErr}</p>}
-      <p className="mb-2 text-sm text-slate-600">Project: {projectLabel}</p>
       <div className="mb-4 grid gap-2 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label className="block text-sm font-medium">Title</label>
           <input className="w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium">Task</label>
-          <select className="w-full rounded border px-2 py-1" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
-            <option value="">(none)</option>
-            {tasks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title}
-              </option>
-            ))}
-          </select>
         </div>
         <div>
           <label className="block text-sm font-medium">Supplier</label>
@@ -3199,7 +3191,6 @@ function ProcurementDetailModal({
                 body: JSON.stringify({
                   title: title.trim(),
                   status,
-                  taskId: taskId || null,
                   supplierId: supplierId || null,
                   needBy: localToIso(needBy),
                   sapPoNumber: sapPo.trim() || null,
@@ -3249,6 +3240,20 @@ function ProcurementDetailModal({
       <div className="rounded border border-dashed border-slate-300 bg-slate-50/80 p-3">
         <p className="mb-2 text-sm font-medium text-slate-700">Add line</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-600">Project</label>
+            <select
+              className="w-full rounded border px-2 py-1"
+              value={newProjectId}
+              onChange={(e) => setNewProjectId(e.target.value)}
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="sm:col-span-2 lg:col-span-4">
             <label className="block text-xs font-medium text-slate-600">Description</label>
             <textarea className="w-full rounded border px-2 py-1" rows={2} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
@@ -3292,6 +3297,7 @@ function ProcurementDetailModal({
               method: "POST",
               body: JSON.stringify({
                 procurementId: row.id,
+                projectId: newProjectId,
                 description: newDesc.trim(),
                 quantity: newQty || "1",
                 unit: newUnit.trim() || null,
@@ -3321,22 +3327,17 @@ function ProcurementDetailModal({
 
 function ProcurementEditModal({
   row,
-  projectLabel,
-  tasks,
   suppliers,
   onClose,
   onSaved,
 }: {
   row: Procurement;
-  projectLabel: string;
-  tasks: Task[];
   suppliers: Supplier[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
   const [title, setTitle] = useState(row.title);
   const [status, setStatus] = useState(row.status);
-  const [taskId, setTaskId] = useState(row.taskId ?? "");
   const [supplierId, setSupplierId] = useState(row.supplierId ?? "");
   const [needBy, setNeedBy] = useState(isoToLocal(row.needBy));
   const [sapPo, setSapPo] = useState(row.sapPoNumber ?? "");
@@ -3348,7 +3349,6 @@ function ProcurementEditModal({
   useEffect(() => {
     setTitle(row.title);
     setStatus(row.status);
-    setTaskId(row.taskId ?? "");
     setSupplierId(row.supplierId ?? "");
     setNeedBy(isoToLocal(row.needBy));
     setSapPo(row.sapPoNumber ?? "");
@@ -3372,7 +3372,6 @@ function ProcurementEditModal({
                 body: JSON.stringify({
                   title: title.trim(),
                   status,
-                  taskId: taskId || null,
                   supplierId: supplierId || null,
                   needBy: localToIso(needBy),
                   sapPoNumber: sapPo.trim() || null,
@@ -3391,18 +3390,8 @@ function ProcurementEditModal({
       }
     >
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
-      <p className="mb-2 text-sm text-slate-600">Project: {projectLabel}</p>
       <label className="block text-sm font-medium">Title</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <label className="block text-sm font-medium">Task</label>
-      <select className="mb-2 w-full rounded border px-2 py-1" value={taskId} onChange={(e) => setTaskId(e.target.value)}>
-        <option value="">(none)</option>
-        {tasks.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.title}
-          </option>
-        ))}
-      </select>
       <label className="block text-sm font-medium">Supplier</label>
       <select
         className="mb-2 w-full rounded border px-2 py-1"
@@ -3446,16 +3435,17 @@ function ProcurementEditModal({
 function ProcurementLineEditModal({
   line,
   procurementTitle,
-  projectLabel,
+  projects,
   onClose,
   onSaved,
 }: {
   line: ProcurementLine;
   procurementTitle: string;
-  projectLabel: string;
+  projects: Project[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const [projectId, setProjectId] = useState(line.projectId);
   const [description, setDescription] = useState(line.description);
   const [quantity, setQuantity] = useState(line.quantity);
   const [unit, setUnit] = useState(line.unit ?? "");
@@ -3465,6 +3455,7 @@ function ProcurementLineEditModal({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
+    setProjectId(line.projectId);
     setDescription(line.description);
     setQuantity(line.quantity);
     setUnit(line.unit ?? "");
@@ -3488,6 +3479,7 @@ function ProcurementLineEditModal({
               void api("/api/procurement-lines/" + line.id, {
                 method: "PATCH",
                 body: JSON.stringify({
+                  projectId,
                   description: description.trim(),
                   quantity: quantity || "1",
                   unit: unit.trim() || null,
@@ -3509,7 +3501,14 @@ function ProcurementLineEditModal({
     >
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
       <p className="mb-2 text-sm text-slate-600">Purchasing: {procurementTitle}</p>
-      <p className="mb-2 text-sm text-slate-600">Project: {projectLabel}</p>
+      <label className="block text-sm font-medium">Project</label>
+      <select className="mb-2 w-full rounded border px-2 py-1" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
       <label className="block text-sm font-medium">Description</label>
       <textarea className="mb-2 w-full rounded border px-2 py-1" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
       <label className="block text-sm font-medium">Quantity</label>

@@ -29,6 +29,13 @@
       "when": 1778000000000,
       "tag": "0003_proc_receive_qty",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778200000000,
+      "tag": "0004_cross_project_purchasing",
+      "breakpoints": true
     }
   ]
 }

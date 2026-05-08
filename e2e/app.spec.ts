@@ -52,10 +52,16 @@ test("end-to-end: register, then land on launcher home", async ({
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Register" }).click();
+  const registerError = page.getByRole("alert");
+  if (await registerError.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    throw new Error(`Register failed: ${await registerError.innerText()}`);
+  }
+  await expect(page).toHaveURL("/", {
+    timeout: 15_000,
+  });
   await expect(page.getByRole("heading", { name: "Home" })).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page).toHaveURL("/");
   await expect(
     page.locator("main").getByRole("link", { name: "Projects", exact: true }),
   ).toBeVisible();
