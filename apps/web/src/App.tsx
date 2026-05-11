@@ -10,6 +10,15 @@ import { HomePage } from "./pages/HomePage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { WorkspaceLayout } from "./layouts/WorkspaceLayout";
 import { LauncherPage } from "./pages/LauncherPage";
+import { WorkspaceClientDetailPage } from "./pages/workspace/WorkspaceClientDetailPage";
+import { WorkspaceSupplierDetailPage } from "./pages/workspace/WorkspaceSupplierDetailPage";
+import { WorkspaceProjectDetailPage } from "./pages/workspace/WorkspaceProjectDetailPage";
+import { WorkspaceMilestoneDetailPage } from "./pages/workspace/WorkspaceMilestoneDetailPage";
+import { WorkspaceTaskDetailPage } from "./pages/workspace/WorkspaceTaskDetailPage";
+import { WorkspaceTodoDetailPage } from "./pages/workspace/WorkspaceTodoDetailPage";
+import { WorkspaceTimeEntryDetailPage } from "./pages/workspace/WorkspaceTimeEntryDetailPage";
+import { WorkspacePurchasingDetailPage } from "./pages/workspace/WorkspacePurchasingDetailPage";
+import { WorkspacePurchasingLineDetailPage } from "./pages/workspace/WorkspacePurchasingLineDetailPage";
 import { House } from "lucide-react";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -124,6 +133,15 @@ export default function App() {
         }
       >
         <Route index element={<Navigate to="projects" replace />} />
+        <Route path="customers/:clientId" element={<WorkspaceClientDetailPage />} />
+        <Route path="suppliers/:supplierId" element={<WorkspaceSupplierDetailPage />} />
+        <Route path="projects/:projectId" element={<WorkspaceProjectDetailPage />} />
+        <Route path="milestones/:milestoneId" element={<WorkspaceMilestoneDetailPage />} />
+        <Route path="tasks/:taskId" element={<WorkspaceTaskDetailPage />} />
+        <Route path="todos/:todoId" element={<WorkspaceTodoDetailPage />} />
+        <Route path="time-entries/:timeEntryId" element={<WorkspaceTimeEntryDetailPage />} />
+        <Route path="purchasing/:procurementId" element={<WorkspacePurchasingDetailPage />} />
+        <Route path="purchasing-lines/:lineId" element={<WorkspacePurchasingLineDetailPage />} />
         <Route path=":table" element={<HomePage />} />
       </Route>
       <Route

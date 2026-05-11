@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { WORKSPACE_NAV_ITEMS } from "../lib/workspaceNav";
 
 export function WorkspaceLayout() {
   const [collapsed, setCollapsed] = useState(false);
+  const { pathname } = useLocation();
 
   return (
     <div className="flex flex-1 min-h-0 w-full">
@@ -38,16 +39,20 @@ export function WorkspaceLayout() {
           aria-label="Workspace navigation"
           className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2"
         >
-          {WORKSPACE_NAV_ITEMS.map(({ slug, label }) => (
+          {WORKSPACE_NAV_ITEMS.map(({ slug, label }) => {
+            const prefix = `/workspace/${slug}`;
+            const sectionActive =
+              pathname === prefix || pathname.startsWith(prefix + "/");
+            return (
             <NavLink
               key={slug}
               to={`/workspace/${slug}`}
               end
               title={collapsed ? label : undefined}
-              className={({ isActive }) =>
+              className={() =>
                 "rounded-md px-2 py-2 text-sm transition-colors " +
                 (collapsed ? "text-center " : "") +
-                (isActive
+                (sectionActive
                   ? "bg-slate-900 font-medium text-white"
                   : "text-slate-700 hover:bg-slate-200/90 hover:text-slate-900")
               }
@@ -60,7 +65,8 @@ export function WorkspaceLayout() {
                 label
               )}
             </NavLink>
-          ))}
+            );
+          })}
         </nav>
       </aside>
       <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
