@@ -83,6 +83,15 @@ export function WorkspaceTaskDetailPage() {
   const [orderIndex, setOrderIndex] = useState("0");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [newTodoTitle, setNewTodoTitle] = useState("");
+  const [todoBusy, setTodoBusy] = useState(false);
+  const [timeTodoId, setTimeTodoId] = useState("");
+  const [timeBusy, setTimeBusy] = useState(false);
+
+  const nextTodoOrder = useMemo(
+    () => (todos.length ? Math.max(...todos.map((td) => td.orderIndex)) + 1 : 0),
+    [todos],
+  );
 
   useEffect(() => {
     if (!task) return;
@@ -181,9 +190,9 @@ export function WorkspaceTaskDetailPage() {
 
       <h2 className="mb-2 text-lg font-semibold text-slate-800">Todos</h2>
       {todos.length === 0 ? (
-        <p className="text-sm text-slate-500">No todos on this task.</p>
+        <p className="mb-2 text-sm text-slate-500">No todos on this task — add one below.</p>
       ) : (
-        <ul className="mb-8 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
           {todos.map((td) => (
             <li key={td.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
               <span className="text-slate-900">
@@ -197,12 +206,51 @@ export function WorkspaceTaskDetailPage() {
           ))}
         </ul>
       )}
+      <div className="mb-8 max-w-xl rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-3">
+        <p className="mb-2 text-sm font-medium text-slate-700">Add todo</p>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[12rem] flex-1">
+            <label className="block text-xs font-medium text-slate-600">Title</label>
+            <input
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              value={newTodoTitle}
+              onChange={(e) => setNewTodoTitle(e.target.value)}
+              placeholder="Todo title"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={todoBusy || !newTodoTitle.trim()}
+            className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            onClick={() => {
+              setErr(null);
+              setTodoBusy(true);
+              void api("/api/todos", {
+                method: "POST",
+                body: JSON.stringify({
+                  taskId: task.id,
+                  title: newTodoTitle.trim(),
+                  orderIndex: nextTodoOrder,
+                }),
+              })
+                .then(async () => {
+                  setNewTodoTitle("");
+                  await refresh();
+                })
+                .catch((e: Error) => setErr(e.message))
+                .finally(() => setTodoBusy(false));
+            }}
+          >
+            {todoBusy ? "…" : "Add todo"}
+          </button>
+        </div>
+      </div>
 
       <h2 className="mb-2 text-lg font-semibold text-slate-800">Time entries</h2>
       {entries.length === 0 ? (
-        <p className="text-sm text-slate-500">No time entries on this task.</p>
+        <p className="mb-2 text-sm text-slate-500">No time entries on this task — add one below.</p>
       ) : (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
           {entries.map((te) => (
             <li key={te.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
               <span className="text-sm text-slate-700">
@@ -216,6 +264,48 @@ export function WorkspaceTaskDetailPage() {
           ))}
         </ul>
       )}
+      <div className="max-w-xl rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-3">
+        <p className="mb-2 text-sm font-medium text-slate-700">Add time entry</p>
+        <p className="mb-2 text-xs text-slate-600">Creates a draft entry on this task (you). Set duration and notes on the entry page.</p>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[10rem] flex-1">
+            <label className="block text-xs font-medium text-slate-600">Link to todo (optional)</label>
+            <select
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              value={timeTodoId}
+              onChange={(e) => setTimeTodoId(e.target.value)}
+            >
+              <option value="">(none)</option>
+              {todos.map((td) => (
+                <option key={td.id} value={td.id}>
+                  {td.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            disabled={timeBusy}
+            className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            onClick={() => {
+              setErr(null);
+              setTimeBusy(true);
+              void api("/api/time-entries", {
+                method: "POST",
+                body: JSON.stringify({
+                  taskId: task.id,
+                  todoId: timeTodoId || null,
+                }),
+              })
+                .then(refresh)
+                .catch((e: Error) => setErr(e.message))
+                .finally(() => setTimeBusy(false));
+            }}
+          >
+            {timeBusy ? "…" : "Add time entry"}
+          </button>
+        </div>
+      </div>
     </WorkspaceDetailChrome>
   );
 }

@@ -59,6 +59,13 @@ export function WorkspaceProjectDetailPage() {
   const [endAt, setEndAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [newMilestoneName, setNewMilestoneName] = useState("");
+  const [childBusy, setChildBusy] = useState(false);
+
+  const nextMilestoneOrder = useMemo(
+    () => (milestones.length ? Math.max(...milestones.map((m) => m.orderIndex)) + 1 : 0),
+    [milestones],
+  );
 
   useEffect(() => {
     if (!project) return;
@@ -171,9 +178,9 @@ export function WorkspaceProjectDetailPage() {
 
       <h2 className="mb-2 text-lg font-semibold text-slate-800">Milestones</h2>
       {milestones.length === 0 ? (
-        <p className="text-sm text-slate-500">No milestones yet. Add them from the Milestones table.</p>
+        <p className="mb-2 text-sm text-slate-500">No milestones yet — add one below.</p>
       ) : (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
           {milestones.map((m) => (
             <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
               <span className="font-medium text-slate-900">{m.name}</span>
@@ -184,6 +191,45 @@ export function WorkspaceProjectDetailPage() {
           ))}
         </ul>
       )}
+      <div className="max-w-xl rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-3">
+        <p className="mb-2 text-sm font-medium text-slate-700">Add milestone</p>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[12rem] flex-1">
+            <label className="block text-xs font-medium text-slate-600">Name</label>
+            <input
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              value={newMilestoneName}
+              onChange={(e) => setNewMilestoneName(e.target.value)}
+              placeholder="Milestone name"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={childBusy || !newMilestoneName.trim()}
+            className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            onClick={() => {
+              setErr(null);
+              setChildBusy(true);
+              void api("/api/milestones", {
+                method: "POST",
+                body: JSON.stringify({
+                  projectId: project.id,
+                  name: newMilestoneName.trim(),
+                  orderIndex: nextMilestoneOrder,
+                }),
+              })
+                .then(async () => {
+                  setNewMilestoneName("");
+                  await refresh();
+                })
+                .catch((e: Error) => setErr(e.message))
+                .finally(() => setChildBusy(false));
+            }}
+          >
+            {childBusy ? "…" : "Add milestone"}
+          </button>
+        </div>
+      </div>
     </WorkspaceDetailChrome>
   );
 }

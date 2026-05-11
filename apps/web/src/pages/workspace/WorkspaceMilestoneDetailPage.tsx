@@ -53,6 +53,13 @@ export function WorkspaceMilestoneDetailPage() {
   const [orderIndex, setOrderIndex] = useState("0");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [childBusy, setChildBusy] = useState(false);
+
+  const nextTaskOrder = useMemo(
+    () => (tasks.length ? Math.max(...tasks.map((t) => t.orderIndex)) + 1 : 0),
+    [tasks],
+  );
 
   useEffect(() => {
     if (!milestone) return;
@@ -144,9 +151,9 @@ export function WorkspaceMilestoneDetailPage() {
 
       <h2 className="mb-2 text-lg font-semibold text-slate-800">Tasks</h2>
       {tasks.length === 0 ? (
-        <p className="text-sm text-slate-500">No tasks in this milestone yet.</p>
+        <p className="mb-2 text-sm text-slate-500">No tasks in this milestone yet — add one below.</p>
       ) : (
-        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
           {tasks.map((t) => (
             <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
               <span className="text-slate-900">{t.title}</span>
@@ -157,6 +164,48 @@ export function WorkspaceMilestoneDetailPage() {
           ))}
         </ul>
       )}
+      <div className="max-w-xl rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-3">
+        <p className="mb-2 text-sm font-medium text-slate-700">Add task</p>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[12rem] flex-1">
+            <label className="block text-xs font-medium text-slate-600">Title</label>
+            <input
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              placeholder="Task title"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={childBusy || !newTaskTitle.trim()}
+            className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            onClick={() => {
+              setErr(null);
+              setChildBusy(true);
+              void api("/api/tasks", {
+                method: "POST",
+                body: JSON.stringify({
+                  projectId: milestone.projectId,
+                  milestoneId: milestone.id,
+                  title: newTaskTitle.trim(),
+                  percentComplete: 0,
+                  useDerivedPercent: true,
+                  orderIndex: nextTaskOrder,
+                }),
+              })
+                .then(async () => {
+                  setNewTaskTitle("");
+                  await refresh();
+                })
+                .catch((e: Error) => setErr(e.message))
+                .finally(() => setChildBusy(false));
+            }}
+          >
+            {childBusy ? "…" : "Add task"}
+          </button>
+        </div>
+      </div>
     </WorkspaceDetailChrome>
   );
 }
