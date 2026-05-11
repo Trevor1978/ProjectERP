@@ -7,7 +7,12 @@ type SearchRes = {
   results: {
     projects: { id: string; name: string }[];
     tasks: { id: string; projectId: string; title: string }[];
-    todos: { id: string; title: string; _task: { projectId: string; title: string } }[];
+    todos: {
+      id: string;
+      title: string;
+      taskId: string;
+      _task: { projectId: string; title: string };
+    }[];
   };
 };
 
@@ -104,7 +109,9 @@ export function GlobalSearch() {
                 <li key={t.id}>
                   <Link
                     to={
-                      "/p/" + t._task.projectId + "?tab=todos"
+                      "/workspace/todos?taskId=" +
+                      encodeURIComponent(t.taskId) +
+                      "&view=table"
                     }
                     className="block px-2 py-1 rounded hover:bg-slate-100"
                     onClick={() => {

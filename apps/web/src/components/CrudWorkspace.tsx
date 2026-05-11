@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useMe } from "../hooks/useMe";
 import type { User } from "../types";
 import { TodoKanban } from "./TodoKanban";
-import { workspaceSlugToTab } from "../lib/workspaceNav";
+import { workspaceSlugToTab, workspaceTabToSlug } from "../lib/workspaceNav";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
 
 type Client = { id: string; name: string; code: string | null; version: number };
@@ -209,6 +209,71 @@ function deleteExecutePath(tab: Tab, id: string): string {
 
 const newRowInputClass = "w-full min-w-[6rem] rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-sm placeholder:text-slate-400";
 
+/** Narrow workspace table rows when `?projectId=` / `?taskId=` / `?milestoneId=` are present (e.g. deep-linked from a project). */
+function filterWorkspaceRowsByUrlParams(
+  tab: Tab,
+  rows: TableRow[],
+  filters: { projectId: string; taskId: string; milestoneId: string },
+  entities: {
+    milestones: Milestone[];
+    tasks: Task[];
+    todos: Todo[];
+    timeEntries: TimeEntry[];
+    procLines: ProcurementLine[];
+  },
+): TableRow[] {
+  const pid = filters.projectId.trim();
+  const tid = filters.taskId.trim();
+  const mid = filters.milestoneId.trim();
+  if (!pid && !tid && !mid) return rows;
+
+  if (tab === "milestones" && pid) {
+    const ok = new Set(entities.milestones.filter((m) => m.projectId === pid).map((m) => m.id));
+    return rows.filter((r) => ok.has(r.key));
+  }
+  if (tab === "tasks" && (pid || mid)) {
+    const ok = new Set(
+      entities.tasks
+        .filter((t) => (!pid || t.projectId === pid) && (!mid || t.milestoneId === mid))
+        .map((t) => t.id),
+    );
+    return rows.filter((r) => ok.has(r.key));
+  }
+  if (tab === "todos") {
+    if (tid) {
+      const ok = new Set(entities.todos.filter((td) => td.taskId === tid).map((td) => td.id));
+      return rows.filter((r) => ok.has(r.key));
+    }
+    if (pid) {
+      const taskIds = new Set(entities.tasks.filter((t) => t.projectId === pid).map((t) => t.id));
+      const ok = new Set(entities.todos.filter((td) => taskIds.has(td.taskId)).map((td) => td.id));
+      return rows.filter((r) => ok.has(r.key));
+    }
+  }
+  if (tab === "timeEntries") {
+    if (tid) {
+      const ok = new Set(entities.timeEntries.filter((te) => te.taskId === tid).map((te) => te.id));
+      return rows.filter((r) => ok.has(r.key));
+    }
+    if (pid) {
+      const taskIds = new Set(entities.tasks.filter((t) => t.projectId === pid).map((t) => t.id));
+      const ok = new Set(entities.timeEntries.filter((te) => taskIds.has(te.taskId)).map((te) => te.id));
+      return rows.filter((r) => ok.has(r.key));
+    }
+  }
+  if (tab === "procurement" && pid) {
+    const procIds = new Set(
+      entities.procLines.filter((l) => l.projectId === pid).map((l) => l.procurementId),
+    );
+    return rows.filter((r) => procIds.has(r.key));
+  }
+  if (tab === "procurementLines" && pid) {
+    const ok = new Set(entities.procLines.filter((l) => l.projectId === pid).map((l) => l.id));
+    return rows.filter((r) => ok.has(r.key));
+  }
+  return rows;
+}
+
 export function CrudWorkspace() {
   const qc = useQueryClient();
   const { data: meRes } = useMe();
@@ -225,7 +290,9 @@ export function CrudWorkspace() {
 
   const navigate = useNavigate();
   const { table } = useParams<{ table: string }>();
+  const [searchParams] = useSearchParams();
   const [todoView, setTodoView] = useState<"table" | "kanban">("table");
+  const kanbanUrlSyncSigRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!table) {
@@ -245,6 +312,14 @@ export function CrudWorkspace() {
       setTodoView("table");
     }
   }, [tab]);
+
+  useEffect(() => {
+    const v = searchParams.get("view");
+    if (tab !== "todos") return;
+    if (v === "kanban" || v === "table") {
+      setTodoView(v === "kanban" ? "kanban" : "table");
+    }
+  }, [tab, searchParams]);
 
   const onProcurementFilteredRowsChange = useCallback((r: TableRow[]) => {
     procurementMergeOrderRef.current = r.map((x) => x.key);
@@ -454,6 +529,19 @@ export function CrudWorkspace() {
     projectName,
     userName,
   ]);
+
+  const wsProjectId = searchParams.get("projectId")?.trim() ?? "";
+  const wsTaskId = searchParams.get("taskId")?.trim() ?? "";
+  const wsMilestoneId = searchParams.get("milestoneId")?.trim() ?? "";
+
+  useEffect(() => {
+    if (tab !== "todos" || todoView !== "kanban") return;
+    const sig = `${wsProjectId}\0${wsTaskId}`;
+    if (kanbanUrlSyncSigRef.current === sig) return;
+    kanbanUrlSyncSigRef.current = sig;
+    setKanbanProjectId(wsProjectId || "all");
+    setKanbanTaskId(wsTaskId || "all");
+  }, [tab, todoView, wsProjectId, wsTaskId]);
 
   const rowsByTab: Record<Tab, { dataHeaders: string[]; rows: TableRow[] }> = {
     customers: {
@@ -1093,6 +1181,19 @@ export function CrudWorkspace() {
   };
 
   const current = rowsByTab[tab];
+  const currentForTable = {
+    ...current,
+    rows: filterWorkspaceRowsByUrlParams(
+      tab,
+      current.rows,
+      {
+        projectId: wsProjectId,
+        taskId: wsTaskId,
+        milestoneId: wsMilestoneId,
+      },
+      { milestones, tasks, todos, timeEntries, procLines },
+    ),
+  };
   const showTodosKanban = tab === "todos" && todoView === "kanban";
 
   const viewToggleClasses = (active: boolean) =>
@@ -1105,6 +1206,23 @@ export function CrudWorkspace() {
         <h1 className="text-2xl font-semibold">{LABEL[tab]}</h1>
         <span className="text-xs text-slate-500">Org-wide</span>
       </div>
+
+      {(wsProjectId || wsTaskId || wsMilestoneId) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          <span>
+            URL filters active
+            {wsProjectId ? ` · project` : ""}
+            {wsTaskId ? ` · task` : ""}
+            {wsMilestoneId ? ` · milestone` : ""}
+          </span>
+          <Link
+            to={"/workspace/" + workspaceTabToSlug(tab)}
+            className="font-medium text-amber-900 underline decoration-amber-700 hover:text-amber-950"
+          >
+            Clear filters
+          </Link>
+        </div>
+      )}
 
       {tab === "todos" && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
@@ -1196,8 +1314,8 @@ export function CrudWorkspace() {
       ) : (
         <FilterSortTable
           key={tab}
-          dataHeaders={current.dataHeaders}
-          rows={current.rows}
+          dataHeaders={currentForTable.dataHeaders}
+          rows={currentForTable.rows}
           leadingColumn={
             tab === "procurement"
               ? {

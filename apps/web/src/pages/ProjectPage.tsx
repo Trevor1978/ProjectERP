@@ -4,44 +4,64 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "../lib/api";
 import type { Schedule } from "../types";
 import { GanttView } from "../components/GanttView";
-import { TodoKanban } from "../components/TodoKanban";
-import { InlineMilestones } from "../components/InlineMilestones";
-import { RfqPanel } from "../components/RfqPanel";
-import { ProjectTodoTable } from "../components/ProjectTodoTable";
-import { ProjectTimePanel } from "../components/ProjectTimePanel";
 import { ProjectTeamPanel } from "../components/ProjectTeamPanel";
 import { ProjectWorkspacePanel } from "../components/ProjectWorkspacePanel";
 import { ProjectMetaPanel } from "../components/ProjectMetaPanel";
-import { ProjectCrudTables } from "../components/ProjectCrudTables";
 
-const TABS = [
-  "milestones",
-  "gantt",
-  "todos",
-  "todosTable",
-  "time",
-  "rfq",
-  "team",
-  "workspace",
-  "crudTables",
-] as const;
-type Tab = (typeof TABS)[number];
+const IN_PROJECT_TABS = ["gantt", "team", "workspace"] as const;
+type InProjectTab = (typeof IN_PROJECT_TABS)[number];
 
-function isTab(s: string | null): s is Tab {
-  return s !== null && (TABS as readonly string[]).includes(s);
+function isInProjectTab(s: string | null): s is InProjectTab {
+  return s !== null && (IN_PROJECT_TABS as readonly string[]).includes(s);
 }
 
-const TAB_LABEL: Record<Tab, string> = {
-  milestones: "Milestones",
+const TAB_LABEL: Record<InProjectTab, string> = {
   gantt: "Gantt (tasks)",
-  todos: "Todo Kanban",
-  todosTable: "Todo table",
-  time: "Time",
-  rfq: "Purchasing / PO",
   team: "Team",
   workspace: "Budget & docs",
-  crudTables: "CRUD tables",
 };
+
+function workspaceLinks(projectId: string) {
+  const q = (params: Record<string, string>) =>
+    "?" + new URLSearchParams(params).toString();
+  return [
+    {
+      label: "Milestones",
+      to: `/workspace/milestones${q({ projectId })}`,
+      hint: "Filtered to this project",
+    },
+    {
+      label: "Tasks",
+      to: `/workspace/tasks${q({ projectId })}`,
+      hint: "Filtered to this project",
+    },
+    {
+      label: "Todos (table)",
+      to: `/workspace/todos${q({ projectId, view: "table" })}`,
+      hint: "Todos on tasks in this project",
+    },
+    {
+      label: "Todos (Kanban)",
+      to: `/workspace/todos${q({ projectId, view: "kanban" })}`,
+      hint: "Kanban for this project",
+    },
+    {
+      label: "Time entries",
+      to: `/workspace/time-entries${q({ projectId })}`,
+      hint: "Time on tasks in this project",
+    },
+    {
+      label: "Purchasing",
+      to: `/workspace/purchasing${q({ projectId })}`,
+      hint: "Requests with lines on this project",
+    },
+    {
+      label: "Purchasing lines",
+      to: `/workspace/purchasing-lines${q({ projectId })}`,
+      hint: "Line items for this project",
+    },
+  ] as const;
+}
 
 export function ProjectPage() {
   const { id } = useParams<{ id: string }>();
@@ -53,17 +73,17 @@ export function ProjectPage() {
       api<Schedule & { error?: string }>("/api/projects/" + id + "/schedule"),
     enabled: !!id,
   });
-  const [tab, setTab] = useState<Tab>("gantt");
+  const [tab, setTab] = useState<InProjectTab>("gantt");
 
   useEffect(() => {
     const t = searchParams.get("tab");
-    if (isTab(t)) {
+    if (isInProjectTab(t)) {
       setTab(t);
     }
   }, [searchParams]);
 
   const setTabNav = useCallback(
-    (t: Tab) => {
+    (t: InProjectTab) => {
       setTab(t);
       setSearchParams(
         (prev) => {
@@ -95,6 +115,8 @@ export function ProjectPage() {
 
   const p = data.project;
   const canEditProject = data.canEditProject === true;
+  const links = workspaceLinks(id);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -111,17 +133,30 @@ export function ProjectPage() {
         canEdit={canEditProject}
         onUpdated={invalidateSchedule}
       />
-      <div>
-        <button
-          type="button"
-          onClick={() => setTabNav("crudTables")}
-          className="px-3 py-1.5 text-sm rounded border border-slate-300 bg-white hover:bg-slate-50"
-        >
-          Open CRUD tables
-        </button>
-      </div>
+
+      <section className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+        <h2 className="text-sm font-semibold text-slate-800">Workspace</h2>
+        <p className="mt-1 text-xs text-slate-600">
+          Milestones, tasks, todos, time, and purchasing are managed in the org workspace. Links
+          below open the right table with filters for this project (or tasks in this project).
+        </p>
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {links.map((item) => (
+            <li key={item.label}>
+              <Link
+                to={item.to}
+                className="block rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:border-slate-300 hover:bg-slate-50"
+              >
+                {item.label}
+              </Link>
+              <p className="mt-0.5 text-xs text-slate-500">{item.hint}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <nav className="flex flex-wrap gap-1 border-b border-slate-200">
-        {TABS.map((k) => (
+        {IN_PROJECT_TABS.map((k) => (
           <button
             type="button"
             key={k}
@@ -137,13 +172,6 @@ export function ProjectPage() {
           </button>
         ))}
       </nav>
-      {tab === "milestones" && (
-        <InlineMilestones
-          projectId={id}
-          data={data}
-          onChange={invalidateSchedule}
-        />
-      )}
       {tab === "gantt" && (
         <GanttView
           projectId={id}
@@ -151,36 +179,8 @@ export function ProjectPage() {
           onAfterTaskChange={invalidateSchedule}
         />
       )}
-      {tab === "todos" && (
-        <TodoKanban
-          projectId={id}
-          tasks={data.tasks}
-          todos={data.todos}
-          onUpdate={invalidateSchedule}
-        />
-      )}
-      {tab === "todosTable" && (
-        <ProjectTodoTable
-          tasks={data.tasks}
-          todos={data.todos}
-          onChange={invalidateSchedule}
-        />
-      )}
-      {tab === "time" && (
-        <ProjectTimePanel projectId={id} tasks={data.tasks} />
-      )}
-      {tab === "rfq" && <RfqPanel projectId={id} />}
       {tab === "team" && <ProjectTeamPanel projectId={id} />}
       {tab === "workspace" && <ProjectWorkspacePanel projectId={id} />}
-      {tab === "crudTables" && (
-        <ProjectCrudTables
-          projectId={id}
-          milestones={data.milestones}
-          tasks={data.tasks}
-          todos={data.todos}
-          onRefresh={invalidateSchedule}
-        />
-      )}
     </div>
   );
 }
