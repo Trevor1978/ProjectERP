@@ -43,6 +43,20 @@
       "when": 1778300000000,
       "tag": "0005_procurement_line_part_number",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778400000000,
+      "tag": "0006_todo_description_asset_service",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778500000000,
+      "tag": "0007_procurement_line_ordered_qty",
+      "breakpoints": true
     }
   ]
 }
