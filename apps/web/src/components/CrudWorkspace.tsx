@@ -8,6 +8,7 @@ import type { User } from "../types";
 import { TodoKanban } from "./TodoKanban";
 import { workspaceSlugToTab, workspaceTabToSlug } from "../lib/workspaceNav";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
+import { displayOrderedQty, procurementLineRowClass } from "../workspace/procurementLineStatus";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Supplier = {
@@ -56,6 +57,7 @@ type Todo = {
   id: string;
   taskId: string;
   title: string;
+  description: string | null;
   status: "backlog" | "in_progress" | "blocked" | "done";
   dueAt: string | null;
   priority: "low" | "normal" | "high" | "urgent";
@@ -152,6 +154,7 @@ type TableRow = {
   action: React.ReactNode;
   search: string;
   sort: (string | number | null)[];
+  rowClassName?: string;
 };
 
 type EditTarget = { tab: Tab; id: string } | null;
@@ -386,6 +389,7 @@ export function CrudWorkspace() {
   const milestoneName = useMemo(() => new Map(milestones.map((m) => [m.id, m.name] as const)), [milestones]);
   const taskName = useMemo(() => new Map(tasks.map((t) => [t.id, t.title] as const)), [tasks]);
   const procName = useMemo(() => new Map(procurement.map((p) => [p.id, p.title] as const)), [procurement]);
+  const procById = useMemo(() => new Map(procurement.map((p) => [p.id, p] as const)), [procurement]);
   const userName = useMemo(() => new Map(orgUsers.map((u) => [u.id, u.name] as const)), [orgUsers]);
 
   async function refreshClients() {
@@ -840,7 +844,7 @@ export function CrudWorkspace() {
       }),
     },
     todos: {
-      dataHeaders: ["Task", "Title", "Status", "Due", "Priority", "Order", "Assignee"],
+      dataHeaders: ["Task", "Title", "Description", "Status", "Due", "Priority", "Order", "Assignee"],
       rows: todos.map((td) => ({
         key: td.id,
         action: rowActions("todos", td.id, td.title, undefined, { openHref: `/workspace/todos/${td.id}` }),
@@ -853,6 +857,16 @@ export function CrudWorkspace() {
               api("/api/todos/" + td.id, {
                 method: "PATCH",
                 body: JSON.stringify({ title: v, version: td.version }),
+              }).then(refreshSchedule)
+            }
+          />,
+          <InlineText
+            key="desc"
+            value={td.description ?? ""}
+            onSave={(v) =>
+              api("/api/todos/" + td.id, {
+                method: "PATCH",
+                body: JSON.stringify({ description: v.trim() || null, version: td.version }),
               }).then(refreshSchedule)
             }
           />,
@@ -910,10 +924,11 @@ export function CrudWorkspace() {
             }
           />,
         ],
-        search: `${taskName.get(td.taskId) ?? ""} ${td.title} ${td.status} ${td.priority}`,
+        search: `${taskName.get(td.taskId) ?? ""} ${td.title} ${td.description ?? ""} ${td.status} ${td.priority}`,
         sort: [
           taskName.get(td.taskId) ?? "",
           td.title,
+          td.description ?? "",
           td.status,
           td.dueAt ?? "",
           td.priority,
@@ -1072,14 +1087,21 @@ export function CrudWorkspace() {
         "Purchasing",
         "Part #",
         "Description",
-        "Qty",
         "Unit",
         "Est price",
-        "Rcvd qty",
-        "Order",
+        "Qty",
+        "Ordered",
+        "Received",
       ],
-      rows: procLines.map((l) => ({
+      rows: procLines.map((l) => {
+        const proc = procById.get(l.procurementId);
+        return {
         key: l.id,
+        rowClassName: procurementLineRowClass(l, {
+          needBy: proc?.needBy ?? null,
+          fullyReceivedOverride: proc?.fullyReceivedOverride ?? false,
+          procStatus: proc?.status ?? "draft",
+        }),
         action: rowActions("procurementLines", l.id, l.description.length > 48 ? l.description.slice(0, 48) + "…" : l.description, undefined, {
           openHref: `/workspace/purchasing-lines/${l.id}`,
         }),
@@ -1117,16 +1139,6 @@ export function CrudWorkspace() {
             }
           />,
           <InlineText
-            key="q"
-            value={l.quantity}
-            onSave={(v) =>
-              api("/api/procurement-lines/" + l.id, {
-                method: "PATCH",
-                body: JSON.stringify({ quantity: v, version: l.version }),
-              }).then(refreshProcurement)
-            }
-          />,
-          <InlineText
             key="u"
             value={l.unit ?? ""}
             onSave={(v) =>
@@ -1146,6 +1158,19 @@ export function CrudWorkspace() {
               }).then(refreshProcurement)
             }
           />,
+          <InlineText
+            key="q"
+            value={l.quantity}
+            onSave={(v) =>
+              api("/api/procurement-lines/" + l.id, {
+                method: "PATCH",
+                body: JSON.stringify({ quantity: v, version: l.version }),
+              }).then(refreshProcurement)
+            }
+          />,
+          <span key="ord-qty" className="tabular-nums text-slate-600">
+            {displayOrderedQty(proc?.status ?? "draft", l.quantity)}
+          </span>,
           <InlineNumber
             key="rcv"
             value={l.receivedQty}
@@ -1158,16 +1183,6 @@ export function CrudWorkspace() {
               }).then(refreshProcurement)
             }
           />,
-          <InlineNumber
-            key="ord"
-            value={l.orderIndex}
-            onSave={(v) =>
-              api("/api/procurement-lines/" + l.id, {
-                method: "PATCH",
-                body: JSON.stringify({ orderIndex: v, version: l.version }),
-              }).then(refreshProcurement)
-            }
-          />,
         ],
         search: `${projectName.get(l.projectId) ?? ""} ${procName.get(l.procurementId) ?? ""} ${l.partNumber ?? ""} ${l.description} ${l.quantity} ${l.receivedQty}`,
         sort: [
@@ -1175,13 +1190,14 @@ export function CrudWorkspace() {
           procName.get(l.procurementId) ?? "",
           l.partNumber ?? "",
           l.description,
-          l.quantity,
           l.unit ?? "",
           l.estUnitPrice ?? 0,
+          l.quantity,
+          displayOrderedQty(proc?.status ?? "draft", l.quantity),
           l.receivedQty,
-          l.orderIndex,
         ],
-      })),
+      };
+      }),
     },
   };
 
@@ -2134,6 +2150,7 @@ function FilterSortTable({
   onFilteredRowsChange?: (rows: TableRow[]) => void;
 }) {
   const [q, setQ] = useState("");
+  const [colFilters, setColFilters] = useState<Record<number, string>>({});
   const [sortCol, setSortCol] = useState(0);
   const [desc, setDesc] = useState(false);
   const [pageSize, setPageSize] = useState<string>("100");
@@ -2141,7 +2158,17 @@ function FilterSortTable({
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const hit = rows.filter((r) => !needle || r.search.toLowerCase().includes(needle));
+    const hit = rows.filter((r) => {
+      if (needle && !r.search.toLowerCase().includes(needle)) return false;
+      for (const [colKey, raw] of Object.entries(colFilters)) {
+        const fv = raw.trim().toLowerCase();
+        if (!fv) continue;
+        const col = Number(colKey);
+        const cell = String(r.sort[col] ?? "").toLowerCase();
+        if (!cell.includes(fv)) return false;
+      }
+      return true;
+    });
     return [...hit].sort((a, b) => {
       const av = a.sort[sortCol];
       const bv = b.sort[sortCol];
@@ -2151,7 +2178,7 @@ function FilterSortTable({
           : String(av ?? "").localeCompare(String(bv ?? ""));
       return desc ? -cmp : cmp;
     });
-  }, [rows, q, sortCol, desc]);
+  }, [rows, q, colFilters, sortCol, desc]);
 
   useEffect(() => {
     onFilteredRowsChange?.(filtered);
@@ -2165,7 +2192,7 @@ function FilterSortTable({
 
   useEffect(() => {
     setPage(1);
-  }, [q, pageSize]);
+  }, [q, colFilters, pageSize]);
 
   useEffect(() => {
     setPage((p) => Math.min(Math.max(1, p), totalPages));
@@ -2277,10 +2304,32 @@ function FilterSortTable({
                 Actions
               </th>
             </tr>
+            <tr className="border-t bg-white">
+              {leadingColumn ? <th className="p-1" /> : null}
+              {dataHeaders.map((h, idx) => (
+                <th key={`f-${h}-${idx}`} className="p-1 font-normal">
+                  <input
+                    className="w-full min-w-[4rem] rounded border border-tesla-border px-1.5 py-0.5 text-xs font-normal"
+                    placeholder={`Filter ${h}`}
+                    value={colFilters[idx] ?? ""}
+                    onChange={(e) =>
+                      setColFilters((prev) => {
+                        const next = { ...prev };
+                        const v = e.target.value;
+                        if (v) next[idx] = v;
+                        else delete next[idx];
+                        return next;
+                      })
+                    }
+                  />
+                </th>
+              ))}
+              <th className={"p-1 " + stickyActionsTh} />
+            </tr>
           </thead>
           <tbody>
             {paginatedRows.map((r) => (
-              <tr key={r.key} className="border-t">
+              <tr key={r.key} className={"border-t " + (r.rowClassName ?? "")}>
                 {leadingColumn ? (
                   <td className="p-2 align-top">{leadingColumn.renderCell(r)}</td>
                 ) : null}

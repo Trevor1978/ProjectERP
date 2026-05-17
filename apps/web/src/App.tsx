@@ -19,6 +19,8 @@ import { WorkspaceTodoDetailPage } from "./pages/workspace/WorkspaceTodoDetailPa
 import { WorkspaceTimeEntryDetailPage } from "./pages/workspace/WorkspaceTimeEntryDetailPage";
 import { WorkspacePurchasingDetailPage } from "./pages/workspace/WorkspacePurchasingDetailPage";
 import { WorkspacePurchasingLineDetailPage } from "./pages/workspace/WorkspacePurchasingLineDetailPage";
+import { WorkspaceMachinesPage } from "./pages/workspace/WorkspaceMachinesPage";
+import { WorkspaceMachineDetailPage } from "./pages/workspace/WorkspaceMachineDetailPage";
 import { House } from "lucide-react";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -40,32 +42,35 @@ function Layout({ children }: { children: React.ReactNode }) {
   }
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
+      <header className="flex items-center justify-between border-b border-tesla-border bg-tesla-header px-4 py-3 text-white">
         <div className="flex items-center gap-6">
-          <Link to="/" className="font-semibold tracking-tight">
+          <Link to="/" className="text-sm font-medium uppercase tracking-[0.2em]">
             Project ERP
           </Link>
           <Link
             to="/"
-            className="flex items-center gap-1.5 text-sm text-slate-300 hover:text-white"
+            className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white"
           >
             <House className="h-4 w-4 opacity-90" aria-hidden />
             Home
           </Link>
-          <Link to="/workspace/projects" className="text-sm text-slate-300 hover:text-white">
+          <Link to="/workspace/projects" className="text-sm text-white/70 hover:text-white">
             Projects
+          </Link>
+          <Link to="/workspace/machines" className="text-sm text-white/70 hover:text-white">
+            Machines
           </Link>
         </div>
         <div className="flex items-center gap-3 text-sm">
           <GlobalSearch />
           <NotificationBell />
-          <span className="hidden max-w-[200px] truncate text-slate-400 sm:inline" title={user.name}>
-            {user.name} <span className="text-slate-500">({user.org.name})</span>
+          <span className="hidden max-w-[200px] truncate text-white/60 sm:inline" title={user.name}>
+            {user.name} <span className="text-white/40">({user.org.name})</span>
           </span>
           <button
             type="button"
             onClick={() => void logout()}
-            className="rounded bg-slate-800 px-2 py-1 hover:bg-slate-700"
+            className="rounded-sm border border-white/20 px-2 py-1 hover:bg-white/10"
           >
             Log out
           </button>
@@ -142,6 +147,8 @@ export default function App() {
         <Route path="time-entries/:timeEntryId" element={<WorkspaceTimeEntryDetailPage />} />
         <Route path="purchasing/:procurementId" element={<WorkspacePurchasingDetailPage />} />
         <Route path="purchasing-lines/:lineId" element={<WorkspacePurchasingLineDetailPage />} />
+        <Route path="machines" element={<WorkspaceMachinesPage />} />
+        <Route path="machines/:assetId" element={<WorkspaceMachineDetailPage />} />
         <Route path=":table" element={<HomePage />} />
       </Route>
       <Route

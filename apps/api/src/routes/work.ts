@@ -804,6 +804,7 @@ app.post("/todos", async (c) => {
     .values({
       taskId: p.data.taskId,
       title: p.data.title,
+      description: p.data.description ?? null,
       status: p.data.status,
       dueAt: p.data.dueAt,
       priority: p.data.priority,
@@ -845,6 +846,10 @@ app.patch("/todos/:id", async (c) => {
     .update(todo)
     .set({
       title: p.data.title ?? cur[0]!.title,
+      description:
+        p.data.description === undefined
+          ? cur[0]!.description
+          : p.data.description,
       status: p.data.status ?? cur[0]!.status,
       dueAt: p.data.dueAt === undefined ? cur[0]!.dueAt : p.data.dueAt,
       priority: p.data.priority ?? cur[0]!.priority,

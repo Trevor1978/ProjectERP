@@ -3,6 +3,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    @apply bg-white text-tesla-text antialiased;
+  }
+}
+
 /* Frappe Gantt in flex layout */
 .gantt-container {
   font-family: inherit;

@@ -11,6 +11,7 @@ import {
   handover,
   comment,
   asset,
+  assetServiceLog,
   projectAsset,
   projectBudget,
 } from "@project-erp/db";
@@ -21,6 +22,9 @@ import {
   documentLinkPatch,
   handoverCreate,
   commentCreate,
+  assetCreate,
+  assetServiceLogCreate,
+  assetServiceLogPatch,
 } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
 import { requireProject } from "../lib/projectAccess.js";
@@ -444,23 +448,140 @@ app.post("/assets", async (c) => {
   if (a.globalRole !== "org_admin") {
     return c.json({ error: "Forbidden" }, 403);
   }
-  const b = (await c.req.json()) as {
-    name: string;
-    site: string;
-    line: string;
-    serial?: string;
-  };
+  const p = assetCreate.safeParse(await c.req.json());
+  if (!p.success) {
+    return c.json({ error: p.error.flatten() }, 400);
+  }
   const [row] = await db
     .insert(asset)
     .values({
       organizationId: a.organizationId,
-      name: b.name,
-      site: b.site,
-      line: b.line,
-      serial: b.serial ?? null,
+      name: p.data.name,
+      site: p.data.site,
+      line: p.data.line,
+      serial: p.data.serial ?? null,
     })
     .returning();
   return c.json({ asset: row });
+});
+
+app.get("/assets/:assetId", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const assetId = c.req.param("assetId");
+  const rows = await db
+    .select()
+    .from(asset)
+    .where(
+      and(eq(asset.id, assetId), eq(asset.organizationId, a.organizationId)),
+    );
+  if (rows.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({ asset: rows[0] });
+});
+
+app.get("/assets/:assetId/service-logs", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const assetId = c.req.param("assetId");
+  const rows = await db
+    .select()
+    .from(asset)
+    .where(
+      and(eq(asset.id, assetId), eq(asset.organizationId, a.organizationId)),
+    );
+  if (rows.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const logs = await db
+    .select()
+    .from(assetServiceLog)
+    .where(eq(assetServiceLog.assetId, assetId))
+    .orderBy(desc(assetServiceLog.performedAt));
+  return c.json({ logs });
+});
+
+app.post("/asset-service-logs", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const p = assetServiceLogCreate.safeParse(await c.req.json());
+  if (!p.success) {
+    return c.json({ error: p.error.flatten() }, 400);
+  }
+  const rows = await db
+    .select()
+    .from(asset)
+    .where(
+      and(
+        eq(asset.id, p.data.assetId),
+        eq(asset.organizationId, a.organizationId),
+      ),
+    );
+  if (rows.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const [row] = await db
+    .insert(assetServiceLog)
+    .values({
+      assetId: p.data.assetId,
+      title: p.data.title,
+      description: p.data.description ?? null,
+      performedAt: p.data.performedAt ?? new Date(),
+      technicianName: p.data.technicianName ?? null,
+    })
+    .returning();
+  return c.json({ log: row });
+});
+
+app.patch("/asset-service-logs/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = assetServiceLogPatch.safeParse(await c.req.json());
+  if (!p.success) {
+    return c.json({ error: p.error.flatten() }, 400);
+  }
+  const cur = await db
+    .select({ log: assetServiceLog, asset: asset })
+    .from(assetServiceLog)
+    .innerJoin(asset, eq(assetServiceLog.assetId, asset.id))
+    .where(eq(assetServiceLog.id, id));
+  if (cur.length === 0 || cur[0]!.asset.organizationId !== a.organizationId) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const log = cur[0]!.log;
+  if (p.data.version !== undefined && p.data.version !== log.version) {
+    return c.json({ error: "Version conflict" }, 409);
+  }
+  const [row] = await db
+    .update(assetServiceLog)
+    .set({
+      title: p.data.title ?? log.title,
+      description:
+        p.data.description === undefined ? log.description : p.data.description,
+      performedAt: p.data.performedAt ?? log.performedAt,
+      technicianName:
+        p.data.technicianName === undefined
+          ? log.technicianName
+          : p.data.technicianName,
+      version: log.version + 1,
+      updatedAt: new Date(),
+    })
+    .where(eq(assetServiceLog.id, id))
+    .returning();
+  return c.json({ log: row });
+});
+
+app.delete("/asset-service-logs/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const cur = await db
+    .select({ log: assetServiceLog, asset: asset })
+    .from(assetServiceLog)
+    .innerJoin(asset, eq(assetServiceLog.assetId, asset.id))
+    .where(eq(assetServiceLog.id, id));
+  if (cur.length === 0 || cur[0]!.asset.organizationId !== a.organizationId) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  await db.delete(assetServiceLog).where(eq(assetServiceLog.id, id));
+  return c.json({ ok: true });
 });
 
 app.get("/projects/:projectId/assets", async (c) => {

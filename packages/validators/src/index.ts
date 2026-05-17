@@ -117,6 +117,7 @@ export const taskPatch = z
 export const todoCreate = z.object({
   taskId: id,
   title: z.string().min(1).max(500),
+  description: z.string().max(10000).optional().nullable(),
   status: z
     .enum(["backlog", "in_progress", "blocked", "done"])
     .default("backlog"),
@@ -129,6 +130,7 @@ export const todoCreate = z.object({
 export const todoPatch = z
   .object({
     title: z.string().min(1).max(500).optional(),
+    description: z.string().max(10000).optional().nullable(),
     status: z
       .enum(["backlog", "in_progress", "blocked", "done"])
       .optional(),
@@ -225,6 +227,31 @@ export const procurementLinePatch = z
   .strict();
 
 /** First id is the kept procurement; remaining ids are merged into it. */
+export const assetCreate = z.object({
+  name: z.string().min(1).max(500),
+  site: z.string().min(1).max(200),
+  line: z.string().min(1).max(200),
+  serial: z.string().max(200).optional().nullable(),
+});
+
+export const assetServiceLogCreate = z.object({
+  assetId: id,
+  title: z.string().min(1).max(500),
+  description: z.string().max(10000).optional().nullable(),
+  performedAt: z.coerce.date().optional(),
+  technicianName: z.string().max(200).optional().nullable(),
+});
+
+export const assetServiceLogPatch = z
+  .object({
+    title: z.string().min(1).max(500).optional(),
+    description: z.string().max(10000).optional().nullable(),
+    performedAt: z.coerce.date().optional(),
+    technicianName: z.string().max(200).optional().nullable(),
+    version,
+  })
+  .strict();
+
 export const procurementMerge = z.object({
   ids: z.array(id).min(2),
 });

@@ -251,6 +251,7 @@ export const todo = pgTable(
       .notNull()
       .references(() => task.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
+    description: text("description"),
     status: text("status", {
       enum: ["backlog", "in_progress", "blocked", "done"],
     })
@@ -562,6 +563,32 @@ export const projectAsset = pgTable(
       .references(() => asset.id, { onDelete: "cascade" }),
   },
   (t) => [uniqueIndex("pa_proj_asset").on(t.projectId, t.assetId)],
+);
+
+export const assetServiceLog = pgTable(
+  "asset_service_log",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => asset.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    performedAt: timestamp("performed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    technicianName: text("technician_name"),
+    version: integer("version").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("asl_asset").on(t.assetId)],
 );
 
 export const auditLog = pgTable("audit_log", {

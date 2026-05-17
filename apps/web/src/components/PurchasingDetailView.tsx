@@ -1,43 +1,106 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import { openProcurementPdfReport } from "../lib/procurementReport";
+import { useDebouncedPatch } from "../hooks/useDebouncedPatch";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
 import type { Procurement, ProcurementLine } from "../workspace/purchasingTypes";
 import { PROC_STATUS } from "../workspace/purchasingTypes";
+import {
+  calcProcurementTotals,
+  displayOrderedQty,
+  procurementLineRowClass,
+} from "../workspace/procurementLineStatus";
 
 type Project = { id: string; name: string };
 type Supplier = { id: string; name: string };
 
+function money(n: number): string {
+  return n.toLocaleString(undefined, { style: "currency", currency: "AUD" });
+}
+
 function PurchasingDetailLineRow({
   line,
+  projects,
+  procStatus,
+  needBy,
+  fullyReceivedOverride,
   onSaved,
+  onRemoved,
 }: {
   line: ProcurementLine;
+  projects: Project[];
+  procStatus: Procurement["status"];
+  needBy: string | null;
+  fullyReceivedOverride: boolean;
   onSaved: () => Promise<void>;
+  onRemoved: () => Promise<void>;
 }) {
   const [partNumber, setPartNumber] = useState(line.partNumber ?? "");
   const [description, setDescription] = useState(line.description);
+  const [projectId, setProjectId] = useState(line.projectId);
   const [quantity, setQuantity] = useState(line.quantity);
   const [unit, setUnit] = useState(line.unit ?? "");
   const [estUnitPrice, setEstUnitPrice] = useState(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
-  const [orderIndex, setOrderIndex] = useState(String(line.orderIndex));
   const [receivedQty, setReceivedQty] = useState(String(line.receivedQty));
-  const [saving, setSaving] = useState(false);
+  const [version, setVersion] = useState(line.version);
   const [removing, setRemoving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
   useEffect(() => {
     setPartNumber(line.partNumber ?? "");
     setDescription(line.description);
+    setProjectId(line.projectId);
     setQuantity(line.quantity);
     setUnit(line.unit ?? "");
     setEstUnitPrice(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
-    setOrderIndex(String(line.orderIndex));
     setReceivedQty(String(line.receivedQty));
+    setVersion(line.version);
   }, [line]);
+
+  const patchBody = useMemo(
+    () => ({
+      partNumber: partNumber.trim() || null,
+      description: description.trim(),
+      projectId,
+      quantity: quantity || "1",
+      unit: unit.trim() || null,
+      estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
+      receivedQty: Math.max(0, Math.trunc(Number(receivedQty) || 0)),
+      version,
+    }),
+    [partNumber, description, projectId, quantity, unit, estUnitPrice, receivedQty, version],
+  );
+
+  const save = useCallback(
+    async (body: typeof patchBody) => {
+      const res = await api<{ line: ProcurementLine }>("/api/procurement-lines/" + line.id, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      setVersion(res.line.version);
+      await onSaved();
+      return { version: res.line.version };
+    },
+    [line.id, onSaved],
+  );
+
+  useDebouncedPatch({
+    enabled: Boolean(description.trim()),
+    payload: patchBody,
+    save,
+    onVersion: setVersion,
+  });
+
+  const rowClass = procurementLineRowClass(
+    { quantity, receivedQty: Number(receivedQty) || 0 },
+    { needBy, fullyReceivedOverride, procStatus },
+  );
+
   return (
-    <tr className="border-b align-top">
+    <tr className={`border-b align-top ${rowClass}`}>
       <td className="py-1 pr-2">
         <input
-          className="w-full min-w-[6rem] rounded border px-2 py-1"
+          className="w-full min-w-[6rem] rounded border border-tesla-border px-2 py-1"
           value={partNumber}
           onChange={(e) => setPartNumber(e.target.value)}
           placeholder="Part #"
@@ -46,35 +109,46 @@ function PurchasingDetailLineRow({
       <td className="py-1 pr-2">
         {err && <p className="mb-1 text-xs text-red-600">{err}</p>}
         <textarea
-          className="w-full min-w-[12rem] rounded border px-2 py-1"
+          className="w-full min-w-[12rem] rounded border border-tesla-border px-2 py-1"
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
       </td>
       <td className="py-1 pr-2">
-        <input className="w-20 rounded border px-2 py-1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+        <select
+          className="w-full min-w-[8rem] rounded border border-tesla-border px-2 py-1"
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+        >
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
       </td>
       <td className="py-1 pr-2">
-        <input className="w-16 rounded border px-2 py-1" value={unit} onChange={(e) => setUnit(e.target.value)} />
+        <input className="w-16 rounded border border-tesla-border px-2 py-1" value={unit} onChange={(e) => setUnit(e.target.value)} />
       </td>
       <td className="py-1 pr-2">
         <input
           type="number"
-          className="w-24 rounded border px-2 py-1"
+          className="w-24 rounded border border-tesla-border px-2 py-1"
           value={estUnitPrice}
           onChange={(e) => setEstUnitPrice(e.target.value)}
         />
       </td>
       <td className="py-1 pr-2">
-        <input type="number" className="w-14 rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
+        <input className="w-20 rounded border border-tesla-border px-2 py-1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
       </td>
+      <td className="py-1 pr-2 text-slate-600 tabular-nums">{displayOrderedQty(procStatus, quantity)}</td>
       <td className="py-1 pr-2">
         <input
           type="number"
           min={0}
           step={1}
-          className="w-20 rounded border px-2 py-1"
+          className="w-20 rounded border border-tesla-border px-2 py-1"
           value={receivedQty}
           onChange={(e) => setReceivedQty(e.target.value)}
         />
@@ -82,41 +156,14 @@ function PurchasingDetailLineRow({
       <td className="py-1 whitespace-nowrap">
         <button
           type="button"
-          className="mr-1 rounded border bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50"
-          disabled={saving || removing || !description.trim()}
-          onClick={() => {
-            setErr(null);
-            setSaving(true);
-            void api("/api/procurement-lines/" + line.id, {
-              method: "PATCH",
-              body: JSON.stringify({
-                partNumber: partNumber.trim() || null,
-                description: description.trim(),
-                quantity: quantity || "1",
-                unit: unit.trim() || null,
-                estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
-                orderIndex: Number(orderIndex) || 0,
-                receivedQty: Math.max(0, Math.trunc(Number(receivedQty) || 0)),
-                version: line.version,
-              }),
-            })
-              .then(onSaved)
-              .catch((e: Error) => setErr(e.message))
-              .finally(() => setSaving(false));
-          }}
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          className="rounded border px-2 py-1 text-xs text-red-700 disabled:opacity-50"
-          disabled={saving || removing}
+          className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-50"
+          disabled={removing}
           onClick={() => {
             if (!window.confirm("Remove this line?")) return;
             setErr(null);
             setRemoving(true);
             void api("/api/procurement-lines/" + line.id, { method: "DELETE" })
-              .then(onSaved)
+              .then(onRemoved)
               .catch((e: Error) => setErr(e.message))
               .finally(() => setRemoving(false));
           }}
@@ -163,6 +210,9 @@ export function PurchasingDetailView({
   const [lineAdding, setLineAdding] = useState(false);
   const [lineErr, setLineErr] = useState<string | null>(null);
 
+  const supplier = suppliers.find((s) => s.id === row.supplierId);
+  const totals = useMemo(() => calcProcurementTotals(lines), [lines]);
+
   useEffect(() => {
     setTitle(row.title);
     setStatus(row.status);
@@ -182,16 +232,28 @@ export function PurchasingDetailView({
   }, [projects, newProjectId]);
 
   return (
-    <div className="mx-auto max-w-6xl rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="mx-auto max-w-6xl rounded-lg border border-tesla-border bg-white p-4 shadow-sm">
       {headerErr && <p className="mb-2 text-sm text-red-600">{headerErr}</p>}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-medium tracking-tight text-tesla-text">Purchasing order</h2>
+        <button
+          type="button"
+          className="rounded-sm border border-tesla-border bg-white px-3 py-1.5 text-sm font-medium text-tesla-text hover:bg-tesla-muted"
+          onClick={() =>
+            openProcurementPdfReport({ row, lines, supplier: supplier ?? null, projects })
+          }
+        >
+          RFQ / PO report (PDF)
+        </button>
+      </div>
       <div className="mb-4 grid gap-2 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label className="block text-sm font-medium">Title</label>
-          <input className="w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <label className="block text-sm font-medium text-tesla-text-secondary">Title</label>
+          <input className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
         <div>
-          <label className="block text-sm font-medium">Supplier</label>
-          <select className="w-full rounded border px-2 py-1" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+          <label className="block text-sm font-medium text-tesla-text-secondary">Supplier</label>
+          <select className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
             <option value="">(none)</option>
             {suppliers.map((s) => (
               <option key={s.id} value={s.id}>
@@ -201,8 +263,8 @@ export function PurchasingDetailView({
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium">Status</label>
-          <select className="w-full rounded border px-2 py-1" value={status} onChange={(e) => setStatus(e.target.value as Procurement["status"])}>
+          <label className="block text-sm font-medium text-tesla-text-secondary">Status</label>
+          <select className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={status} onChange={(e) => setStatus(e.target.value as Procurement["status"])}>
             {PROC_STATUS.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -211,19 +273,19 @@ export function PurchasingDetailView({
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium">Need by</label>
-          <input type="datetime-local" className="w-full rounded border px-2 py-1" value={needBy} onChange={(e) => setNeedBy(e.target.value)} />
+          <label className="block text-sm font-medium text-tesla-text-secondary">Need by</label>
+          <input type="datetime-local" className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={needBy} onChange={(e) => setNeedBy(e.target.value)} />
         </div>
         <div>
-          <label className="block text-sm font-medium">SAP PO</label>
-          <input className="w-full rounded border px-2 py-1" value={sapPo} onChange={(e) => setSapPo(e.target.value)} />
+          <label className="block text-sm font-medium text-tesla-text-secondary">SAP PO</label>
+          <input className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={sapPo} onChange={(e) => setSapPo(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-1" checked={fullyReceivedOverride} onChange={(e) => setFullyReceivedOverride(e.target.checked)} />
             <span>
-              <span className="font-medium">Fully received (order)</span>
-              <span className="block text-xs font-normal text-slate-600">
+              <span className="font-medium text-tesla-text">Fully received (order)</span>
+              <span className="block text-xs font-normal text-tesla-text-secondary">
                 Marks the PO closed as fully received even when line quantities do not match.
               </span>
             </span>
@@ -232,7 +294,7 @@ export function PurchasingDetailView({
         <div className="sm:col-span-2">
           <button
             type="button"
-            className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            className="rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
             disabled={headerSaving || !title.trim()}
             onClick={() => {
               setHeaderErr(null);
@@ -259,42 +321,70 @@ export function PurchasingDetailView({
         </div>
       </div>
 
-      <h3 className="mb-2 text-sm font-semibold text-slate-800">Line items</h3>
-      <div className="mb-4 overflow-x-auto rounded border">
-        <table className="w-full min-w-[36rem] border-collapse text-sm">
+      <div className="mb-4 flex flex-wrap justify-end gap-6 rounded-sm border border-tesla-border bg-tesla-muted/50 px-4 py-3 text-sm">
+        <div>
+          <span className="text-tesla-text-secondary">Subtotal (ex GST)</span>
+          <p className="font-medium tabular-nums text-tesla-text">{money(totals.subtotal)}</p>
+        </div>
+        <div>
+          <span className="text-tesla-text-secondary">GST (10%)</span>
+          <p className="font-medium tabular-nums text-tesla-text">{money(totals.gst)}</p>
+        </div>
+        <div>
+          <span className="text-tesla-text-secondary">Total</span>
+          <p className="text-base font-semibold tabular-nums text-tesla-text">{money(totals.total)}</p>
+        </div>
+      </div>
+
+      <h3 className="mb-2 text-sm font-semibold text-tesla-text">Line items</h3>
+      <p className="mb-2 text-xs text-tesla-text-secondary">Changes save automatically. Green = received, amber = partial, red = overdue.</p>
+      <div className="mb-4 overflow-x-auto rounded-sm border border-tesla-border">
+        <table className="w-full min-w-[42rem] border-collapse text-sm">
           <thead>
-            <tr className="border-b bg-slate-50 text-left">
+            <tr className="border-b bg-tesla-muted text-left">
               <th className="px-2 py-2 font-medium">Part #</th>
               <th className="px-2 py-2 font-medium">Description</th>
-              <th className="px-2 py-2 font-medium">Qty</th>
+              <th className="px-2 py-2 font-medium">Project</th>
               <th className="px-2 py-2 font-medium">Unit</th>
               <th className="px-2 py-2 font-medium">Est $</th>
-              <th className="px-2 py-2 font-medium">Order</th>
-              <th className="px-2 py-2 font-medium">Rcvd qty</th>
-              <th className="px-2 py-2 font-medium">Actions</th>
+              <th className="px-2 py-2 font-medium">Qty</th>
+              <th className="px-2 py-2 font-medium">Ordered</th>
+              <th className="px-2 py-2 font-medium">Received</th>
+              <th className="px-2 py-2 font-medium" />
             </tr>
           </thead>
           <tbody>
             {lines.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-2 py-3 text-slate-500">
+                <td colSpan={9} className="px-2 py-3 text-tesla-text-secondary">
                   No lines yet — add one below.
                 </td>
               </tr>
             ) : (
-              lines.map((l) => <PurchasingDetailLineRow key={l.id} line={l} onSaved={onRefresh} />)
+              lines.map((l) => (
+                <PurchasingDetailLineRow
+                  key={l.id}
+                  line={l}
+                  projects={projects}
+                  procStatus={row.status}
+                  needBy={row.needBy}
+                  fullyReceivedOverride={fullyReceivedOverride}
+                  onSaved={onRefresh}
+                  onRemoved={onRefresh}
+                />
+              ))
             )}
           </tbody>
         </table>
       </div>
 
       {lineErr && <p className="mb-2 text-sm text-red-600">{lineErr}</p>}
-      <div className="rounded border border-dashed border-slate-300 bg-slate-50/80 p-3">
-        <p className="mb-2 text-sm font-medium text-slate-700">Add line</p>
+      <div className="rounded-sm border border-dashed border-tesla-border bg-tesla-muted/30 p-3">
+        <p className="mb-2 text-sm font-medium text-tesla-text">Add line</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600">Project</label>
-            <select className="w-full rounded border px-2 py-1" value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)}>
+            <label className="block text-xs font-medium text-tesla-text-secondary">Project</label>
+            <select className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)}>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -303,36 +393,32 @@ export function PurchasingDetailView({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600">Part #</label>
-            <input className="w-full rounded border px-2 py-1" value={newPart} onChange={(e) => setNewPart(e.target.value)} />
+            <label className="block text-xs font-medium text-tesla-text-secondary">Part #</label>
+            <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newPart} onChange={(e) => setNewPart(e.target.value)} />
           </div>
           <div className="sm:col-span-2 lg:col-span-3">
-            <label className="block text-xs font-medium text-slate-600">Description</label>
-            <textarea className="w-full rounded border px-2 py-1" rows={2} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
+            <label className="block text-xs font-medium text-tesla-text-secondary">Description</label>
+            <textarea className="w-full rounded-sm border border-tesla-border px-2 py-1" rows={2} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600">Quantity</label>
-            <input className="w-full rounded border px-2 py-1" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
+            <label className="block text-xs font-medium text-tesla-text-secondary">Qty</label>
+            <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600">Unit</label>
-            <input className="w-full rounded border px-2 py-1" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
+            <label className="block text-xs font-medium text-tesla-text-secondary">Unit</label>
+            <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600">Est unit price</label>
-            <input type="number" className="w-full rounded border px-2 py-1" value={newEst} onChange={(e) => setNewEst(e.target.value)} />
+            <label className="block text-xs font-medium text-tesla-text-secondary">Est unit price</label>
+            <input type="number" className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newEst} onChange={(e) => setNewEst(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600">Order</label>
-            <input type="number" className="w-full rounded border px-2 py-1" value={newOrder} onChange={(e) => setNewOrder(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600">Received qty</label>
+            <label className="block text-xs font-medium text-tesla-text-secondary">Received</label>
             <input
               type="number"
               min={0}
               step={1}
-              className="w-full rounded border px-2 py-1"
+              className="w-full rounded-sm border border-tesla-border px-2 py-1"
               value={newReceivedQty}
               onChange={(e) => setNewReceivedQty(e.target.value)}
             />
@@ -340,7 +426,7 @@ export function PurchasingDetailView({
         </div>
         <button
           type="button"
-          className="mt-2 rounded border bg-slate-800 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+          className="mt-2 rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
           disabled={lineAdding || !newDesc.trim() || !projects.length}
           onClick={() => {
             setLineErr(null);

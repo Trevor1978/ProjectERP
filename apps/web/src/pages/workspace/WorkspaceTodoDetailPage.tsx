@@ -10,6 +10,7 @@ type Todo = {
   id: string;
   taskId: string;
   title: string;
+  description: string | null;
   status: "backlog" | "in_progress" | "blocked" | "done";
   dueAt: string | null;
   priority: "low" | "normal" | "high" | "urgent";
@@ -42,6 +43,7 @@ export function WorkspaceTodoDetailPage() {
   const task = tasksData?.tasks.find((t) => t.id === todo?.taskId);
 
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [status, setStatus] = useState<Todo["status"]>("backlog");
   const [priority, setPriority] = useState<Todo["priority"]>("normal");
   const [dueAt, setDueAt] = useState("");
@@ -53,6 +55,7 @@ export function WorkspaceTodoDetailPage() {
   useEffect(() => {
     if (!todo) return;
     setTitle(todo.title);
+    setDescription(todo.description ?? "");
     setStatus(todo.status);
     setPriority(todo.priority);
     setDueAt(isoToLocal(todo.dueAt));
@@ -93,6 +96,15 @@ export function WorkspaceTodoDetailPage() {
         <div>
           <label className="block text-sm font-medium">Title</label>
           <input className="mt-1 w-full rounded border px-2 py-1.5" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Description</label>
+          <textarea
+            className="mt-1 w-full rounded border px-2 py-1.5"
+            rows={4}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
         </div>
         <div>
           <label className="block text-sm font-medium">Status</label>
@@ -144,6 +156,7 @@ export function WorkspaceTodoDetailPage() {
               method: "PATCH",
               body: JSON.stringify({
                 title: title.trim(),
+                description: description.trim() || null,
                 status,
                 priority,
                 dueAt: localToIso(dueAt),
