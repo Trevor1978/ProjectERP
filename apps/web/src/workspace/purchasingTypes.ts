@@ -22,6 +22,7 @@ export type ProcurementLine = {
   partNumber: string | null;
   description: string;
   quantity: string;
+  orderedQty: string | null;
   unit: string | null;
   estUnitPrice: number | null;
   orderIndex: number;

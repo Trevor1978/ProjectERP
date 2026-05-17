@@ -192,12 +192,17 @@ export const procurementPatch = z
   })
   .strict();
 
+const procurementQty = z
+  .union([z.string().regex(/^\d*\.?\d+$/), z.number().nonnegative()])
+  .transform((v) => String(v));
+
 export const procurementLineCreate = z.object({
   procurementId: id,
   projectId: id,
   partNumber: z.string().max(256).optional().nullable(),
   description: z.string().min(1).max(2000),
-  quantity: z.string().regex(/^\d*\.?\d+$/).or(z.number().nonnegative()),
+  quantity: procurementQty,
+  orderedQty: procurementQty.optional().nullable(),
   unit: z.string().max(32).optional().nullable(),
   estUnitPrice: z
     .union([z.string(), z.number().nonnegative()])
@@ -211,10 +216,8 @@ export const procurementLinePatch = z
     projectId: id.optional(),
     partNumber: z.string().max(256).optional().nullable(),
     description: z.string().min(1).max(2000).optional(),
-    quantity: z
-      .union([z.string(), z.number().nonnegative()])
-      .optional()
-      .transform((v) => (v === undefined ? v : String(v))),
+    quantity: procurementQty.optional(),
+    orderedQty: procurementQty.optional().nullable(),
     unit: z.string().max(32).optional().nullable(),
     estUnitPrice: z
       .union([z.string(), z.number().nonnegative()])

@@ -479,10 +479,8 @@ app.post("/procurement-lines", async (c) => {
   if ("error" in pr) {
     return c.json({ error: pr.error }, pr.status);
   }
-  const qty =
-    typeof p.data.quantity === "number"
-      ? String(p.data.quantity)
-      : p.data.quantity;
+  const qty = p.data.quantity;
+  const ordQty = p.data.orderedQty?.trim() ? p.data.orderedQty : null;
   const [line] = await db
     .insert(procurementRequestLine)
     .values({
@@ -491,6 +489,7 @@ app.post("/procurement-lines", async (c) => {
       partNumber: p.data.partNumber ?? null,
       description: p.data.description,
       quantity: qty,
+      orderedQty: ordQty,
       unit: p.data.unit ?? null,
       estUnitPrice:
         p.data.estUnitPrice === undefined
@@ -538,11 +537,13 @@ app.patch("/procurement-lines/:id", async (c) => {
   if (p.data.version !== undefined && p.data.version !== cur[0]!.version) {
     return c.json({ error: "Version conflict" }, 409);
   }
-  const qty = p.data.quantity
-    ? typeof p.data.quantity === "number"
-      ? String(p.data.quantity)
-      : p.data.quantity
-    : cur[0]!.quantity;
+  const qty = p.data.quantity ?? cur[0]!.quantity;
+  const orderedQty =
+    p.data.orderedQty === undefined
+      ? cur[0]!.orderedQty
+      : p.data.orderedQty?.trim()
+        ? p.data.orderedQty
+        : null;
   const [line] = await db
     .update(procurementRequestLine)
     .set({
@@ -551,6 +552,7 @@ app.patch("/procurement-lines/:id", async (c) => {
         p.data.partNumber === undefined ? cur[0]!.partNumber : p.data.partNumber,
       description: p.data.description ?? cur[0]!.description,
       quantity: qty,
+      orderedQty,
       unit: p.data.unit === undefined ? cur[0]!.unit : p.data.unit,
       estUnitPrice:
         p.data.estUnitPrice === undefined

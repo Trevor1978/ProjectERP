@@ -27,6 +27,7 @@ export function WorkspacePurchasingLineDetailPage() {
   const [partNumber, setPartNumber] = useState("");
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [orderedQty, setOrderedQty] = useState("");
   const [unit, setUnit] = useState("");
   const [estUnitPrice, setEstUnitPrice] = useState("");
   const [orderIndex, setOrderIndex] = useState("0");
@@ -40,6 +41,7 @@ export function WorkspacePurchasingLineDetailPage() {
     setPartNumber(line.partNumber ?? "");
     setDescription(line.description);
     setQuantity(line.quantity);
+    setOrderedQty(line.orderedQty ?? "");
     setUnit(line.unit ?? "");
     setEstUnitPrice(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
     setOrderIndex(String(line.orderIndex));
@@ -95,8 +97,12 @@ export function WorkspacePurchasingLineDetailPage() {
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium">Quantity</label>
+            <label className="block text-sm font-medium">Qty (requested)</label>
             <input className="mt-1 w-full rounded border px-2 py-1.5" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium">Ordered</label>
+            <input className="mt-1 w-full rounded border px-2 py-1.5" value={orderedQty} onChange={(e) => setOrderedQty(e.target.value)} placeholder="Optional" />
           </div>
           <div>
             <label className="block text-sm font-medium">Unit</label>
@@ -131,6 +137,7 @@ export function WorkspacePurchasingLineDetailPage() {
                 partNumber: partNumber.trim() || null,
                 description: description.trim(),
                 quantity: quantity || "1",
+                orderedQty: orderedQty.trim() || null,
                 unit: unit.trim() || null,
                 estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
                 orderIndex: Number(orderIndex) || 0,

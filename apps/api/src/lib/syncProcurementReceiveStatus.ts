@@ -55,10 +55,10 @@ export async function syncProcurementStatusFromLineReceipts(
   }
 
   const allFull = lines.every((l) =>
-    lineFullyReceived(l.quantity, l.receivedQty),
+    lineFullyReceived(l.quantity, l.receivedQty, l.orderedQty),
   );
   const anyPartial = lines.some((l) =>
-    linePartiallyReceived(l.quantity, l.receivedQty),
+    linePartiallyReceived(l.quantity, l.receivedQty, l.orderedQty),
   );
   const anyReceive = lines.some((l) => l.receivedQty > 0);
 

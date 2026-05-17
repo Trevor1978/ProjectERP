@@ -8,7 +8,7 @@ import type { User } from "../types";
 import { TodoKanban } from "./TodoKanban";
 import { workspaceSlugToTab, workspaceTabToSlug } from "../lib/workspaceNav";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
-import { displayOrderedQty, procurementLineRowClass } from "../workspace/procurementLineStatus";
+import { procurementLineRowClass } from "../workspace/procurementLineStatus";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Supplier = {
@@ -100,6 +100,7 @@ type ProcurementLine = {
   partNumber: string | null;
   description: string;
   quantity: string;
+  orderedQty: string | null;
   unit: string | null;
   estUnitPrice: number | null;
   orderIndex: number;
@@ -1097,11 +1098,18 @@ export function CrudWorkspace() {
         const proc = procById.get(l.procurementId);
         return {
         key: l.id,
-        rowClassName: procurementLineRowClass(l, {
-          needBy: proc?.needBy ?? null,
-          fullyReceivedOverride: proc?.fullyReceivedOverride ?? false,
-          procStatus: proc?.status ?? "draft",
-        }),
+        rowClassName: procurementLineRowClass(
+          {
+            quantity: l.quantity,
+            orderedQty: l.orderedQty,
+            receivedQty: l.receivedQty,
+          },
+          {
+            needBy: proc?.needBy ?? null,
+            fullyReceivedOverride: proc?.fullyReceivedOverride ?? false,
+            procStatus: proc?.status ?? "draft",
+          },
+        ),
         action: rowActions("procurementLines", l.id, l.description.length > 48 ? l.description.slice(0, 48) + "…" : l.description, undefined, {
           openHref: `/workspace/purchasing-lines/${l.id}`,
         }),
@@ -1168,9 +1176,16 @@ export function CrudWorkspace() {
               }).then(refreshProcurement)
             }
           />,
-          <span key="ord-qty" className="tabular-nums text-slate-600">
-            {displayOrderedQty(proc?.status ?? "draft", l.quantity)}
-          </span>,
+          <InlineText
+            key="ord-qty"
+            value={l.orderedQty ?? ""}
+            onSave={(v) =>
+              api("/api/procurement-lines/" + l.id, {
+                method: "PATCH",
+                body: JSON.stringify({ orderedQty: v.trim() || null, version: l.version }),
+              }).then(refreshProcurement)
+            }
+          />,
           <InlineNumber
             key="rcv"
             value={l.receivedQty}
@@ -1184,7 +1199,7 @@ export function CrudWorkspace() {
             }
           />,
         ],
-        search: `${projectName.get(l.projectId) ?? ""} ${procName.get(l.procurementId) ?? ""} ${l.partNumber ?? ""} ${l.description} ${l.quantity} ${l.receivedQty}`,
+        search: `${projectName.get(l.projectId) ?? ""} ${procName.get(l.procurementId) ?? ""} ${l.partNumber ?? ""} ${l.description} ${l.quantity} ${l.orderedQty ?? ""} ${l.receivedQty}`,
         sort: [
           projectName.get(l.projectId) ?? "",
           procName.get(l.procurementId) ?? "",
@@ -1193,7 +1208,7 @@ export function CrudWorkspace() {
           l.unit ?? "",
           l.estUnitPrice ?? 0,
           l.quantity,
-          displayOrderedQty(proc?.status ?? "draft", l.quantity),
+          l.orderedQty ?? "",
           l.receivedQty,
         ],
       };
@@ -1575,6 +1590,7 @@ function CrudAppendRow({
   const [lnPart, setLnPart] = useState("");
   const [lnDesc, setLnDesc] = useState("");
   const [lnQty, setLnQty] = useState("1");
+  const [lnOrderedQty, setLnOrderedQty] = useState("");
   useEffect(() => {
     if (procurement.length && !procurement.some((p) => p.id === lnProcId)) {
       setLnProcId(procurement[0]!.id);
@@ -2092,6 +2108,9 @@ function CrudAppendRow({
             onChange={(e) => setLnDesc(e.target.value)}
           />
         </td>
+        <td colSpan={2} className="p-2 align-middle text-xs text-slate-500">
+          Unit / est price: edit inline after create.
+        </td>
         <td className="p-2 align-top">
           <input
             className={newRowInputClass}
@@ -2100,9 +2119,15 @@ function CrudAppendRow({
             onChange={(e) => setLnQty(e.target.value)}
           />
         </td>
-        <td colSpan={3} className="p-2 align-middle text-xs text-slate-500">
-          Unit/price/order: edit inline after create.
+        <td className="p-2 align-top">
+          <input
+            className={newRowInputClass}
+            placeholder="Ordered"
+            value={lnOrderedQty}
+            onChange={(e) => setLnOrderedQty(e.target.value)}
+          />
         </td>
+        <td className="p-2 align-middle text-xs text-slate-500">0</td>
         <td className={stickyActionsTd}>
           {createBtn(async () => {
             const description = lnDesc.trim();
@@ -2117,12 +2142,14 @@ function CrudAppendRow({
                 partNumber: lnPart.trim() || null,
                 description,
                 quantity: qty,
+                orderedQty: lnOrderedQty.trim() || null,
                 orderIndex: 0,
               }),
             });
             setLnPart("");
             setLnDesc("");
             setLnQty("1");
+            setLnOrderedQty("");
             await refreshProcurement();
           }, !lnDesc.trim() || !lnProcId || !lnProjectId)}
           {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
@@ -3261,6 +3288,7 @@ function ProcurementLineEditModal({
   const [partNumber, setPartNumber] = useState(line.partNumber ?? "");
   const [description, setDescription] = useState(line.description);
   const [quantity, setQuantity] = useState(line.quantity);
+  const [orderedQty, setOrderedQty] = useState(line.orderedQty ?? "");
   const [unit, setUnit] = useState(line.unit ?? "");
   const [estUnitPrice, setEstUnitPrice] = useState(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
   const [orderIndex, setOrderIndex] = useState(String(line.orderIndex));
@@ -3272,6 +3300,7 @@ function ProcurementLineEditModal({
     setPartNumber(line.partNumber ?? "");
     setDescription(line.description);
     setQuantity(line.quantity);
+    setOrderedQty(line.orderedQty ?? "");
     setUnit(line.unit ?? "");
     setEstUnitPrice(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
     setOrderIndex(String(line.orderIndex));
@@ -3297,6 +3326,7 @@ function ProcurementLineEditModal({
                   partNumber: partNumber.trim() || null,
                   description: description.trim(),
                   quantity: quantity || "1",
+                  orderedQty: orderedQty.trim() || null,
                   unit: unit.trim() || null,
                   estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
                   orderIndex: Number(orderIndex) || 0,
@@ -3328,8 +3358,10 @@ function ProcurementLineEditModal({
       <input className="mb-2 w-full rounded border px-2 py-1" value={partNumber} onChange={(e) => setPartNumber(e.target.value)} />
       <label className="block text-sm font-medium">Description</label>
       <textarea className="mb-2 w-full rounded border px-2 py-1" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-      <label className="block text-sm font-medium">Quantity</label>
+      <label className="block text-sm font-medium">Qty (requested)</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+      <label className="block text-sm font-medium">Ordered</label>
+      <input className="mb-2 w-full rounded border px-2 py-1" value={orderedQty} onChange={(e) => setOrderedQty(e.target.value)} placeholder="Optional" />
       <label className="block text-sm font-medium">Unit</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={unit} onChange={(e) => setUnit(e.target.value)} />
       <label className="block text-sm font-medium">Est unit price</label>

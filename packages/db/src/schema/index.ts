@@ -401,6 +401,8 @@ export const procurementRequestLine = pgTable(
     partNumber: text("part_number"),
     description: text("description").notNull(),
     quantity: text("quantity").notNull().default("1"), // string for large decimals
+    /** Supplier-confirmed order qty; receipt matching uses this when set, else quantity. */
+    orderedQty: text("ordered_qty"),
     unit: text("unit"),
     estUnitPrice: doublePrecision("est_unit_price"),
     orderIndex: integer("order_index").notNull().default(0),

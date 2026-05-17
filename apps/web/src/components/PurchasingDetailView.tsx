@@ -7,7 +7,6 @@ import type { Procurement, ProcurementLine } from "../workspace/purchasingTypes"
 import { PROC_STATUS } from "../workspace/purchasingTypes";
 import {
   calcProcurementTotals,
-  displayOrderedQty,
   procurementLineRowClass,
 } from "../workspace/procurementLineStatus";
 
@@ -39,6 +38,7 @@ function PurchasingDetailLineRow({
   const [description, setDescription] = useState(line.description);
   const [projectId, setProjectId] = useState(line.projectId);
   const [quantity, setQuantity] = useState(line.quantity);
+  const [orderedQty, setOrderedQty] = useState(line.orderedQty ?? "");
   const [unit, setUnit] = useState(line.unit ?? "");
   const [estUnitPrice, setEstUnitPrice] = useState(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
   const [receivedQty, setReceivedQty] = useState(String(line.receivedQty));
@@ -51,6 +51,7 @@ function PurchasingDetailLineRow({
     setDescription(line.description);
     setProjectId(line.projectId);
     setQuantity(line.quantity);
+    setOrderedQty(line.orderedQty ?? "");
     setUnit(line.unit ?? "");
     setEstUnitPrice(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
     setReceivedQty(String(line.receivedQty));
@@ -63,12 +64,13 @@ function PurchasingDetailLineRow({
       description: description.trim(),
       projectId,
       quantity: quantity || "1",
+      orderedQty: orderedQty.trim() || null,
       unit: unit.trim() || null,
       estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
       receivedQty: Math.max(0, Math.trunc(Number(receivedQty) || 0)),
       version,
     }),
-    [partNumber, description, projectId, quantity, unit, estUnitPrice, receivedQty, version],
+    [partNumber, description, projectId, quantity, orderedQty, unit, estUnitPrice, receivedQty, version],
   );
 
   const save = useCallback(
@@ -92,7 +94,11 @@ function PurchasingDetailLineRow({
   });
 
   const rowClass = procurementLineRowClass(
-    { quantity, receivedQty: Number(receivedQty) || 0 },
+    {
+      quantity,
+      orderedQty: orderedQty.trim() || null,
+      receivedQty: Number(receivedQty) || 0,
+    },
     { needBy, fullyReceivedOverride, procStatus },
   );
 
@@ -142,7 +148,14 @@ function PurchasingDetailLineRow({
       <td className="py-1 pr-2">
         <input className="w-20 rounded border border-tesla-border px-2 py-1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
       </td>
-      <td className="py-1 pr-2 text-slate-600 tabular-nums">{displayOrderedQty(procStatus, quantity)}</td>
+      <td className="py-1 pr-2">
+        <input
+          className="w-20 rounded border border-tesla-border px-2 py-1 tabular-nums"
+          value={orderedQty}
+          onChange={(e) => setOrderedQty(e.target.value)}
+          placeholder="—"
+        />
+      </td>
       <td className="py-1 pr-2">
         <input
           type="number"
@@ -193,12 +206,13 @@ export function PurchasingDetailView({
   const [supplierId, setSupplierId] = useState(row.supplierId ?? "");
   const [needBy, setNeedBy] = useState(isoToLocal(row.needBy));
   const [sapPo, setSapPo] = useState(row.sapPoNumber ?? "");
-  const [headerSaving, setHeaderSaving] = useState(false);
+  const [headerVersion, setHeaderVersion] = useState(row.version);
   const [headerErr, setHeaderErr] = useState<string | null>(null);
 
   const [newPart, setNewPart] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newQty, setNewQty] = useState("1");
+  const [newOrderedQty, setNewOrderedQty] = useState("");
   const [newUnit, setNewUnit] = useState("");
   const [newEst, setNewEst] = useState("");
   const [newOrder, setNewOrder] = useState(() =>
@@ -220,7 +234,47 @@ export function PurchasingDetailView({
     setNeedBy(isoToLocal(row.needBy));
     setSapPo(row.sapPoNumber ?? "");
     setFullyReceivedOverride(row.fullyReceivedOverride ?? false);
+    setHeaderVersion(row.version);
   }, [row]);
+
+  const headerPayload = useMemo(
+    () => ({
+      title: title.trim(),
+      status,
+      supplierId: supplierId || null,
+      needBy: localToIso(needBy),
+      sapPoNumber: sapPo.trim() || null,
+      fullyReceivedOverride,
+      version: headerVersion,
+    }),
+    [title, status, supplierId, needBy, sapPo, fullyReceivedOverride, headerVersion],
+  );
+
+  const saveHeader = useCallback(
+    async (body: typeof headerPayload) => {
+      try {
+        const res = await api<{ procurement: Procurement }>("/api/procurement/" + row.id, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
+        setHeaderVersion(res.procurement.version);
+        setHeaderErr(null);
+        await onRefresh();
+        return { version: res.procurement.version };
+      } catch (e) {
+        setHeaderErr(e instanceof Error ? e.message : "Save failed");
+        throw e;
+      }
+    },
+    [row.id, onRefresh],
+  );
+
+  useDebouncedPatch({
+    enabled: Boolean(title.trim()),
+    payload: headerPayload,
+    save: saveHeader,
+    onVersion: setHeaderVersion,
+  });
 
   useEffect(() => {
     setNewOrder(lines.length ? String(Math.max(...lines.map((l) => l.orderIndex)) + 1) : "0");
@@ -291,34 +345,7 @@ export function PurchasingDetailView({
             </span>
           </label>
         </div>
-        <div className="sm:col-span-2">
-          <button
-            type="button"
-            className="rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
-            disabled={headerSaving || !title.trim()}
-            onClick={() => {
-              setHeaderErr(null);
-              setHeaderSaving(true);
-              void api("/api/procurement/" + row.id, {
-                method: "PATCH",
-                body: JSON.stringify({
-                  title: title.trim(),
-                  status,
-                  supplierId: supplierId || null,
-                  needBy: localToIso(needBy),
-                  sapPoNumber: sapPo.trim() || null,
-                  fullyReceivedOverride,
-                  version: row.version,
-                }),
-              })
-                .then(onRefresh)
-                .catch((e: Error) => setHeaderErr(e.message))
-                .finally(() => setHeaderSaving(false));
-            }}
-          >
-            Save header
-          </button>
-        </div>
+        <p className="sm:col-span-2 text-xs text-tesla-text-secondary">Header saves automatically.</p>
       </div>
 
       <div className="mb-4 flex flex-wrap justify-end gap-6 rounded-sm border border-tesla-border bg-tesla-muted/50 px-4 py-3 text-sm">
@@ -405,6 +432,15 @@ export function PurchasingDetailView({
             <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
           </div>
           <div>
+            <label className="block text-xs font-medium text-tesla-text-secondary">Ordered</label>
+            <input
+              className="w-full rounded-sm border border-tesla-border px-2 py-1"
+              value={newOrderedQty}
+              onChange={(e) => setNewOrderedQty(e.target.value)}
+              placeholder="Optional"
+            />
+          </div>
+          <div>
             <label className="block text-xs font-medium text-tesla-text-secondary">Unit</label>
             <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
           </div>
@@ -439,6 +475,7 @@ export function PurchasingDetailView({
                 partNumber: newPart.trim() || null,
                 description: newDesc.trim(),
                 quantity: newQty || "1",
+                orderedQty: newOrderedQty.trim() || null,
                 unit: newUnit.trim() || null,
                 estUnitPrice: newEst.trim() ? Number(newEst) : null,
                 orderIndex: Number(newOrder) || 0,
@@ -449,6 +486,7 @@ export function PurchasingDetailView({
                 setNewPart("");
                 setNewDesc("");
                 setNewQty("1");
+                setNewOrderedQty("");
                 setNewUnit("");
                 setNewEst("");
                 setNewReceivedQty("0");

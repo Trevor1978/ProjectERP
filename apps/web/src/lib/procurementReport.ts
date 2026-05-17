@@ -1,5 +1,5 @@
 import type { Procurement, ProcurementLine } from "../workspace/purchasingTypes";
-import { calcProcurementTotals, displayOrderedQty } from "../workspace/procurementLineStatus";
+import { calcProcurementTotals, formatOrderedQty } from "../workspace/procurementLineStatus";
 
 type Supplier = { id: string; name: string };
 type Project = { id: string; name: string };
@@ -34,7 +34,7 @@ export function openProcurementPdfReport(opts: {
       <td>${escapeHtml(l.description)}</td>
       <td>${escapeHtml(projectName.get(l.projectId) ?? "")}</td>
       <td class="num">${escapeHtml(l.quantity)}</td>
-      <td class="num">${escapeHtml(displayOrderedQty(row.status, l.quantity))}</td>
+      <td class="num">${escapeHtml(formatOrderedQty(l.orderedQty))}</td>
       <td class="num">${l.receivedQty}</td>
       <td>${escapeHtml(l.unit ?? "")}</td>
       <td class="num">${l.estUnitPrice != null ? money(l.estUnitPrice) : "—"}</td>

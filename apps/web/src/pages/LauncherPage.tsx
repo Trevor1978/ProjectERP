@@ -10,6 +10,7 @@ import {
   ShoppingCart,
   Truck,
   Users,
+  Cog,
 } from "lucide-react";
 import { WORKSPACE_NAV_ITEMS, type WorkspaceTableSlug } from "../lib/workspaceNav";
 
@@ -23,6 +24,7 @@ const ICON_BY_SLUG: Record<WorkspaceTableSlug, LucideIcon> = {
   "time-entries": Clock,
   purchasing: ShoppingCart,
   "purchasing-lines": ListTree,
+  machines: Cog,
 };
 
 /** Tile backgrounds — icon uses white foreground */
@@ -36,6 +38,7 @@ const TILE_STYLE: Record<WorkspaceTableSlug, { className: string }> = {
   "time-entries": { className: "bg-gradient-to-br from-violet-500 to-purple-600 shadow-violet-500/25" },
   purchasing: { className: "bg-gradient-to-br from-lime-600 to-green-700 shadow-lime-600/25" },
   "purchasing-lines": { className: "bg-gradient-to-br from-slate-600 to-slate-800 shadow-slate-600/25" },
+  machines: { className: "bg-gradient-to-br from-zinc-600 to-zinc-800 shadow-zinc-600/25" },
 };
 
 export function LauncherPage() {
