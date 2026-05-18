@@ -278,7 +278,6 @@ export function PurchasingDetailView({
         setTitle(p.title);
         setStatus(p.status);
         setSupplierId(p.supplierId ?? "");
-        setNeedBy(isoToLocal(p.needBy));
         setSapPo(p.sapPoNumber ?? "");
         setFullyReceivedOverride(p.fullyReceivedOverride ?? false);
         setHeaderErr(null);

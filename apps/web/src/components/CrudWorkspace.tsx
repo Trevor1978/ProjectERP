@@ -7,6 +7,7 @@ import { useMe } from "../hooks/useMe";
 import type { User } from "../types";
 import { TodoKanban } from "./TodoKanban";
 import { workspaceSlugToTab, workspaceTabToSlug } from "../lib/workspaceNav";
+import { isoToLocal, localToIso } from "../workspace/workspaceDates";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
 import { procurementLineRowClass } from "../workspace/procurementLineStatus";
 
@@ -144,10 +145,6 @@ const PROC_STATUS = [
   "closed",
   "cancelled",
 ] as const;
-
-const isoToLocal = (v: string | null | undefined) =>
-  v ? new Date(v).toISOString().slice(0, 16) : "";
-const localToIso = (v: string) => (v.trim() ? new Date(v).toISOString() : null);
 
 type TableRow = {
   key: string;
@@ -3444,7 +3441,7 @@ function InlineDateTime({ value, onSave }: { value: string | null; onSave: (v: s
       onChange={(e) => setV(e.target.value)}
       onBlur={() => {
         const next = localToIso(v);
-        const cur = value ? new Date(value).toISOString() : null;
+        const cur = localToIso(isoToLocal(value));
         if (next !== cur) void onSave(next);
       }}
     />
