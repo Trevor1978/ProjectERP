@@ -24,7 +24,11 @@ export function useDebouncedPatch<T>({
     saving.current = true;
     try {
       const res = await save(payload);
-      lastSaved.current = key;
+      const savedKey =
+        res.version != null
+          ? JSON.stringify({ ...(payload as object), version: res.version })
+          : key;
+      lastSaved.current = savedKey;
       if (res.version != null) onVersion?.(res.version);
     } finally {
       saving.current = false;

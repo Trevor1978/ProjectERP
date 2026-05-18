@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { openProcurementPdfReport } from "../lib/procurementReport";
 import { useDebouncedPatch } from "../hooks/useDebouncedPatch";
@@ -23,7 +23,7 @@ function PurchasingDetailLineRow({
   procStatus,
   needBy,
   fullyReceivedOverride,
-  onSaved,
+  onLineSaved,
   onRemoved,
 }: {
   line: ProcurementLine;
@@ -31,8 +31,8 @@ function PurchasingDetailLineRow({
   procStatus: Procurement["status"];
   needBy: string | null;
   fullyReceivedOverride: boolean;
-  onSaved: () => Promise<void>;
-  onRemoved: () => Promise<void>;
+  onLineSaved: (line: ProcurementLine) => void;
+  onRemoved: (lineId: string) => void;
 }) {
   const [partNumber, setPartNumber] = useState(line.partNumber ?? "");
   const [description, setDescription] = useState(line.description);
@@ -46,7 +46,11 @@ function PurchasingDetailLineRow({
   const [removing, setRemoving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const syncedVersion = useRef(line.version);
+
   useEffect(() => {
+    if (line.version === syncedVersion.current) return;
+    syncedVersion.current = line.version;
     setPartNumber(line.partNumber ?? "");
     setDescription(line.description);
     setProjectId(line.projectId);
@@ -80,10 +84,11 @@ function PurchasingDetailLineRow({
         body: JSON.stringify(body),
       });
       setVersion(res.line.version);
-      await onSaved();
+      syncedVersion.current = res.line.version;
+      onLineSaved(res.line);
       return { version: res.line.version };
     },
-    [line.id, onSaved],
+    [line.id, onLineSaved],
   );
 
   useDebouncedPatch({
@@ -176,7 +181,7 @@ function PurchasingDetailLineRow({
             setErr(null);
             setRemoving(true);
             void api("/api/procurement-lines/" + line.id, { method: "DELETE" })
-              .then(onRemoved)
+              .then(() => onRemoved(line.id))
               .catch((e: Error) => setErr(e.message))
               .finally(() => setRemoving(false));
           }}
@@ -193,13 +198,19 @@ export function PurchasingDetailView({
   lines,
   projects,
   suppliers,
-  onRefresh,
+  onHeaderSaved,
+  onLineSaved,
+  onLineAdded,
+  onLineRemoved,
 }: {
   row: Procurement;
   lines: ProcurementLine[];
   projects: Project[];
   suppliers: Supplier[];
-  onRefresh: () => Promise<void>;
+  onHeaderSaved: (procurement: Procurement) => void;
+  onLineSaved: (line: ProcurementLine) => void;
+  onLineAdded: (line: ProcurementLine) => void;
+  onLineRemoved: (lineId: string) => void;
 }) {
   const [title, setTitle] = useState(row.title);
   const [status, setStatus] = useState(row.status);
@@ -227,6 +238,9 @@ export function PurchasingDetailView({
   const supplier = suppliers.find((s) => s.id === row.supplierId);
   const totals = useMemo(() => calcProcurementTotals(lines), [lines]);
 
+  const procurementId = row.id;
+  const headerSyncedVersion = useRef(row.version);
+
   useEffect(() => {
     setTitle(row.title);
     setStatus(row.status);
@@ -235,7 +249,8 @@ export function PurchasingDetailView({
     setSapPo(row.sapPoNumber ?? "");
     setFullyReceivedOverride(row.fullyReceivedOverride ?? false);
     setHeaderVersion(row.version);
-  }, [row]);
+    headerSyncedVersion.current = row.version;
+  }, [procurementId]);
 
   const headerPayload = useMemo(
     () => ({
@@ -257,16 +272,24 @@ export function PurchasingDetailView({
           method: "PATCH",
           body: JSON.stringify(body),
         });
-        setHeaderVersion(res.procurement.version);
+        const p = res.procurement;
+        setHeaderVersion(p.version);
+        headerSyncedVersion.current = p.version;
+        setTitle(p.title);
+        setStatus(p.status);
+        setSupplierId(p.supplierId ?? "");
+        setNeedBy(isoToLocal(p.needBy));
+        setSapPo(p.sapPoNumber ?? "");
+        setFullyReceivedOverride(p.fullyReceivedOverride ?? false);
         setHeaderErr(null);
-        await onRefresh();
-        return { version: res.procurement.version };
+        onHeaderSaved(p);
+        return { version: p.version };
       } catch (e) {
         setHeaderErr(e instanceof Error ? e.message : "Save failed");
         throw e;
       }
     },
-    [row.id, onRefresh],
+    [row.id, onHeaderSaved],
   );
 
   useDebouncedPatch({
@@ -393,11 +416,11 @@ export function PurchasingDetailView({
                   key={l.id}
                   line={l}
                   projects={projects}
-                  procStatus={row.status}
+                  procStatus={status}
                   needBy={row.needBy}
                   fullyReceivedOverride={fullyReceivedOverride}
-                  onSaved={onRefresh}
-                  onRemoved={onRefresh}
+                  onLineSaved={onLineSaved}
+                  onRemoved={onLineRemoved}
                 />
               ))
             )}
@@ -467,7 +490,7 @@ export function PurchasingDetailView({
           onClick={() => {
             setLineErr(null);
             setLineAdding(true);
-            void api("/api/procurement-lines", {
+            void api<{ line: ProcurementLine }>("/api/procurement-lines", {
               method: "POST",
               body: JSON.stringify({
                 procurementId: row.id,
@@ -482,7 +505,7 @@ export function PurchasingDetailView({
                 receivedQty: Math.max(0, Math.trunc(Number(newReceivedQty) || 0)),
               }),
             })
-              .then(async () => {
+              .then((res) => {
                 setNewPart("");
                 setNewDesc("");
                 setNewQty("1");
@@ -490,7 +513,7 @@ export function PurchasingDetailView({
                 setNewUnit("");
                 setNewEst("");
                 setNewReceivedQty("0");
-                await onRefresh();
+                onLineAdded(res.line);
               })
               .catch((e: Error) => setLineErr(e.message))
               .finally(() => setLineAdding(false));

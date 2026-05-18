@@ -1,8 +1,18 @@
+import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { PurchasingDetailView } from "../../components/PurchasingDetailView";
 import type { Procurement, ProcurementLine } from "../../workspace/purchasingTypes";
+import {
+  PROC_ALL_QUERY_KEY,
+  type ProcAllData,
+  addProcurementLineToCache,
+  patchProcurementInCache,
+  patchProcurementLineInCache,
+  removeProcurementLineFromCache,
+  sortProcurementLines,
+} from "../../workspace/procurementCache";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 
 type Project = { id: string; name: string; version: number };
@@ -12,8 +22,8 @@ export function WorkspacePurchasingDetailPage() {
   const { procurementId } = useParams<{ procurementId: string }>();
   const qc = useQueryClient();
   const { data: procData, isLoading } = useQuery({
-    queryKey: ["proc-all"],
-    queryFn: () => api<{ procurement: Procurement[]; lines: ProcurementLine[] }>("/api/procurement"),
+    queryKey: PROC_ALL_QUERY_KEY,
+    queryFn: () => api<ProcAllData>("/api/procurement"),
   });
   const { data: projectsData } = useQuery({
     queryKey: ["projects"],
@@ -25,14 +35,41 @@ export function WorkspacePurchasingDetailPage() {
   });
 
   const row = procData?.procurement.find((p) => p.id === procurementId);
-  const lines = (procData?.lines ?? [])
-    .filter((l) => l.procurementId === procurementId)
-    .slice()
-    .sort((a, b) => a.orderIndex - b.orderIndex);
+  const lines = useMemo(
+    () =>
+      sortProcurementLines(
+        (procData?.lines ?? []).filter((l) => l.procurementId === procurementId),
+      ),
+    [procData?.lines, procurementId],
+  );
 
-  async function onRefresh() {
-    await qc.invalidateQueries({ queryKey: ["proc-all"] });
-  }
+  const onHeaderSaved = useCallback(
+    (updated: Procurement) => {
+      patchProcurementInCache(qc, updated);
+    },
+    [qc],
+  );
+
+  const onLineSaved = useCallback(
+    (updated: ProcurementLine) => {
+      patchProcurementLineInCache(qc, updated);
+    },
+    [qc],
+  );
+
+  const onLineAdded = useCallback(
+    (line: ProcurementLine) => {
+      addProcurementLineToCache(qc, line);
+    },
+    [qc],
+  );
+
+  const onLineRemoved = useCallback(
+    (lineId: string) => {
+      removeProcurementLineFromCache(qc, lineId);
+    },
+    [qc],
+  );
 
   if (isLoading || !procurementId) {
     return <p className="text-slate-500">Loading…</p>;
@@ -50,7 +87,16 @@ export function WorkspacePurchasingDetailPage() {
 
   return (
     <WorkspaceDetailChrome backTo="/workspace/purchasing" backLabel="← Purchasing" title={row.title}>
-      <PurchasingDetailView row={row} lines={lines} projects={projects} suppliers={suppliers} onRefresh={onRefresh} />
+      <PurchasingDetailView
+        row={row}
+        lines={lines}
+        projects={projects}
+        suppliers={suppliers}
+        onHeaderSaved={onHeaderSaved}
+        onLineSaved={onLineSaved}
+        onLineAdded={onLineAdded}
+        onLineRemoved={onLineRemoved}
+      />
     </WorkspaceDetailChrome>
   );
 }
