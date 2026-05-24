@@ -89,6 +89,7 @@ function buildProcurementReportHtml(opts: {
     <div class="grand"><span>Total</span><span>$${money(total)}</span></div>
   </div>
   <p class="meta" style="margin-top:2rem">Use <strong>Print</strong> → <strong>Save as PDF</strong> (or your browser’s PDF printer).</p>
+  <script>window.addEventListener("load", () => window.setTimeout(() => window.print(), 250));</script>
 </body></html>`;
 
   return { html, docTitle, filename };
@@ -107,9 +108,48 @@ function downloadReportHtml(filename: string, html: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+function printViaHiddenIframe(html: string): boolean {
+  try {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("title", "RFQ/PO report");
+    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+    document.body.appendChild(iframe);
+    const win = iframe.contentWindow;
+    const doc = win?.document;
+    if (!doc) {
+      iframe.remove();
+      return false;
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    window.setTimeout(() => iframe.remove(), 120_000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function openReportInNewTab(html: string, filename: string): boolean {
+  const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+  const w = window.open(dataUrl, "_blank");
+  if (w) return true;
+
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const blobUrl = URL.createObjectURL(blob);
+  const w2 = window.open(blobUrl, "_blank");
+  if (w2) {
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 10 * 60 * 1000);
+    return true;
+  }
+  URL.revokeObjectURL(blobUrl);
+  downloadReportHtml(filename, html);
+  return false;
+}
+
 /**
- * Opens a printable RFQ/PO report in a new tab, then triggers the browser print dialog (Save as PDF).
- * If pop-ups are blocked, downloads the same report as an HTML file instead.
+ * Opens the RFQ/PO report and triggers Print → Save as PDF.
+ * Prefers a hidden iframe (no pop-up / blank tab). Falls back to a new tab, then HTML download.
  */
 export function openProcurementPdfReport(opts: {
   row: Procurement;
@@ -118,36 +158,9 @@ export function openProcurementPdfReport(opts: {
   projects: Project[];
 }): void {
   const { html, filename } = buildProcurementReportHtml(opts);
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-
-  const w = window.open(url, "_blank");
-  if (!w) {
-    URL.revokeObjectURL(url);
-    downloadReportHtml(filename, html);
-    window.alert(
-      "Pop-up was blocked. The report was downloaded as an HTML file — open it in your browser, then use Print → Save as PDF.",
-    );
-    return;
-  }
-
-  const cleanup = () => URL.revokeObjectURL(url);
-  const triggerPrint = () => {
-    try {
-      w.focus();
-      w.print();
-    } catch {
-      /* print may fail in strict embed contexts */
-    }
-  };
-
-  w.addEventListener("load", () => {
-    cleanup();
-    window.setTimeout(triggerPrint, 300);
-  });
-  // If load already fired (blob URL), still print shortly after open
-  window.setTimeout(() => {
-    cleanup();
-    triggerPrint();
-  }, 600);
+  if (printViaHiddenIframe(html)) return;
+  if (openReportInNewTab(html, filename)) return;
+  window.alert(
+    "Could not open the report. An HTML file was downloaded — open it in your browser, then use Print → Save as PDF.",
+  );
 }
