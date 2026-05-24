@@ -22,6 +22,12 @@ function apiBase(): string {
 
 const base = apiBase();
 
+/** Absolute URL for API paths (e.g. authenticated image fetch). */
+export function apiFetchUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
 /** POST multipart (do not set Content-Type — browser sets boundary). */
 export async function apiForm<T>(path: string, form: FormData): Promise<T> {
   const r = await fetch(`${base}${path}`, {

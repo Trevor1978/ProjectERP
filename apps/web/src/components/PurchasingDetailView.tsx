@@ -3,7 +3,9 @@ import { api } from "../lib/api";
 import { openProcurementPdfReport } from "../lib/procurementReport";
 import { useDebouncedPatch } from "../hooks/useDebouncedPatch";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
+import { Link } from "react-router-dom";
 import type { Procurement, ProcurementLine } from "../workspace/purchasingTypes";
+import type { OrgProfile } from "../workspace/orgProfileTypes";
 import { PROC_STATUS } from "../workspace/purchasingTypes";
 import {
   calcProcurementTotals,
@@ -198,6 +200,9 @@ export function PurchasingDetailView({
   lines,
   projects,
   suppliers,
+  orgName,
+  orgProfile,
+  isOrgAdmin,
   onHeaderSaved,
   onLineSaved,
   onLineAdded,
@@ -207,11 +212,15 @@ export function PurchasingDetailView({
   lines: ProcurementLine[];
   projects: Project[];
   suppliers: Supplier[];
+  orgName: string;
+  orgProfile?: OrgProfile | null;
+  isOrgAdmin?: boolean;
   onHeaderSaved: (procurement: Procurement) => void;
   onLineSaved: (line: ProcurementLine) => void;
   onLineAdded: (line: ProcurementLine) => void;
   onLineRemoved: (lineId: string) => void;
 }) {
+  const [reportOpening, setReportOpening] = useState(false);
   const [title, setTitle] = useState(row.title);
   const [status, setStatus] = useState(row.status);
   const [supplierId, setSupplierId] = useState(row.supplierId ?? "");
@@ -312,16 +321,35 @@ export function PurchasingDetailView({
       {headerErr && <p className="mb-2 text-sm text-red-600">{headerErr}</p>}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-medium tracking-tight text-tesla-text">Purchasing order</h2>
-        <button
-          type="button"
-          className="rounded-sm border border-tesla-border bg-white px-3 py-1.5 text-sm font-medium text-tesla-text hover:bg-tesla-muted"
-          title="Opens the RFQ/PO report and your browser print dialog — choose Save as PDF."
-          onClick={() =>
-            openProcurementPdfReport({ row, lines, supplier: supplier ?? null, projects })
-          }
-        >
-          RFQ / PO report (PDF)
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isOrgAdmin && (
+            <Link
+              to="/workspace/organization"
+              className="text-sm text-tesla-text-secondary underline hover:text-tesla-text"
+            >
+              Organization details
+            </Link>
+          )}
+          <button
+            type="button"
+            disabled={reportOpening}
+            className="rounded-sm border border-tesla-border bg-white px-3 py-1.5 text-sm font-medium text-tesla-text hover:bg-tesla-muted disabled:opacity-60"
+            title="Opens the RFQ/PO report in a new tab. Use Print → Save as PDF when ready."
+            onClick={() => {
+              setReportOpening(true);
+              void openProcurementPdfReport({
+                row,
+                lines,
+                supplier: supplier ?? null,
+                projects,
+                orgName,
+                orgProfile,
+              }).finally(() => setReportOpening(false));
+            }}
+          >
+            {reportOpening ? "Opening…" : "RFQ / PO report"}
+          </button>
+        </div>
       </div>
       <div className="mb-4 grid gap-2 sm:grid-cols-2">
         <div className="sm:col-span-2">
@@ -389,7 +417,7 @@ export function PurchasingDetailView({
       <h3 className="mb-2 text-sm font-semibold text-tesla-text">Line items</h3>
       <p className="mb-2 text-xs text-tesla-text-secondary">
         Changes save automatically. Green = received, amber = partial, red = overdue. Use{" "}
-        <strong>RFQ / PO report (PDF)</strong> above to print the order (Print → Save as PDF).
+        <strong>RFQ / PO report</strong> above to open the order in a new tab (Print → Save as PDF when ready).
       </p>
       <div className="mb-4 overflow-x-auto rounded-sm border border-tesla-border">
         <table className="w-full min-w-[42rem] border-collapse text-sm">

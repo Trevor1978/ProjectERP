@@ -21,6 +21,7 @@ import { WorkspacePurchasingDetailPage } from "./pages/workspace/WorkspacePurcha
 import { WorkspacePurchasingLineDetailPage } from "./pages/workspace/WorkspacePurchasingLineDetailPage";
 import { WorkspaceMachinesPage } from "./pages/workspace/WorkspaceMachinesPage";
 import { WorkspaceMachineDetailPage } from "./pages/workspace/WorkspaceMachineDetailPage";
+import { WorkspaceOrganizationPage } from "./pages/workspace/WorkspaceOrganizationPage";
 import { House } from "lucide-react";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -60,6 +61,14 @@ function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/workspace/machines" className="text-sm text-white/70 hover:text-white">
             Machines
           </Link>
+          {user.globalRole === "org_admin" && (
+            <Link
+              to="/workspace/organization"
+              className="text-sm text-white/70 hover:text-white"
+            >
+              Organization
+            </Link>
+          )}
         </div>
         <div className="flex items-center gap-3 text-sm">
           <GlobalSearch />
@@ -149,6 +158,7 @@ export default function App() {
         <Route path="purchasing-lines/:lineId" element={<WorkspacePurchasingLineDetailPage />} />
         <Route path="machines" element={<WorkspaceMachinesPage />} />
         <Route path="machines/:assetId" element={<WorkspaceMachineDetailPage />} />
+        <Route path="organization" element={<WorkspaceOrganizationPage />} />
         <Route path=":table" element={<HomePage />} />
       </Route>
       <Route

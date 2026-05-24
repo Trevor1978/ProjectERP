@@ -13,6 +13,8 @@ import {
   removeProcurementLineFromCache,
   sortProcurementLines,
 } from "../../workspace/procurementCache";
+import { useMe } from "../../hooks/useMe";
+import { useOrgProfile } from "../../hooks/useOrgProfile";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 
 type Project = { id: string; name: string; version: number };
@@ -33,6 +35,8 @@ export function WorkspacePurchasingDetailPage() {
     queryKey: ["suppliers"],
     queryFn: () => api<{ suppliers: Supplier[] }>("/api/suppliers"),
   });
+  const { data: meData } = useMe();
+  const { data: orgProfileData } = useOrgProfile();
 
   const row = procData?.procurement.find((p) => p.id === procurementId);
   const lines = useMemo(
@@ -92,6 +96,9 @@ export function WorkspacePurchasingDetailPage() {
         lines={lines}
         projects={projects}
         suppliers={suppliers}
+        orgName={meData?.user?.org.name ?? "Organization"}
+        orgProfile={orgProfileData?.profile}
+        isOrgAdmin={meData?.user?.globalRole === "org_admin"}
         onHeaderSaved={onHeaderSaved}
         onLineSaved={onLineSaved}
         onLineAdded={onLineAdded}

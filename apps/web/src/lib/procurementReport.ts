@@ -1,5 +1,7 @@
 import type { Procurement, ProcurementLine } from "../workspace/purchasingTypes";
+import type { OrgProfile } from "../workspace/orgProfileTypes";
 import { calcProcurementTotals, formatOrderedQty } from "../workspace/procurementLineStatus";
+import { fetchReportImageDataUrls } from "./reportImageData";
 
 type Supplier = { id: string; name: string };
 type Project = { id: string; name: string };
@@ -21,13 +23,59 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function formatAddressBlock(label: string, value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return `<div class="addr-block"><span class="addr-label">${escapeHtml(label)}</span><div class="addr-body">${escapeHtml(trimmed).replace(/\n/g, "<br/>")}</div></div>`;
+}
+
+function buildOrgHeaderHtml(
+  orgName: string,
+  profile: OrgProfile | null | undefined,
+  logos: string[],
+): string {
+  const display = profile?.displayName?.trim() || orgName;
+  const contact: string[] = [];
+  if (profile?.phone?.trim()) contact.push(escapeHtml(profile.phone.trim()));
+  if (profile?.email?.trim()) contact.push(escapeHtml(profile.email.trim()));
+  if (profile?.website?.trim()) contact.push(escapeHtml(profile.website.trim()));
+  const tax = profile?.taxId?.trim() ? `<div class="tax-id">ABN / Tax ID: ${escapeHtml(profile.taxId.trim())}</div>` : "";
+
+  const logoHtml = logos.length
+    ? `<div class="logos">${logos.map((src) => `<img src="${src}" alt="" />`).join("")}</div>`
+    : "";
+
+  const addresses = [
+    formatAddressBlock("Shipping", profile?.shippingAddress ?? ""),
+    formatAddressBlock("Billing", profile?.billingAddress ?? ""),
+    formatAddressBlock("Correspondence", profile?.correspondenceAddress ?? ""),
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return `<header class="org-header">
+    <div class="org-brand">
+      ${logoHtml}
+      <div class="org-identity">
+        <div class="org-name">${escapeHtml(display)}</div>
+        ${contact.length ? `<div class="org-contact">${contact.join(" · ")}</div>` : ""}
+        ${tax}
+      </div>
+    </div>
+    ${addresses ? `<div class="org-addresses">${addresses}</div>` : ""}
+  </header>`;
+}
+
 function buildProcurementReportHtml(opts: {
   row: Procurement;
   lines: ProcurementLine[];
   supplier?: Supplier | null;
   projects: Project[];
+  orgName: string;
+  orgProfile?: OrgProfile | null;
+  logoDataUrls?: string[];
 }): { html: string; docTitle: string; filename: string } {
-  const { row, lines, supplier, projects } = opts;
+  const { row, lines, supplier, projects, orgName, orgProfile, logoDataUrls = [] } = opts;
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
   const isPo =
     row.status === "ordered" || row.status === "partially_received" || row.status === "closed";
@@ -52,12 +100,23 @@ function buildProcurementReportHtml(opts: {
 
   const safeName = row.title.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "report";
   const filename = `${isPo ? "PO" : "RFQ"}-${safeName}.html`;
+  const orgHeader = buildOrgHeaderHtml(orgName, orgProfile, logoDataUrls);
 
   const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/><title>${docTitle} — ${escapeHtml(row.title)}</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #171a20; margin: 2rem; }
+  .org-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1.5rem; padding-bottom: 1.25rem; margin-bottom: 1.5rem; border-bottom: 2px solid #171a20; }
+  .org-brand { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem; flex: 1; min-width: 14rem; }
+  .logos { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+  .logos img { max-height: 56px; max-width: 160px; object-fit: contain; }
+  .org-name { font-size: 1.125rem; font-weight: 600; letter-spacing: 0.02em; }
+  .org-contact, .tax-id { color: #5c5e62; font-size: 0.8125rem; margin-top: 0.25rem; }
+  .org-addresses { display: flex; flex-wrap: wrap; gap: 1rem 1.5rem; font-size: 0.8125rem; max-width: 28rem; }
+  .addr-block { min-width: 10rem; }
+  .addr-label { display: block; font-weight: 600; color: #393c41; margin-bottom: 0.2rem; }
+  .addr-body { color: #5c5e62; line-height: 1.4; }
   h1 { font-size: 1.5rem; font-weight: 500; letter-spacing: 0.02em; margin: 0 0 0.25rem; }
   .meta { color: #5c5e62; font-size: 0.875rem; margin-bottom: 1.5rem; }
   table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
@@ -67,8 +126,10 @@ function buildProcurementReportHtml(opts: {
   .totals { margin-top: 1.5rem; max-width: 16rem; margin-left: auto; }
   .totals div { display: flex; justify-content: space-between; padding: 0.25rem 0; }
   .totals .grand { font-weight: 600; border-top: 2px solid #171a20; margin-top: 0.5rem; padding-top: 0.5rem; }
+  .hint { margin-top: 2rem; color: #5c5e62; font-size: 0.8125rem; }
   @media print { body { margin: 0.5in; } }
 </style></head><body>
+  ${orgHeader}
   <h1>${docTitle}</h1>
   <p class="meta">
     <strong>${escapeHtml(row.title)}</strong><br/>
@@ -88,8 +149,7 @@ function buildProcurementReportHtml(opts: {
     <div><span>GST (10%)</span><span>$${money(gst)}</span></div>
     <div class="grand"><span>Total</span><span>$${money(total)}</span></div>
   </div>
-  <p class="meta" style="margin-top:2rem">Use <strong>Print</strong> → <strong>Save as PDF</strong> (or your browser’s PDF printer).</p>
-  <script>window.addEventListener("load", () => window.setTimeout(() => window.print(), 250));</script>
+  <p class="hint">Use your browser menu: <strong>Print</strong> → <strong>Save as PDF</strong> when you are ready.</p>
 </body></html>`;
 
   return { html, docTitle, filename };
@@ -108,59 +168,49 @@ function downloadReportHtml(filename: string, html: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-function printViaHiddenIframe(html: string): boolean {
-  try {
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("title", "RFQ/PO report");
-    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
-    document.body.appendChild(iframe);
-    const win = iframe.contentWindow;
-    const doc = win?.document;
-    if (!doc) {
-      iframe.remove();
-      return false;
-    }
-    doc.open();
-    doc.write(html);
-    doc.close();
-    window.setTimeout(() => iframe.remove(), 120_000);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function openReportInNewTab(html: string, filename: string): boolean {
-  const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-  const w = window.open(dataUrl, "_blank");
-  if (w) return true;
-
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const blobUrl = URL.createObjectURL(blob);
-  const w2 = window.open(blobUrl, "_blank");
-  if (w2) {
+  const w = window.open(blobUrl, "_blank");
+  if (w) {
     window.setTimeout(() => URL.revokeObjectURL(blobUrl), 10 * 60 * 1000);
     return true;
   }
   URL.revokeObjectURL(blobUrl);
+
+  const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+  const w2 = window.open(dataUrl, "_blank");
+  if (w2) return true;
+
   downloadReportHtml(filename, html);
   return false;
 }
 
 /**
- * Opens the RFQ/PO report and triggers Print → Save as PDF.
- * Prefers a hidden iframe (no pop-up / blank tab). Falls back to a new tab, then HTML download.
+ * Opens the RFQ/PO report in a new browser tab (no automatic print).
  */
-export function openProcurementPdfReport(opts: {
+export async function openProcurementPdfReport(opts: {
   row: Procurement;
   lines: ProcurementLine[];
   supplier?: Supplier | null;
   projects: Project[];
-}): void {
-  const { html, filename } = buildProcurementReportHtml(opts);
-  if (printViaHiddenIframe(html)) return;
-  if (openReportInNewTab(html, filename)) return;
-  window.alert(
-    "Could not open the report. An HTML file was downloaded — open it in your browser, then use Print → Save as PDF.",
-  );
+  orgName: string;
+  orgProfile?: OrgProfile | null;
+}): Promise<void> {
+  const imagePaths = (opts.orgProfile?.images ?? [])
+    .filter((img) => img.includeOnReports)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((img) => img.url);
+  const logoDataUrls = await fetchReportImageDataUrls(imagePaths);
+
+  const { html, filename } = buildProcurementReportHtml({
+    ...opts,
+    logoDataUrls,
+  });
+
+  if (!openReportInNewTab(html, filename)) {
+    window.alert(
+      "Pop-up was blocked. The report was downloaded as an HTML file — open it in your browser to view or print.",
+    );
+  }
 }

@@ -23,6 +23,44 @@ export const organization = pgTable("organization", {
     .defaultNow(),
 });
 
+export const organizationProfile = pgTable("organization_profile", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  displayName: text("display_name"),
+  shippingAddress: text("shipping_address").notNull().default(""),
+  billingAddress: text("billing_address").notNull().default(""),
+  correspondenceAddress: text("correspondence_address").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  email: text("email").notNull().default(""),
+  website: text("website").notNull().default(""),
+  taxId: text("tax_id").notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const organizationReportImage = pgTable(
+  "organization_report_image",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    storageName: text("storage_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    includeOnReports: boolean("include_on_reports").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("organization_report_image_org_idx").on(t.organizationId)],
+);
+
 export const user = pgTable(
   "user",
   {
