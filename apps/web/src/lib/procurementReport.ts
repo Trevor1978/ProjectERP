@@ -13,12 +13,20 @@ function fmtDate(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
-export function openProcurementPdfReport(opts: {
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildProcurementReportHtml(opts: {
   row: Procurement;
   lines: ProcurementLine[];
   supplier?: Supplier | null;
   projects: Project[];
-}): void {
+}): { html: string; docTitle: string; filename: string } {
   const { row, lines, supplier, projects } = opts;
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
   const isPo =
@@ -42,11 +50,14 @@ export function openProcurementPdfReport(opts: {
     )
     .join("");
 
+  const safeName = row.title.replace(/[^\w.-]+/g, "-").replace(/^-|-$/g, "") || "report";
+  const filename = `${isPo ? "PO" : "RFQ"}-${safeName}.html`;
+
   const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"/><title>${docTitle} — ${escapeHtml(row.title)}</title>
+<html lang="en"><head><meta charset="utf-8"/><title>${docTitle} — ${escapeHtml(row.title)}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: "Gotham", "Helvetica Neue", Arial, sans-serif; color: #171a20; margin: 2rem; }
+  body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #171a20; margin: 2rem; }
   h1 { font-size: 1.5rem; font-weight: 500; letter-spacing: 0.02em; margin: 0 0 0.25rem; }
   .meta { color: #5c5e62; font-size: 0.875rem; margin-bottom: 1.5rem; }
   table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
@@ -77,22 +88,66 @@ export function openProcurementPdfReport(opts: {
     <div><span>GST (10%)</span><span>$${money(gst)}</span></div>
     <div class="grand"><span>Total</span><span>$${money(total)}</span></div>
   </div>
-  <script>window.onload = () => { window.print(); };</script>
+  <p class="meta" style="margin-top:2rem">Use <strong>Print</strong> → <strong>Save as PDF</strong> (or your browser’s PDF printer).</p>
 </body></html>`;
 
-  const w = window.open("", "_blank", "noopener,noreferrer");
-  if (!w) {
-    alert("Allow pop-ups to print or save the report as PDF.");
-    return;
-  }
-  w.document.write(html);
-  w.document.close();
+  return { html, docTitle, filename };
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function downloadReportHtml(filename: string, html: string) {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/**
+ * Opens a printable RFQ/PO report in a new tab, then triggers the browser print dialog (Save as PDF).
+ * If pop-ups are blocked, downloads the same report as an HTML file instead.
+ */
+export function openProcurementPdfReport(opts: {
+  row: Procurement;
+  lines: ProcurementLine[];
+  supplier?: Supplier | null;
+  projects: Project[];
+}): void {
+  const { html, filename } = buildProcurementReportHtml(opts);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const w = window.open(url, "_blank");
+  if (!w) {
+    URL.revokeObjectURL(url);
+    downloadReportHtml(filename, html);
+    window.alert(
+      "Pop-up was blocked. The report was downloaded as an HTML file — open it in your browser, then use Print → Save as PDF.",
+    );
+    return;
+  }
+
+  const cleanup = () => URL.revokeObjectURL(url);
+  const triggerPrint = () => {
+    try {
+      w.focus();
+      w.print();
+    } catch {
+      /* print may fail in strict embed contexts */
+    }
+  };
+
+  w.addEventListener("load", () => {
+    cleanup();
+    window.setTimeout(triggerPrint, 300);
+  });
+  // If load already fired (blob URL), still print shortly after open
+  window.setTimeout(() => {
+    cleanup();
+    triggerPrint();
+  }, 600);
 }

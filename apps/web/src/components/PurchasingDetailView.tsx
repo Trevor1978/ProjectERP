@@ -315,6 +315,7 @@ export function PurchasingDetailView({
         <button
           type="button"
           className="rounded-sm border border-tesla-border bg-white px-3 py-1.5 text-sm font-medium text-tesla-text hover:bg-tesla-muted"
+          title="Opens a printable report in a new tab — use Print → Save as PDF. Allow pop-ups if nothing appears."
           onClick={() =>
             openProcurementPdfReport({ row, lines, supplier: supplier ?? null, projects })
           }
@@ -386,7 +387,10 @@ export function PurchasingDetailView({
       </div>
 
       <h3 className="mb-2 text-sm font-semibold text-tesla-text">Line items</h3>
-      <p className="mb-2 text-xs text-tesla-text-secondary">Changes save automatically. Green = received, amber = partial, red = overdue.</p>
+      <p className="mb-2 text-xs text-tesla-text-secondary">
+        Changes save automatically. Green = received, amber = partial, red = overdue. Use{" "}
+        <strong>RFQ / PO report (PDF)</strong> above to open a printable document (new tab → Print → Save as PDF).
+      </p>
       <div className="mb-4 overflow-x-auto rounded-sm border border-tesla-border">
         <table className="w-full min-w-[42rem] border-collapse text-sm">
           <thead>
