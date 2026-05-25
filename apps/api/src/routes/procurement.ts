@@ -29,6 +29,8 @@ import {
 } from "../lib/deleteResource.js";
 import { fetchSapPoLines } from "../lib/sap.js";
 import { syncProcurementStatusFromLineReceipts } from "../lib/syncProcurementReceiveStatus.js";
+import { resolveProjectItemIdForLine } from "../lib/projectItemForLine.js";
+import { syncProjectItemStatus } from "../lib/syncProjectItemStatus.js";
 import {
   groupBomRowsByManufacturer,
   readDbfRecordsFromBuffer,
@@ -475,9 +477,17 @@ app.post("/procurement-lines", async (c) => {
   if (prq.length === 0) {
     return c.json({ error: "Not found" }, 404);
   }
-  const pr = await requireProject(a, p.data.projectId);
-  if ("error" in pr) {
-    return c.json({ error: pr.error }, pr.status);
+  const itemRes = await resolveProjectItemIdForLine(a, {
+    projectId: p.data.projectId,
+    projectItemId: p.data.projectItemId,
+    partNumber: p.data.partNumber,
+    description: p.data.description,
+    quantity: p.data.quantity,
+    unit: p.data.unit,
+    createProjectItem: p.data.createProjectItem,
+  });
+  if (!itemRes.ok) {
+    return c.json({ error: itemRes.error }, 400);
   }
   const qty = p.data.quantity;
   const ordQty = p.data.orderedQty?.trim() ? p.data.orderedQty : null;
@@ -486,6 +496,7 @@ app.post("/procurement-lines", async (c) => {
     .values({
       procurementId: p.data.procurementId,
       projectId: p.data.projectId,
+      projectItemId: itemRes.projectItemId,
       partNumber: p.data.partNumber ?? null,
       description: p.data.description,
       quantity: qty,
@@ -499,6 +510,9 @@ app.post("/procurement-lines", async (c) => {
       receivedQty: p.data.receivedQty ?? 0,
     })
     .returning();
+  if (itemRes.projectItemId) {
+    await syncProjectItemStatus(itemRes.projectItemId);
+  }
   await syncProcurementStatusFromLineReceipts(p.data.procurementId);
   return c.json({ line });
 });
@@ -537,7 +551,38 @@ app.patch("/procurement-lines/:id", async (c) => {
   if (p.data.version !== undefined && p.data.version !== cur[0]!.version) {
     return c.json({ error: "Version conflict" }, 409);
   }
-  const qty = p.data.quantity ?? cur[0]!.quantity;
+  const nextDescription = p.data.description ?? cur[0]!.description;
+  const nextQty = p.data.quantity ?? cur[0]!.quantity;
+  let nextItemId =
+    p.data.projectItemId !== undefined ? p.data.projectItemId : cur[0]!.projectItemId;
+
+  if (p.data.projectItemId !== undefined && p.data.projectItemId !== null) {
+    const itemRes = await resolveProjectItemIdForLine(a, {
+      projectId: nextProjectId,
+      projectItemId: p.data.projectItemId,
+      description: nextDescription,
+      quantity: nextQty,
+      createProjectItem: false,
+    });
+    if (!itemRes.ok) {
+      return c.json({ error: itemRes.error }, 400);
+    }
+    nextItemId = itemRes.projectItemId;
+  } else if (p.data.projectId && p.data.projectId !== cur[0]!.projectId && nextItemId) {
+    const itemRes = await resolveProjectItemIdForLine(a, {
+      projectId: nextProjectId,
+      projectItemId: nextItemId,
+      description: nextDescription,
+      quantity: nextQty,
+      createProjectItem: false,
+    });
+    if (!itemRes.ok) {
+      return c.json({ error: itemRes.error }, 400);
+    }
+  }
+
+  const prevItemId = cur[0]!.projectItemId;
+  const qty = nextQty;
   const orderedQty =
     p.data.orderedQty === undefined
       ? cur[0]!.orderedQty
@@ -548,9 +593,10 @@ app.patch("/procurement-lines/:id", async (c) => {
     .update(procurementRequestLine)
     .set({
       projectId: nextProjectId,
+      projectItemId: nextItemId,
       partNumber:
         p.data.partNumber === undefined ? cur[0]!.partNumber : p.data.partNumber,
-      description: p.data.description ?? cur[0]!.description,
+      description: nextDescription,
       quantity: qty,
       orderedQty,
       unit: p.data.unit === undefined ? cur[0]!.unit : p.data.unit,
@@ -569,6 +615,12 @@ app.patch("/procurement-lines/:id", async (c) => {
     })
     .where(eq(procurementRequestLine.id, id))
     .returning();
+  if (prevItemId) await syncProjectItemStatus(prevItemId);
+  if (nextItemId && nextItemId !== prevItemId) {
+    await syncProjectItemStatus(nextItemId);
+  } else if (nextItemId) {
+    await syncProjectItemStatus(nextItemId);
+  }
   await syncProcurementStatusFromLineReceipts(cur[0]!.procurementId);
   return c.json({ line });
 });
@@ -643,10 +695,16 @@ app.get("/procurement-lines/:id/delete-preview", async (c) => {
 app.delete("/procurement-lines/:id", async (c) => {
   const a = c.get("auth") as AuthUser;
   const id = c.req.param("id");
+  const before = await db
+    .select({ projectItemId: procurementRequestLine.projectItemId })
+    .from(procurementRequestLine)
+    .where(eq(procurementRequestLine.id, id));
+  const itemId = before[0]?.projectItemId;
   const ok = await executeDeleteProcurementLine(a, id);
   if (!ok) {
     return c.json({ error: "Not found" }, 404);
   }
+  if (itemId) await syncProjectItemStatus(itemId);
   return c.json({ ok: true });
 });
 

@@ -196,9 +196,45 @@ const procurementQty = z
   .union([z.string().regex(/^\d*\.?\d+$/), z.number().nonnegative()])
   .transform((v) => String(v));
 
+export const projectItemKind = z.enum(["hardware", "software"]);
+export const projectItemStatus = z.enum([
+  "specified",
+  "on_order",
+  "partial",
+  "received",
+  "cancelled",
+]);
+
+export const projectItemCreate = z.object({
+  projectId: id,
+  kind: projectItemKind.default("hardware"),
+  partNumber: z.string().max(256).optional().nullable(),
+  description: z.string().min(1).max(2000),
+  quantity: procurementQty,
+  unit: z.string().max(32).optional().nullable(),
+  status: projectItemStatus.default("specified"),
+  notes: z.string().max(4000).optional().default(""),
+  orderIndex: z.number().int().min(0).default(0),
+});
+
+export const projectItemPatch = z
+  .object({
+    kind: projectItemKind.optional(),
+    partNumber: z.string().max(256).optional().nullable(),
+    description: z.string().min(1).max(2000).optional(),
+    quantity: procurementQty.optional(),
+    unit: z.string().max(32).optional().nullable(),
+    status: projectItemStatus.optional(),
+    notes: z.string().max(4000).optional(),
+    orderIndex: z.number().int().min(0).optional(),
+    version,
+  })
+  .strict();
+
 export const procurementLineCreate = z.object({
   procurementId: id,
   projectId: id,
+  projectItemId: id.optional().nullable(),
   partNumber: z.string().max(256).optional().nullable(),
   description: z.string().min(1).max(2000),
   quantity: procurementQty,
@@ -210,10 +246,13 @@ export const procurementLineCreate = z.object({
     .nullable(),
   orderIndex: z.number().int().min(0).default(0),
   receivedQty: z.number().int().min(0).optional().default(0),
+  /** When true and projectItemId omitted, creates a linked project item from the line. Default true. */
+  createProjectItem: z.boolean().optional().default(true),
 });
 export const procurementLinePatch = z
   .object({
     projectId: id.optional(),
+    projectItemId: id.nullable().optional(),
     partNumber: z.string().max(256).optional().nullable(),
     description: z.string().min(1).max(2000).optional(),
     quantity: procurementQty.optional(),

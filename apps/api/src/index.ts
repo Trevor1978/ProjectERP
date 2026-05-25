@@ -8,6 +8,7 @@ import { timeApp } from "./routes/time.js";
 import { procurementApp, handleProcurementImportDbf } from "./routes/procurement.js";
 import { orgApp } from "./routes/org.js";
 import { extraApp } from "./routes/extra.js";
+import { projectItemsApp } from "./routes/projectItems.js";
 
 const port = Number(process.env.PORT) || 3001;
 const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:5173";
@@ -33,6 +34,7 @@ app.route("/api", timeApp);
 app.route("/api", procurementApp);
 app.route("/api", orgApp);
 app.route("/api", extraApp);
+app.route("/api", projectItemsApp);
 
 console.log(`API listening on http://0.0.0.0:${port} (CORS: ${webOrigin})`);
 serve({ fetch: app.fetch, port, hostname: "0.0.0.0" });

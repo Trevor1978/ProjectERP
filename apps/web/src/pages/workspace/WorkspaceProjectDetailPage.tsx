@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
+import { ProjectItemsPanel } from "../../components/ProjectItemsPanel";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
@@ -230,6 +231,8 @@ export function WorkspaceProjectDetailPage() {
           </button>
         </div>
       </div>
+
+      <ProjectItemsPanel projectId={project.id} />
     </WorkspaceDetailChrome>
   );
 }

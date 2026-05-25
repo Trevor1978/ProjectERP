@@ -44,7 +44,7 @@ export function WorkspaceOrganizationPage() {
 
   useEffect(() => {
     if (profile) setFields(fieldsFromProfile(profile));
-  }, [profile]);
+  }, [profile?.updatedAt, profile?.organizationId]);
 
   const patchPayload = useMemo(() => {
     if (!fields) return null;
@@ -150,10 +150,11 @@ export function WorkspaceOrganizationPage() {
         <h2 className="mb-3 text-sm font-semibold text-tesla-text">Identity</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="block text-sm font-medium text-tesla-text-secondary">
+            <label htmlFor="org-display-name" className="block text-sm font-medium text-tesla-text-secondary">
               Display name on reports
             </label>
             <input
+              id="org-display-name"
               className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1 disabled:bg-tesla-muted/40"
               value={fields.displayName}
               disabled={!isAdmin}
@@ -165,8 +166,9 @@ export function WorkspaceOrganizationPage() {
             </p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-tesla-text-secondary">Phone</label>
+            <label htmlFor="org-phone" className="block text-sm font-medium text-tesla-text-secondary">Phone</label>
             <input
+              id="org-phone"
               className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1 disabled:bg-tesla-muted/40"
               value={fields.phone}
               disabled={!isAdmin}
@@ -174,8 +176,9 @@ export function WorkspaceOrganizationPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-tesla-text-secondary">Email</label>
+            <label htmlFor="org-email" className="block text-sm font-medium text-tesla-text-secondary">Email</label>
             <input
+              id="org-email"
               className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1 disabled:bg-tesla-muted/40"
               value={fields.email}
               disabled={!isAdmin}
@@ -183,8 +186,9 @@ export function WorkspaceOrganizationPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-tesla-text-secondary">Website</label>
+            <label htmlFor="org-website" className="block text-sm font-medium text-tesla-text-secondary">Website</label>
             <input
+              id="org-website"
               className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1 disabled:bg-tesla-muted/40"
               value={fields.website}
               disabled={!isAdmin}
@@ -192,8 +196,9 @@ export function WorkspaceOrganizationPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-tesla-text-secondary">ABN / Tax ID</label>
+            <label htmlFor="org-tax-id" className="block text-sm font-medium text-tesla-text-secondary">ABN / Tax ID</label>
             <input
+              id="org-tax-id"
               className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1 disabled:bg-tesla-muted/40"
               value={fields.taxId}
               disabled={!isAdmin}
@@ -208,8 +213,9 @@ export function WorkspaceOrganizationPage() {
         <h2 className="mb-3 text-sm font-semibold text-tesla-text">Addresses</h2>
         <div className="grid gap-4">
           <div>
-            <label className="block text-sm font-medium text-tesla-text-secondary">Shipping</label>
+            <label htmlFor="org-shipping" className="block text-sm font-medium text-tesla-text-secondary">Shipping</label>
             <textarea
+              id="org-shipping"
               rows={3}
               className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1 disabled:bg-tesla-muted/40"
               value={fields.shippingAddress}
@@ -218,8 +224,9 @@ export function WorkspaceOrganizationPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-tesla-text-secondary">Billing</label>
+            <label htmlFor="org-billing" className="block text-sm font-medium text-tesla-text-secondary">Billing</label>
             <textarea
+              id="org-billing"
               rows={3}
               className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1 disabled:bg-tesla-muted/40"
               value={fields.billingAddress}
@@ -228,10 +235,11 @@ export function WorkspaceOrganizationPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-tesla-text-secondary">
+            <label htmlFor="org-correspondence" className="block text-sm font-medium text-tesla-text-secondary">
               Correspondence / other
             </label>
             <textarea
+              id="org-correspondence"
               rows={3}
               className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1 disabled:bg-tesla-muted/40"
               value={fields.correspondenceAddress}
@@ -251,8 +259,12 @@ export function WorkspaceOrganizationPage() {
           RFQ/PO reports.
         </p>
         {isAdmin && (
-          <label className="mb-4 inline-flex cursor-pointer items-center gap-2 rounded-sm border border-tesla-border bg-tesla-muted/30 px-3 py-2 text-sm font-medium text-tesla-text hover:bg-tesla-muted/60">
+          <label
+            htmlFor="org-report-upload"
+            className="mb-4 inline-flex cursor-pointer items-center gap-2 rounded-sm border border-tesla-border bg-tesla-muted/30 px-3 py-2 text-sm font-medium text-tesla-text hover:bg-tesla-muted/60"
+          >
             <input
+              id="org-report-upload"
               type="file"
               accept="image/png,image/jpeg,image/webp,image/gif"
               multiple

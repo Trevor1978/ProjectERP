@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import type { ProjectItem } from "../workspace/projectItemTypes";
+import { projectItemStatusLabel } from "../workspace/projectItemTypes";
 import { openProcurementPdfReport } from "../lib/procurementReport";
 import { useDebouncedPatch } from "../hooks/useDebouncedPatch";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
@@ -239,6 +242,7 @@ export function PurchasingDetailView({
     lines.length ? String(Math.max(...lines.map((l) => l.orderIndex)) + 1) : "0",
   );
   const [newProjectId, setNewProjectId] = useState(lines[0]?.projectId ?? projects[0]?.id ?? "");
+  const [newProjectItemId, setNewProjectItemId] = useState("");
   const [newReceivedQty, setNewReceivedQty] = useState("0");
   const [fullyReceivedOverride, setFullyReceivedOverride] = useState(row.fullyReceivedOverride ?? false);
   const [lineAdding, setLineAdding] = useState(false);
@@ -315,6 +319,33 @@ export function PurchasingDetailView({
       setNewProjectId(projects[0]!.id);
     }
   }, [projects, newProjectId]);
+
+  const { data: projectItemsData } = useQuery({
+    queryKey: ["project-items", newProjectId],
+    queryFn: () =>
+      api<{ items: ProjectItem[] }>(`/api/projects/${newProjectId}/items`),
+    enabled: Boolean(newProjectId),
+  });
+  const projectItemsForAdd = useMemo(
+    () =>
+      (projectItemsData?.items ?? []).filter((i) => i.status !== "cancelled"),
+    [projectItemsData?.items],
+  );
+
+  useEffect(() => {
+    setNewProjectItemId("");
+  }, [newProjectId]);
+
+  function applyProjectItem(itemId: string) {
+    setNewProjectItemId(itemId);
+    if (!itemId) return;
+    const item = projectItemsForAdd.find((i) => i.id === itemId);
+    if (!item) return;
+    setNewPart(item.partNumber ?? "");
+    setNewDesc(item.description);
+    setNewQty(item.quantity);
+    setNewUnit(item.unit ?? "");
+  }
 
   return (
     <div className="mx-auto max-w-6xl rounded-lg border border-tesla-border bg-white p-4 shadow-sm">
@@ -473,6 +504,25 @@ export function PurchasingDetailView({
               ))}
             </select>
           </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label htmlFor="link-project-item" className="block text-xs font-medium text-tesla-text-secondary">
+              Link to project item (optional)
+            </label>
+            <select
+              id="link-project-item"
+              className="w-full rounded-sm border border-tesla-border px-2 py-1"
+              value={newProjectItemId}
+              onChange={(e) => applyProjectItem(e.target.value)}
+            >
+              <option value="">New line — create project item automatically</option>
+              {projectItemsForAdd.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.partNumber ? `${i.partNumber} · ` : ""}
+                  {i.description} ({projectItemStatusLabel(i.status)}, qty {i.quantity})
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-xs font-medium text-tesla-text-secondary">Part #</label>
             <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newPart} onChange={(e) => setNewPart(e.target.value)} />
@@ -526,6 +576,8 @@ export function PurchasingDetailView({
               body: JSON.stringify({
                 procurementId: row.id,
                 projectId: newProjectId,
+                projectItemId: newProjectItemId || null,
+                createProjectItem: !newProjectItemId,
                 partNumber: newPart.trim() || null,
                 description: newDesc.trim(),
                 quantity: newQty || "1",
@@ -544,6 +596,7 @@ export function PurchasingDetailView({
                 setNewUnit("");
                 setNewEst("");
                 setNewReceivedQty("0");
+                setNewProjectItemId("");
                 onLineAdded(res.line);
               })
               .catch((e: Error) => setLineErr(e.message))

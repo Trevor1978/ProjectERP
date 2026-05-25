@@ -19,6 +19,7 @@ export type ProcurementLine = {
   id: string;
   procurementId: string;
   projectId: string;
+  projectItemId: string | null;
   partNumber: string | null;
   description: string;
   quantity: string;

@@ -424,6 +424,40 @@ export const procurementRequest = pgTable("procurement_request", {
     .defaultNow(),
 });
 
+export const projectItem = pgTable(
+  "project_item",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["hardware", "software"] })
+      .notNull()
+      .default("hardware"),
+    partNumber: text("part_number"),
+    description: text("description").notNull(),
+    quantity: text("quantity").notNull().default("1"),
+    unit: text("unit"),
+    status: text("status", {
+      enum: ["specified", "on_order", "partial", "received", "cancelled"],
+    })
+      .notNull()
+      .default("specified"),
+    notes: text("notes").notNull().default(""),
+    orderIndex: integer("order_index").notNull().default(0),
+    version: integer("version").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("project_item_project_idx").on(t.projectId)],
+);
+
 export const procurementRequestLine = pgTable(
   "procurement_request_line",
   {
@@ -436,6 +470,9 @@ export const procurementRequestLine = pgTable(
     projectId: text("project_id")
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
+    projectItemId: text("project_item_id").references(() => projectItem.id, {
+      onDelete: "set null",
+    }),
     partNumber: text("part_number"),
     description: text("description").notNull(),
     quantity: text("quantity").notNull().default("1"), // string for large decimals
