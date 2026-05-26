@@ -1,0 +1,63 @@
+# Production stack for Coolify (or: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d)
+#
+# Coolify: New Resource → Docker Compose → compose file: docker-compose.prod.yml
+# Set env in Coolify UI: POSTGRES_PASSWORD, SESSION_SECRET, WEB_ORIGIN (https://your.domain)
+# Attach public domain + HTTPS to the "web" service only.
+#
+# Local smoke: cp .env.example .env.prod, set secrets, then:
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: projecterp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: projecterp
+    volumes:
+      - projecterp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U projecterp -d projecterp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgres://projecterp:${POSTGRES_PASSWORD}@postgres:5432/projecterp
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost}
+      UPLOAD_DIR: /data/uploads
+      SAP_DATABASE_URL: ${SAP_DATABASE_URL:-}
+      SAP_ECHO_MODE: ${SAP_ECHO_MODE:-true}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+    volumes:
+      - projecterp_uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+      args:
+        VITE_API_URL: ""
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  projecterp_pgdata:
+  projecterp_uploads:
