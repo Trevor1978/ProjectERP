@@ -12,6 +12,7 @@ import { DeleteConfirmModal } from "./DeleteConfirmModal";
 import { procurementLineRowClass } from "../workspace/procurementLineStatus";
 import { columnFilterMatches, filterCell, TABS_WITH_COMPLETED } from "../lib/workspaceTableUtils";
 import { WorkspaceCsvToolbar } from "./WorkspaceCsvToolbar";
+import { ColumnFilterInput } from "./ColumnFilterInput";
 import { buildCsvImportHandler } from "../lib/workspaceCsvImport";
 
 type Client = { id: string; name: string; code: string | null; version: number };
@@ -889,12 +890,17 @@ export function CrudWorkspace() {
       }),
     },
     todos: {
-      dataHeaders: ["Task", "Title", "Description", "Status", "Due", "Priority", "Order", "Assignee"],
-      rows: todos.map((td) => ({
+      dataHeaders: ["Task", "Project", "Title", "Description", "Status", "Due", "Priority", "Order", "Assignee"],
+      rows: todos.map((td) => {
+        const task = tasks.find((t) => t.id === td.taskId);
+        const projectId = task?.projectId ?? "";
+        const projectLabel = projectName.get(projectId) ?? "";
+        return {
         key: td.id,
         action: rowActions("todos", td.id, td.title, undefined, { openHref: `/workspace/todos/${td.id}` }),
         cells: [
           <span key="tk">{taskName.get(td.taskId) ?? td.taskId}</span>,
+          <span key="pj">{projectLabel || "—"}</span>,
           <InlineText
             key="ti"
             value={td.title}
@@ -969,9 +975,10 @@ export function CrudWorkspace() {
             }
           />,
         ],
-        search: `${taskName.get(td.taskId) ?? ""} ${td.title} ${td.description ?? ""} ${td.status} ${td.priority}`,
+        search: `${projectLabel} ${taskName.get(td.taskId) ?? ""} ${td.title} ${td.description ?? ""} ${td.status} ${td.priority}`,
         sort: [
           taskName.get(td.taskId) ?? "",
+          projectLabel,
           td.title,
           td.description ?? "",
           td.status,
@@ -980,7 +987,19 @@ export function CrudWorkspace() {
           td.orderIndex,
           userName.get(td.assigneeId ?? "") ?? "",
         ],
-      })),
+        filterValues: [
+          filterCell(taskName.get(td.taskId), td.taskId),
+          filterCell(projectLabel, projectId),
+          filterCell(td.title),
+          filterCell(td.description),
+          filterCell(td.status),
+          filterCell(td.dueAt),
+          filterCell(td.priority),
+          filterCell(td.orderIndex),
+          filterCell(userName.get(td.assigneeId ?? ""), td.assigneeId),
+        ],
+      };
+      }),
     },
     timeEntries: {
       dataHeaders: ["Task", "Todo", "Minutes", "Start", "End", "User", "Note"],
@@ -2052,6 +2071,10 @@ function CrudAppendRow({
   }
 
   if (tab === "todos") {
+    const tdTask = tasks.find((t) => t.id === tdTaskId);
+    const tdProjectLabel = tdTask
+      ? (projects.find((p) => p.id === tdTask.projectId)?.name ?? "—")
+      : "—";
     return (
       <tr className="border-t bg-slate-50/90">
         <td className="p-2 align-top">
@@ -2071,6 +2094,7 @@ function CrudAppendRow({
             )}
           </select>
         </td>
+        <td className="p-2 align-middle text-sm text-slate-600">{tdProjectLabel}</td>
         <td className="p-2 align-top">
           <input
             className={newRowInputClass}
@@ -2079,7 +2103,7 @@ function CrudAppendRow({
             onChange={(e) => setTdTitle(e.target.value)}
           />
         </td>
-        <td colSpan={5} className="p-2 align-middle text-xs text-slate-500">
+        <td colSpan={6} className="p-2 align-middle text-xs text-slate-500">
           Status defaults to <strong>backlog</strong>.
         </td>
         <td className={stickyActionsTd}>
@@ -2507,15 +2531,15 @@ function FilterSortTable({
               {leadingColumn ? <th className="p-1" /> : null}
               {dataHeaders.map((h, idx) => (
                 <th key={`f-${h}-${idx}`} className="p-1 font-normal">
-                  <input
-                    className="w-full min-w-[4rem] rounded border border-tesla-border px-1.5 py-0.5 text-xs font-normal"
-                    placeholder={`Filter ${h}`}
+                  <ColumnFilterInput
+                    columnIndex={idx}
+                    columnLabel={h}
+                    rows={rows}
                     value={colFilters[idx] ?? ""}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       setColFilters((prev) => {
                         const next = { ...prev };
-                        const v = e.target.value;
-                        if (v) next[idx] = v;
+                        if (v.trim()) next[idx] = v;
                         else delete next[idx];
                         return next;
                       })
