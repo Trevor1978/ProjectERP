@@ -92,7 +92,6 @@ function buildProcurementReportHtml(opts: {
       <td class="num">${escapeHtml(l.quantity)}</td>
       <td class="num">${escapeHtml(formatOrderedQty(l.orderedQty))}</td>
       <td class="num">${l.receivedQty}</td>
-      <td>${escapeHtml(l.unit ?? "")}</td>
       <td class="num">${l.estUnitPrice != null ? money(l.estUnitPrice) : "—"}</td>
     </tr>`,
     )
@@ -140,9 +139,9 @@ function buildProcurementReportHtml(opts: {
     <thead><tr>
       <th>Part #</th><th>Description</th><th>Project</th>
       <th class="num">Qty</th><th class="num">Ordered</th><th class="num">Received</th>
-      <th>Unit</th><th class="num">Unit price</th>
+      <th class="num">Unit price</th>
     </tr></thead>
-    <tbody>${lineRows || "<tr><td colspan='8'>No lines</td></tr>"}</tbody>
+    <tbody>${lineRows || "<tr><td colspan='7'>No lines</td></tr>"}</tbody>
   </table>
   <div class="totals">
     <div><span>Subtotal (ex GST)</span><span>$${money(subtotal)}</span></div>

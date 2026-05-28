@@ -1,0 +1,15 @@
+﻿Description field for the todo,Status,Notes
+Have the table filters filter on actual values rather than texrt matches. Have a filter tag with the name of the filter with a x to clear that filter. have the ability to have multiple filters each of which can be cleared individually,Done,Value-based column filters with removable chips in FilterSortTable
+"When clicking on the side menu it should by default keep the active project, milestone etc if possible",Done,WorkspaceLayout NavLinks preserve URL query string
+"All tables should have filtering for each row. eg. filter by project, milestone etc",Done,Per-column filters on all CrudWorkspace tabs; URL filters for project/task/milestone
+"Change colour of purchasing line items that are recieved, overdue etc",Done,procurementLineRowClass in detail and workspace lines table
+"Change the order of the columns for purchasing lines. qty, ordered, recieved",Done,Qty / Ordered / Received column order on PO and lines table
+Create a RFQ / PO report in PDF format that can be selected when in the purchasing details section.,Done,RFQ / PO report button opens print-ready HTML (Print → Save as PDF)
+I want to introdroduce a machine history log of work performed on each machine. I think it should be a service report that can be sent to customers and the details sections should be visible in a table view for each machine to view a history of the work performed.,Done,asset_service_log + WorkspaceMachineDetailPage + service report
+update Style guide to match Tesla https://thejennlee.com/tesla-style-guide,Done,tesla tokens in tailwind; docs/STYLE.md; workspace sidebar uses tokens
+Purchasing auto save when editing purchasing lines similar to the todo section. remove the save button,Done,useDebouncedPatch in PurchasingDetailView
+Purchase order page. Remove the unit column,Done,Removed from PurchasingDetailView and RFQ/PO report
+"Purchase order page. Should have a total for the order ex gst, gst amount and total.",Done,calcProcurementTotals in PurchasingDetailView and report
+"Purchase order page, each order line should have the option to select the project it is associated with.",Done,Project select per line in PurchasingDetailView
+CSV Upload for all tables. Able to export a csv template with headings for reference,Done,WorkspaceCsvToolbar on workspace tables; import for org_admin
+Anything completed or done should not be shown by default. have a button to toggle showing or hiding completed items,Done,Show completed toggle; hidden by default for projects/tasks/todos/purchasing

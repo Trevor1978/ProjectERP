@@ -1,27 +1,29 @@
 import { useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useSearchParams } from "react-router-dom";
 import { WORKSPACE_NAV_ITEMS } from "../lib/workspaceNav";
 
 export function WorkspaceLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
+  const queryString = searchParams.toString();
 
   return (
     <div className="flex flex-1 min-h-0 w-full">
       <aside
         className={
-          "flex shrink-0 flex-col border-r border-slate-200 bg-slate-50 transition-[width] duration-200 ease-out " +
+          "flex shrink-0 flex-col border-r border-tesla-border bg-tesla-muted transition-[width] duration-200 ease-out " +
           (collapsed ? "w-[3.25rem]" : "w-56")
         }
       >
         <div
           className={
-            "flex items-center border-b border-slate-200 bg-slate-100/80 " +
+            "flex items-center border-b border-tesla-border bg-white/80 " +
             (collapsed ? "justify-center px-1 py-2" : "justify-between gap-1 px-2 py-2")
           }
         >
           {!collapsed && (
-            <span className="truncate pl-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <span className="truncate pl-1 text-xs font-semibold uppercase tracking-wide text-tesla-text-secondary">
               Tables
             </span>
           )}
@@ -29,7 +31,7 @@ export function WorkspaceLayout() {
             type="button"
             aria-expanded={!collapsed}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            className="shrink-0 rounded-sm border border-tesla-border bg-white px-2 py-1 text-xs font-medium text-tesla-text shadow-sm hover:bg-tesla-muted"
             onClick={() => setCollapsed((c) => !c)}
           >
             {collapsed ? "»" : "«"}
@@ -46,15 +48,15 @@ export function WorkspaceLayout() {
             return (
             <NavLink
               key={slug}
-              to={`/workspace/${slug}`}
+              to={queryString ? `/workspace/${slug}?${queryString}` : `/workspace/${slug}`}
               end
               title={collapsed ? label : undefined}
               className={() =>
-                "rounded-md px-2 py-2 text-sm transition-colors " +
+                "rounded-sm px-2 py-2 text-sm transition-colors " +
                 (collapsed ? "text-center " : "") +
                 (sectionActive
-                  ? "bg-slate-900 font-medium text-white"
-                  : "text-slate-700 hover:bg-slate-200/90 hover:text-slate-900")
+                  ? "bg-tesla-text font-medium text-white"
+                  : "text-tesla-text-secondary hover:bg-white/90 hover:text-tesla-text")
               }
             >
               {collapsed ? (

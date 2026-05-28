@@ -44,7 +44,6 @@ function PurchasingDetailLineRow({
   const [projectId, setProjectId] = useState(line.projectId);
   const [quantity, setQuantity] = useState(line.quantity);
   const [orderedQty, setOrderedQty] = useState(line.orderedQty ?? "");
-  const [unit, setUnit] = useState(line.unit ?? "");
   const [estUnitPrice, setEstUnitPrice] = useState(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
   const [receivedQty, setReceivedQty] = useState(String(line.receivedQty));
   const [version, setVersion] = useState(line.version);
@@ -61,7 +60,6 @@ function PurchasingDetailLineRow({
     setProjectId(line.projectId);
     setQuantity(line.quantity);
     setOrderedQty(line.orderedQty ?? "");
-    setUnit(line.unit ?? "");
     setEstUnitPrice(line.estUnitPrice == null ? "" : String(line.estUnitPrice));
     setReceivedQty(String(line.receivedQty));
     setVersion(line.version);
@@ -74,12 +72,11 @@ function PurchasingDetailLineRow({
       projectId,
       quantity: quantity || "1",
       orderedQty: orderedQty.trim() || null,
-      unit: unit.trim() || null,
       estUnitPrice: estUnitPrice.trim() ? Number(estUnitPrice) : null,
       receivedQty: Math.max(0, Math.trunc(Number(receivedQty) || 0)),
       version,
     }),
-    [partNumber, description, projectId, quantity, orderedQty, unit, estUnitPrice, receivedQty, version],
+    [partNumber, description, projectId, quantity, orderedQty, estUnitPrice, receivedQty, version],
   );
 
   const save = useCallback(
@@ -143,9 +140,6 @@ function PurchasingDetailLineRow({
             </option>
           ))}
         </select>
-      </td>
-      <td className="py-1 pr-2">
-        <input className="w-16 rounded border border-tesla-border px-2 py-1" value={unit} onChange={(e) => setUnit(e.target.value)} />
       </td>
       <td className="py-1 pr-2">
         <input
@@ -236,7 +230,6 @@ export function PurchasingDetailView({
   const [newDesc, setNewDesc] = useState("");
   const [newQty, setNewQty] = useState("1");
   const [newOrderedQty, setNewOrderedQty] = useState("");
-  const [newUnit, setNewUnit] = useState("");
   const [newEst, setNewEst] = useState("");
   const [newOrder, setNewOrder] = useState(() =>
     lines.length ? String(Math.max(...lines.map((l) => l.orderIndex)) + 1) : "0",
@@ -344,7 +337,6 @@ export function PurchasingDetailView({
     setNewPart(item.partNumber ?? "");
     setNewDesc(item.description);
     setNewQty(item.quantity);
-    setNewUnit(item.unit ?? "");
   }
 
   return (
@@ -457,7 +449,6 @@ export function PurchasingDetailView({
               <th className="px-2 py-2 font-medium">Part #</th>
               <th className="px-2 py-2 font-medium">Description</th>
               <th className="px-2 py-2 font-medium">Project</th>
-              <th className="px-2 py-2 font-medium">Unit</th>
               <th className="px-2 py-2 font-medium">Est $</th>
               <th className="px-2 py-2 font-medium">Qty</th>
               <th className="px-2 py-2 font-medium">Ordered</th>
@@ -468,7 +459,7 @@ export function PurchasingDetailView({
           <tbody>
             {lines.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-2 py-3 text-tesla-text-secondary">
+                <td colSpan={8} className="px-2 py-3 text-tesla-text-secondary">
                   No lines yet — add one below.
                 </td>
               </tr>
@@ -545,10 +536,6 @@ export function PurchasingDetailView({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-tesla-text-secondary">Unit</label>
-            <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
-          </div>
-          <div>
             <label className="block text-xs font-medium text-tesla-text-secondary">Est unit price</label>
             <input type="number" className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newEst} onChange={(e) => setNewEst(e.target.value)} />
           </div>
@@ -582,7 +569,6 @@ export function PurchasingDetailView({
                 description: newDesc.trim(),
                 quantity: newQty || "1",
                 orderedQty: newOrderedQty.trim() || null,
-                unit: newUnit.trim() || null,
                 estUnitPrice: newEst.trim() ? Number(newEst) : null,
                 orderIndex: Number(newOrder) || 0,
                 receivedQty: Math.max(0, Math.trunc(Number(newReceivedQty) || 0)),
@@ -593,7 +579,6 @@ export function PurchasingDetailView({
                 setNewDesc("");
                 setNewQty("1");
                 setNewOrderedQty("");
-                setNewUnit("");
                 setNewEst("");
                 setNewReceivedQty("0");
                 setNewProjectItemId("");

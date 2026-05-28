@@ -10,6 +10,9 @@ import { workspaceSlugToTab, workspaceTabToSlug } from "../lib/workspaceNav";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
 import { procurementLineRowClass } from "../workspace/procurementLineStatus";
+import { columnFilterMatches, filterCell, TABS_WITH_COMPLETED } from "../lib/workspaceTableUtils";
+import { WorkspaceCsvToolbar } from "./WorkspaceCsvToolbar";
+import { buildCsvImportHandler } from "../lib/workspaceCsvImport";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Supplier = {
@@ -152,6 +155,9 @@ type TableRow = {
   action: React.ReactNode;
   search: string;
   sort: (string | number | null)[];
+  /** Pipe-separated tokens per column for value-based filters (ids + labels). */
+  filterValues?: string[];
+  isCompleted?: boolean;
   rowClassName?: string;
 };
 
@@ -275,6 +281,44 @@ function filterWorkspaceRowsByUrlParams(
   return rows;
 }
 
+function attachTableRowMeta(
+  tab: Tab,
+  rows: TableRow[],
+  entities: {
+    projects: Project[];
+    tasks: Task[];
+    todos: Todo[];
+    procurement: Procurement[];
+  },
+): TableRow[] {
+  return rows.map((r) => {
+    let isCompleted = false;
+    switch (tab) {
+      case "projects":
+        isCompleted = entities.projects.find((p) => p.id === r.key)?.status === "closed";
+        break;
+      case "tasks":
+        isCompleted = (entities.tasks.find((t) => t.id === r.key)?.percentComplete ?? 0) >= 100;
+        break;
+      case "todos":
+        isCompleted = entities.todos.find((t) => t.id === r.key)?.status === "done";
+        break;
+      case "procurement": {
+        const st = entities.procurement.find((p) => p.id === r.key)?.status;
+        isCompleted = st === "closed" || st === "cancelled";
+        break;
+      }
+      default:
+        break;
+    }
+    return {
+      ...r,
+      isCompleted,
+      filterValues: r.filterValues ?? r.sort.map((s) => filterCell(s)),
+    };
+  });
+}
+
 export function CrudWorkspace() {
   const qc = useQueryClient();
   const { data: meRes } = useMe();
@@ -292,6 +336,7 @@ export function CrudWorkspace() {
   const { table } = useParams<{ table: string }>();
   const [searchParams] = useSearchParams();
   const [todoView, setTodoView] = useState<"table" | "kanban">("table");
+  const [showCompleted, setShowCompleted] = useState(false);
   const kanbanUrlSyncSigRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -516,6 +561,7 @@ export function CrudWorkspace() {
       if (kanbanTaskId !== "all" && td.taskId !== kanbanTaskId) return false;
       if (kanbanAssigneeId !== "all" && (td.assigneeId ?? "") !== kanbanAssigneeId) return false;
       if (kanbanStatus !== "all" && td.status !== kanbanStatus) return false;
+      if (!showCompleted && td.status === "done") return false;
       if (!needle) return true;
       const projectLabel = projectName.get(task.projectId) ?? "";
       const assigneeLabel = userName.get(td.assigneeId ?? "") ?? "";
@@ -531,6 +577,7 @@ export function CrudWorkspace() {
     kanbanAssigneeId,
     kanbanStatus,
     kanbanSearch,
+    showCompleted,
     projectName,
     userName,
   ]);
@@ -1208,15 +1255,25 @@ export function CrudWorkspace() {
           l.orderedQty ?? "",
           l.receivedQty,
         ],
+        filterValues: [
+          filterCell(projectName.get(l.projectId), l.projectId),
+          filterCell(procName.get(l.procurementId), l.procurementId),
+          filterCell(l.partNumber),
+          filterCell(l.description),
+          filterCell(l.unit),
+          filterCell(l.estUnitPrice),
+          filterCell(l.quantity),
+          filterCell(l.orderedQty),
+          filterCell(l.receivedQty),
+        ],
       };
       }),
     },
   };
 
   const current = rowsByTab[tab];
-  const currentForTable = {
-    ...current,
-    rows: filterWorkspaceRowsByUrlParams(
+  const currentForTable = useMemo(() => {
+    let rows = filterWorkspaceRowsByUrlParams(
       tab,
       current.rows,
       {
@@ -1225,8 +1282,56 @@ export function CrudWorkspace() {
         milestoneId: wsMilestoneId,
       },
       { milestones, tasks, todos, timeEntries, procLines },
-    ),
-  };
+    );
+    rows = attachTableRowMeta(tab, rows, { projects, tasks, todos, procurement });
+    if (!showCompleted && (TABS_WITH_COMPLETED as readonly string[]).includes(tab)) {
+      rows = rows.filter((r) => !r.isCompleted);
+    }
+    return { ...current, rows };
+  }, [
+    tab,
+    current,
+    wsProjectId,
+    wsTaskId,
+    wsMilestoneId,
+    milestones,
+    tasks,
+    todos,
+    timeEntries,
+    procLines,
+    projects,
+    procurement,
+    showCompleted,
+  ]);
+
+  const csvImportHandler = useMemo(() => {
+    if (!me?.organizationId || me.globalRole !== "org_admin") return undefined;
+    return buildCsvImportHandler(tab, {
+      organizationId: me.organizationId,
+      clients,
+      suppliers,
+      projects,
+      milestones,
+      tasks,
+      procurement,
+      onDone: async () => {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["clients"] }),
+          qc.invalidateQueries({ queryKey: ["suppliers"] }),
+          qc.invalidateQueries({ queryKey: ["projects"] }),
+          qc.invalidateQueries({ queryKey: ["milestones-all"] }),
+          qc.invalidateQueries({ queryKey: ["tasks-all"] }),
+          qc.invalidateQueries({ queryKey: ["todos-all"] }),
+          qc.invalidateQueries({ queryKey: ["proc-all"] }),
+        ]);
+      },
+    });
+  }, [tab, me, clients, suppliers, projects, milestones, tasks, procurement, qc]);
+
+  const csvExportRows = useMemo(
+    () => currentForTable.rows.map((r) => r.sort.map((s) => String(s ?? ""))),
+    [currentForTable.rows],
+  );
   const showTodosKanban = tab === "todos" && todoView === "kanban";
 
   const viewToggleClasses = (active: boolean) =>
@@ -1335,6 +1440,15 @@ export function CrudWorkspace() {
               value={kanbanSearch}
               onChange={(e) => setKanbanSearch(e.target.value)}
             />
+            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-tesla-text-secondary">
+              <input
+                type="checkbox"
+                checked={showCompleted}
+                onChange={(e) => setShowCompleted(e.target.checked)}
+                className="rounded border-tesla-border"
+              />
+              Show completed
+            </label>
             <span className="text-xs text-slate-500">{kanbanTodos.length} matching todos</span>
           </div>
           <TodoKanban
@@ -1375,7 +1489,25 @@ export function CrudWorkspace() {
               : undefined
           }
           extraToolbar={
-            tab === "procurement" ? (
+            <>
+              {(TABS_WITH_COMPLETED as readonly string[]).includes(tab) && (
+                <label className="flex cursor-pointer items-center gap-1.5 text-sm text-tesla-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={showCompleted}
+                    onChange={(e) => setShowCompleted(e.target.checked)}
+                    className="rounded border-tesla-border"
+                  />
+                  Show completed
+                </label>
+              )}
+              <WorkspaceCsvToolbar
+                tableLabel={LABEL[tab]}
+                headers={currentForTable.dataHeaders}
+                exportDataRows={csvExportRows}
+                onImport={csvImportHandler}
+              />
+              {tab === "procurement" ? (
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <button
                   type="button"
@@ -1424,7 +1556,8 @@ export function CrudWorkspace() {
                   Sort the table to choose which purchasing record is kept (first among selected).
                 </span>
               </div>
-            ) : undefined
+            ) : null}
+            </>
           }
           onFilteredRowsChange={
             tab === "procurement" ? onProcurementFilteredRowsChange : undefined
@@ -2185,11 +2318,12 @@ function FilterSortTable({
     const hit = rows.filter((r) => {
       if (needle && !r.search.toLowerCase().includes(needle)) return false;
       for (const [colKey, raw] of Object.entries(colFilters)) {
-        const fv = raw.trim().toLowerCase();
+        const fv = raw.trim();
         if (!fv) continue;
         const col = Number(colKey);
-        const cell = String(r.sort[col] ?? "").toLowerCase();
-        if (!cell.includes(fv)) return false;
+        const cell =
+          r.filterValues?.[col] ?? String(r.sort[col] ?? "").toLowerCase();
+        if (!columnFilterMatches(cell, fv)) return false;
       }
       return true;
     });
@@ -2272,6 +2406,47 @@ function FilterSortTable({
         <span className="text-xs text-slate-400">Click column headers to sort</span>
         {extraToolbar}
       </div>
+      {Object.keys(colFilters).length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {Object.entries(colFilters).map(([colKey, val]) => {
+            const trimmed = val.trim();
+            if (!trimmed) return null;
+            const idx = Number(colKey);
+            const label = dataHeaders[idx] ?? `Column ${idx + 1}`;
+            return (
+              <span
+                key={colKey}
+                className="inline-flex items-center gap-1 rounded-full border border-tesla-border bg-tesla-muted px-2.5 py-0.5 text-xs text-tesla-text"
+              >
+                <span>
+                  {label}: <span className="font-medium">{trimmed}</span>
+                </span>
+                <button
+                  type="button"
+                  className="ml-0.5 rounded px-1 leading-none text-tesla-text-secondary hover:bg-white hover:text-tesla-text"
+                  aria-label={`Clear ${label} filter`}
+                  onClick={() =>
+                    setColFilters((prev) => {
+                      const next = { ...prev };
+                      delete next[idx];
+                      return next;
+                    })
+                  }
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
+          <button
+            type="button"
+            className="text-xs text-tesla-text-secondary underline hover:text-tesla-text"
+            onClick={() => setColFilters({})}
+          >
+            Clear all filters
+          </button>
+        </div>
+      )}
       <div className="overflow-hidden rounded border border-slate-200 bg-white">
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
