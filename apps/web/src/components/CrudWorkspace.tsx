@@ -2331,7 +2331,8 @@ function FilterSortTable({
   onFilteredRowsChange?: (rows: TableRow[]) => void;
 }) {
   const [q, setQ] = useState("");
-  const [colFilters, setColFilters] = useState<Record<number, string>>({});
+  const [colFilters, setColFilters] = useState<Record<number, string[]>>({});
+  const [colFilterInput, setColFilterInput] = useState<Record<number, string>>({});
   const [sortCol, setSortCol] = useState(0);
   const [desc, setDesc] = useState(false);
   const [pageSize, setPageSize] = useState<string>("100");
@@ -2341,13 +2342,14 @@ function FilterSortTable({
     const needle = q.trim().toLowerCase();
     const hit = rows.filter((r) => {
       if (needle && !r.search.toLowerCase().includes(needle)) return false;
-      for (const [colKey, raw] of Object.entries(colFilters)) {
-        const fv = raw.trim();
-        if (!fv) continue;
+      for (const [colKey, values] of Object.entries(colFilters)) {
+        const activeValues = values.map((v) => v.trim()).filter(Boolean);
+        if (activeValues.length === 0) continue;
         const col = Number(colKey);
         const cell =
           r.filterValues?.[col] ?? String(r.sort[col] ?? "").toLowerCase();
-        if (!columnFilterMatches(cell, fv)) return false;
+        const anyMatch = activeValues.some((fv) => columnFilterMatches(cell, fv));
+        if (!anyMatch) return false;
       }
       return true;
     });
@@ -2432,14 +2434,15 @@ function FilterSortTable({
       </div>
       {Object.keys(colFilters).length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          {Object.entries(colFilters).map(([colKey, val]) => {
-            const trimmed = val.trim();
-            if (!trimmed) return null;
+          {Object.entries(colFilters).flatMap(([colKey, values]) => {
             const idx = Number(colKey);
             const label = dataHeaders[idx] ?? `Column ${idx + 1}`;
-            return (
+            return values
+              .map((val) => val.trim())
+              .filter(Boolean)
+              .map((trimmed) => (
               <span
-                key={colKey}
+                key={`${colKey}:${trimmed}`}
                 className="inline-flex items-center gap-1 rounded-full border border-tesla-border bg-tesla-muted px-2.5 py-0.5 text-xs text-tesla-text"
               >
                 <span>
@@ -2448,11 +2451,15 @@ function FilterSortTable({
                 <button
                   type="button"
                   className="ml-0.5 rounded px-1 leading-none text-tesla-text-secondary hover:bg-white hover:text-tesla-text"
-                  aria-label={`Clear ${label} filter`}
+                  aria-label={`Clear ${label} filter ${trimmed}`}
                   onClick={() =>
                     setColFilters((prev) => {
                       const next = { ...prev };
-                      delete next[idx];
+                      const remaining = (next[idx] ?? []).filter(
+                        (x) => x.trim().toLowerCase() !== trimmed.toLowerCase(),
+                      );
+                      if (remaining.length === 0) delete next[idx];
+                      else next[idx] = remaining;
                       return next;
                     })
                   }
@@ -2460,12 +2467,15 @@ function FilterSortTable({
                   ×
                 </button>
               </span>
-            );
+              ));
           })}
           <button
             type="button"
             className="text-xs text-tesla-text-secondary underline hover:text-tesla-text"
-            onClick={() => setColFilters({})}
+            onClick={() => {
+              setColFilters({});
+              setColFilterInput({});
+            }}
           >
             Clear all filters
           </button>
@@ -2535,15 +2545,27 @@ function FilterSortTable({
                     columnIndex={idx}
                     columnLabel={h}
                     rows={rows}
-                    value={colFilters[idx] ?? ""}
-                    onChange={(v) =>
-                      setColFilters((prev) => {
-                        const next = { ...prev };
-                        if (v.trim()) next[idx] = v;
-                        else delete next[idx];
-                        return next;
-                      })
+                    value={colFilterInput[idx] ?? ""}
+                    selectedValues={colFilters[idx] ?? []}
+                    onChangeValue={(v) =>
+                      setColFilterInput((prev) => ({ ...prev, [idx]: v }))
                     }
+                    onAddValue={(v) => {
+                      const trimmed = v.trim();
+                      if (!trimmed) return;
+                      setColFilters((prev) => {
+                        const current = prev[idx] ?? [];
+                        if (
+                          current.some(
+                            (x) => x.trim().toLowerCase() === trimmed.toLowerCase(),
+                          )
+                        ) {
+                          return prev;
+                        }
+                        return { ...prev, [idx]: [...current, trimmed] };
+                      });
+                      setColFilterInput((prev) => ({ ...prev, [idx]: "" }));
+                    }}
                   />
                 </th>
               ))}

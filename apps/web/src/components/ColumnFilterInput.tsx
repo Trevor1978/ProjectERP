@@ -8,13 +8,17 @@ export function ColumnFilterInput({
   columnLabel,
   rows,
   value,
-  onChange,
+  selectedValues,
+  onChangeValue,
+  onAddValue,
 }: {
   columnIndex: number;
   columnLabel: string;
   rows: RowLike[];
   value: string;
-  onChange: (value: string) => void;
+  selectedValues: string[];
+  onChangeValue: (value: string) => void;
+  onAddValue: (value: string) => void;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -27,8 +31,11 @@ export function ColumnFilterInput({
   );
 
   const suggestions = useMemo(
-    () => filterColumnSuggestions(options, value),
-    [options, value],
+    () =>
+      filterColumnSuggestions(options, value).filter(
+        (opt) => !selectedValues.some((v) => v.trim().toLowerCase() === opt.toLowerCase()),
+      ),
+    [options, value, selectedValues],
   );
 
   const showList = open && suggestions.length > 0;
@@ -47,11 +54,23 @@ export function ColumnFilterInput({
   }, [open]);
 
   function pick(option: string) {
-    onChange(option);
+    onAddValue(option);
     setOpen(false);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (showList) {
+        const opt = suggestions[highlight];
+        if (opt) pick(opt);
+      } else if (value.trim()) {
+        onAddValue(value.trim());
+        setOpen(false);
+      }
+      return;
+    }
+
     if (!showList) {
       if (e.key === "ArrowDown" && suggestions.length > 0) {
         e.preventDefault();
@@ -65,10 +84,6 @@ export function ColumnFilterInput({
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlight((h) => Math.max(h - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const opt = suggestions[highlight];
-      if (opt) pick(opt);
     } else if (e.key === "Escape") {
       e.preventDefault();
       setOpen(false);
@@ -86,7 +101,7 @@ export function ColumnFilterInput({
         aria-controls={showList ? listId : undefined}
         aria-autocomplete="list"
         onChange={(e) => {
-          onChange(e.target.value);
+          onChangeValue(e.target.value);
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
