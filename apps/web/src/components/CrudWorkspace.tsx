@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink, Pencil, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useMe } from "../hooks/useMe";
 import type { User } from "../types";
@@ -484,45 +485,53 @@ export function CrudWorkspace() {
           onClick={(e) => {
             e.stopPropagation();
           }}
-          className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-800"
+          title="Open"
+          aria-label="Open"
+          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800"
         >
-          Open
+          <ExternalLink size={14} />
         </Link>
       ) : (
         <button
           type="button"
-          className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-800"
+          title="Open"
+          aria-label="Open"
+          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             setEditTarget({ tab: t, id });
           }}
         >
-          Open
+          <ExternalLink size={14} />
         </button>
       )}
       <button
         type="button"
-        className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-800 hover:bg-blue-100"
+        title="Edit"
+        aria-label="Edit"
+        className="inline-flex h-7 w-7 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setEditTarget({ tab: t, id });
         }}
       >
-        Edit
+        <Pencil size={14} />
       </button>
       {canShowDeleteForRow(t, timeEntryUserId) && (
         <button
           type="button"
-          className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+          title="Delete"
+          aria-label="Delete"
+          className="inline-flex h-7 w-7 items-center justify-center rounded border border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             setDeleteTarget({ tab: t, id, label });
           }}
         >
-          Delete
+          <X size={14} />
         </button>
       )}
     </div>
@@ -2483,7 +2492,7 @@ function FilterSortTable({
       )}
       <div className="overflow-hidden rounded border border-slate-200 bg-white">
         <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full table-auto text-sm">
           <thead className="bg-slate-100 text-left">
             <tr>
               {leadingColumn ? (
@@ -2506,7 +2515,7 @@ function FilterSortTable({
                     }
                     onClick={() => onHeaderClick(idx)}
                   >
-                    <span className="truncate">{h}</span>
+                    <span className="whitespace-normal leading-snug">{h}</span>
                     <span
                       className={
                         "inline-flex shrink-0 flex-col items-center justify-center leading-none " +
@@ -2579,7 +2588,7 @@ function FilterSortTable({
                   <td className="p-2 align-top">{leadingColumn.renderCell(r)}</td>
                 ) : null}
                 {r.cells.map((c, ci) => (
-                  <td key={ci} className="p-2 align-top">
+                  <td key={ci} className="max-w-[26rem] whitespace-normal break-words p-2 align-top">
                     {c}
                   </td>
                 ))}
