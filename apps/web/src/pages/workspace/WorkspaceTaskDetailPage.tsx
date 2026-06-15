@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { QuickCreateSelect } from "../../components/QuickCreateSelect";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
 type Milestone = { id: string; projectId: string; name: string; version: number };
@@ -270,18 +271,16 @@ export function WorkspaceTaskDetailPage() {
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[10rem] flex-1">
             <label className="block text-xs font-medium text-slate-600">Link to todo (optional)</label>
-            <select
-              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+            <QuickCreateSelect
+              entity="todo"
               value={timeTodoId}
-              onChange={(e) => setTimeTodoId(e.target.value)}
-            >
-              <option value="">(none)</option>
-              {todos.map((td) => (
-                <option key={td.id} value={td.id}>
-                  {td.title}
-                </option>
-              ))}
-            </select>
+              onChange={setTimeTodoId}
+              filter={{ taskId: task.id }}
+              defaults={{ taskId: task.id }}
+              allowEmpty
+              emptyLabel="(none)"
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+            />
           </div>
           <button
             type="button"

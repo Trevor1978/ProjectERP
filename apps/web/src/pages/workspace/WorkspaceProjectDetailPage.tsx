@@ -4,9 +4,9 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { ProjectItemsPanel } from "../../components/ProjectItemsPanel";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { QuickCreateSelect } from "../../components/QuickCreateSelect";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
-type Client = { id: string; name: string; version: number };
 type Project = {
   id: string;
   name: string;
@@ -36,17 +36,12 @@ export function WorkspaceProjectDetailPage() {
     queryKey: ["projects"],
     queryFn: () => api<{ projects: Project[] }>("/api/projects"),
   });
-  const { data: clientsData } = useQuery({
-    queryKey: ["clients"],
-    queryFn: () => api<{ clients: Client[] }>("/api/clients"),
-  });
   const { data: milestonesData } = useQuery({
     queryKey: ["milestones-all"],
     queryFn: () => api<{ milestones: Milestone[] }>("/api/milestones"),
   });
 
   const project = projectsData?.projects.find((p) => p.id === projectId);
-  const clients = clientsData?.clients ?? [];
   const milestones = useMemo(
     () => (milestonesData?.milestones ?? []).filter((m) => m.projectId === projectId).sort((a, b) => a.orderIndex - b.orderIndex),
     [milestonesData?.milestones, projectId],
@@ -121,13 +116,12 @@ export function WorkspaceProjectDetailPage() {
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700">Customer</label>
-          <select className="mt-1 w-full rounded border px-2 py-1.5" value={clientId} onChange={(e) => setClientId(e.target.value)}>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <QuickCreateSelect
+            entity="client"
+            value={clientId}
+            onChange={setClientId}
+            className="mt-1 w-full rounded border px-2 py-1.5"
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700">Status</label>

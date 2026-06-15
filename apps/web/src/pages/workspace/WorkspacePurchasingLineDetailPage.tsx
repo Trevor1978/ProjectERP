@@ -3,9 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { QuickCreateSelect } from "../../components/QuickCreateSelect";
 import type { ProcurementLine } from "../../workspace/purchasingTypes";
-
-type Project = { id: string; name: string; version: number };
 
 export function WorkspacePurchasingLineDetailPage() {
   const { lineId } = useParams<{ lineId: string }>();
@@ -14,14 +13,9 @@ export function WorkspacePurchasingLineDetailPage() {
     queryKey: ["proc-all"],
     queryFn: () => api<{ procurement: { id: string; title: string }[]; lines: ProcurementLine[] }>("/api/procurement"),
   });
-  const { data: projectsData } = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => api<{ projects: Project[] }>("/api/projects"),
-  });
 
   const line = procData?.lines.find((l) => l.id === lineId);
   const parent = procData?.procurement.find((p) => p.id === line?.procurementId);
-  const projects = projectsData?.projects ?? [];
 
   const [projectId, setProjectId] = useState("");
   const [partNumber, setPartNumber] = useState("");
@@ -79,13 +73,12 @@ export function WorkspacePurchasingLineDetailPage() {
       <div className="grid max-w-xl gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div>
           <label className="block text-sm font-medium">Project</label>
-          <select className="mt-1 w-full rounded border px-2 py-1.5" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          <QuickCreateSelect
+            entity="project"
+            value={projectId}
+            onChange={setProjectId}
+            className="mt-1 w-full rounded border px-2 py-1.5"
+          />
         </div>
         <div>
           <label className="block text-sm font-medium">Part #</label>

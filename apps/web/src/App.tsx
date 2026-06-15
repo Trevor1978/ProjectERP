@@ -22,6 +22,7 @@ import { WorkspacePurchasingLineDetailPage } from "./pages/workspace/WorkspacePu
 import { WorkspaceMachinesPage } from "./pages/workspace/WorkspaceMachinesPage";
 import { WorkspaceMachineDetailPage } from "./pages/workspace/WorkspaceMachineDetailPage";
 import { WorkspaceOrganizationPage } from "./pages/workspace/WorkspaceOrganizationPage";
+import { QuickCreateProvider } from "./components/QuickCreateProvider";
 import { House } from "lucide-react";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -42,7 +43,8 @@ function Layout({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
   return (
-    <div className="flex min-h-screen flex-col">
+    <QuickCreateProvider>
+      <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between border-b border-tesla-border bg-tesla-header px-4 py-3 text-white">
         <div className="flex items-center gap-6">
           <Link to="/" className="text-sm font-medium uppercase tracking-[0.2em]">
@@ -91,6 +93,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-[1600px] flex-1 p-4">{children}</main>
       )}
     </div>
+    </QuickCreateProvider>
   );
 }
 

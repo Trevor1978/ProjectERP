@@ -7,6 +7,7 @@ import { openProcurementPdfReport } from "../lib/procurementReport";
 import { useDebouncedPatch } from "../hooks/useDebouncedPatch";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
 import { Link } from "react-router-dom";
+import { QuickCreateSelect } from "./QuickCreateSelect";
 import type { Procurement, ProcurementLine } from "../workspace/purchasingTypes";
 import type { OrgProfile } from "../workspace/orgProfileTypes";
 import { PROC_STATUS } from "../workspace/purchasingTypes";
@@ -24,7 +25,6 @@ function money(n: number): string {
 
 function PurchasingDetailLineRow({
   line,
-  projects,
   procStatus,
   needBy,
   fullyReceivedOverride,
@@ -32,7 +32,6 @@ function PurchasingDetailLineRow({
   onRemoved,
 }: {
   line: ProcurementLine;
-  projects: Project[];
   procStatus: Procurement["status"];
   needBy: string | null;
   fullyReceivedOverride: boolean;
@@ -129,17 +128,12 @@ function PurchasingDetailLineRow({
         />
       </td>
       <td className="py-1 pr-2">
-        <select
-          className="w-full min-w-[8rem] rounded border border-tesla-border px-2 py-1"
+        <QuickCreateSelect
+          entity="project"
           value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-        >
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+          onChange={setProjectId}
+          className="w-full min-w-[8rem] rounded border border-tesla-border px-2 py-1"
+        />
       </td>
       <td className="py-1 pr-2">
         <input
@@ -381,14 +375,14 @@ export function PurchasingDetailView({
         </div>
         <div>
           <label className="block text-sm font-medium text-tesla-text-secondary">Supplier</label>
-          <select className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-            <option value="">(none)</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <QuickCreateSelect
+            entity="supplier"
+            value={supplierId}
+            onChange={setSupplierId}
+            allowEmpty
+            emptyLabel="(none)"
+            className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1"
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-tesla-text-secondary">Status</label>
@@ -468,7 +462,6 @@ export function PurchasingDetailView({
                 <PurchasingDetailLineRow
                   key={l.id}
                   line={l}
-                  projects={projects}
                   procStatus={status}
                   needBy={row.needBy}
                   fullyReceivedOverride={fullyReceivedOverride}
@@ -487,13 +480,12 @@ export function PurchasingDetailView({
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="block text-xs font-medium text-tesla-text-secondary">Project</label>
-            <select className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)}>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <QuickCreateSelect
+              entity="project"
+              value={newProjectId}
+              onChange={setNewProjectId}
+              className="w-full rounded-sm border border-tesla-border px-2 py-1"
+            />
           </div>
           <div className="sm:col-span-2 lg:col-span-3">
             <label htmlFor="link-project-item" className="block text-xs font-medium text-tesla-text-secondary">
@@ -554,7 +546,7 @@ export function PurchasingDetailView({
         <button
           type="button"
           className="mt-2 rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
-          disabled={lineAdding || !newDesc.trim() || !projects.length}
+          disabled={lineAdding || !newDesc.trim() || !newProjectId}
           onClick={() => {
             setLineErr(null);
             setLineAdding(true);

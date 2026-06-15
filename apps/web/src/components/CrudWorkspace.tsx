@@ -15,6 +15,7 @@ import { columnFilterMatches, filterCell, TABS_WITH_COMPLETED } from "../lib/wor
 import { WorkspaceCsvToolbar } from "./WorkspaceCsvToolbar";
 import { ColumnFilterInput } from "./ColumnFilterInput";
 import { buildCsvImportHandler } from "../lib/workspaceCsvImport";
+import { EntitySelect, EnumSelect, QuickCreateSelect } from "./QuickCreateSelect";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Supplier = {
@@ -712,10 +713,10 @@ export function CrudWorkspace() {
               }).then(refreshProjects)
             }
           />,
-          <InlineSelect
+          <EntitySelect
             key="cl"
+            entity="client"
             value={p.clientId}
-            options={clients.map((cl) => ({ value: cl.id, label: cl.name }))}
             onSave={(v) =>
               api("/api/projects/" + p.id, {
                 method: "PATCH",
@@ -723,7 +724,7 @@ export function CrudWorkspace() {
               }).then(refreshProjects)
             }
           />,
-          <InlineSelect
+          <EnumSelect
             key="st"
             value={p.status}
             options={STATUS_OPTS.map((s) => ({ value: s, label: s }))}
@@ -820,10 +821,11 @@ export function CrudWorkspace() {
           action: rowActions("tasks", t.id, t.title, undefined, { openHref: `/workspace/tasks/${t.id}` }),
           cells: [
             <span key="p">{projectName.get(t.projectId) ?? t.projectId}</span>,
-            <InlineSelect
+            <EntitySelect
               key="m"
+              entity="milestone"
               value={t.milestoneId}
-              options={msForProject.map((m) => ({ value: m.id, label: m.name }))}
+              filter={{ projectId: t.projectId }}
               onSave={(v) =>
                 api("/api/tasks/" + t.id, {
                   method: "PATCH",
@@ -930,7 +932,7 @@ export function CrudWorkspace() {
               }).then(refreshSchedule)
             }
           />,
-          <InlineSelect
+          <EnumSelect
             key="st"
             value={td.status}
             options={TODO_STATUS.map((s) => ({ value: s, label: s }))}
@@ -951,7 +953,7 @@ export function CrudWorkspace() {
               }).then(refreshSchedule)
             }
           />,
-          <InlineSelect
+          <EnumSelect
             key="pr"
             value={td.priority}
             options={TODO_PRIORITY.map((s) => ({ value: s, label: s }))}
@@ -1090,10 +1092,12 @@ export function CrudWorkspace() {
           key: p.id,
           action: rowActions("procurement", p.id, p.title, undefined, { openHref: `/workspace/purchasing/${p.id}` }),
           cells: [
-            <InlineSelect
+            <EntitySelect
               key="sup"
+              entity="supplier"
               value={p.supplierId ?? ""}
-              options={[{ value: "", label: "(none)" }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]}
+              allowEmpty
+              emptyLabel="(none)"
               onSave={(v) =>
                 api("/api/procurement/" + p.id, {
                   method: "PATCH",
@@ -1111,7 +1115,7 @@ export function CrudWorkspace() {
                 }).then(refreshProcurement)
               }
             />,
-            <InlineSelect
+            <EnumSelect
               key="st"
               value={p.status}
               options={PROC_STATUS.map((s) => ({ value: s, label: s }))}
@@ -1186,10 +1190,10 @@ export function CrudWorkspace() {
           openHref: `/workspace/purchasing-lines/${l.id}`,
         }),
         cells: [
-          <InlineSelect
+          <EntitySelect
             key="proj"
+            entity="project"
             value={l.projectId}
-            options={projects.map((p) => ({ value: p.id, label: p.name }))}
             onSave={(v) =>
               api("/api/procurement-lines/" + l.id, {
                 method: "PATCH",
@@ -1413,30 +1417,21 @@ export function CrudWorkspace() {
       {showTodosKanban ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              className="rounded border px-2 py-1 text-sm"
+            <QuickCreateSelect
+              entity="project"
               value={kanbanProjectId}
-              onChange={(e) => setKanbanProjectId(e.target.value)}
-            >
-              <option value="all">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <select
+              onChange={setKanbanProjectId}
+              prependOptions={[{ value: "all", label: "All projects" }]}
               className="rounded border px-2 py-1 text-sm"
+            />
+            <QuickCreateSelect
+              entity="task"
               value={kanbanTaskId}
-              onChange={(e) => setKanbanTaskId(e.target.value)}
-            >
-              <option value="all">All tasks</option>
-              {kanbanTasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))}
-            </select>
+              onChange={setKanbanTaskId}
+              filter={kanbanProjectId === "all" ? undefined : { projectId: kanbanProjectId }}
+              prependOptions={[{ value: "all", label: "All tasks" }]}
+              className="rounded border px-2 py-1 text-sm"
+            />
             <select
               className="rounded border px-2 py-1 text-sm"
               value={kanbanAssigneeId}
@@ -1917,21 +1912,12 @@ function CrudAppendRow({
           />
         </td>
         <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
+          <QuickCreateSelect
+            entity="client"
             value={projClientId}
-            onChange={(e) => setProjClientId(e.target.value)}
-          >
-            {clients.length === 0 ? (
-              <option value="">No customers — add one first</option>
-            ) : (
-              clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))
-            )}
-          </select>
+            onChange={setProjClientId}
+            className={newRowInputClass}
+          />
         </td>
         <td colSpan={4} className="p-2 align-middle text-xs text-slate-500">
           Status defaults to <strong>active</strong>; edit dates inline after create.
@@ -1965,21 +1951,12 @@ function CrudAppendRow({
     return (
       <tr className="border-t bg-slate-50/90">
         <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
+          <QuickCreateSelect
+            entity="project"
             value={msProjectId}
-            onChange={(e) => setMsProjectId(e.target.value)}
-          >
-            {projects.length === 0 ? (
-              <option value="">No projects</option>
-            ) : (
-              projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))
-            )}
-          </select>
+            onChange={setMsProjectId}
+            className={newRowInputClass}
+          />
         </td>
         <td className="p-2 align-top">
           <input
@@ -2014,34 +1991,25 @@ function CrudAppendRow({
     return (
       <tr className="border-t bg-slate-50/90">
         <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
+          <QuickCreateSelect
+            entity="project"
             value={tkProjectId}
-            onChange={(e) => setTkProjectId(e.target.value)}
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => {
+              setTkProjectId(v);
+              setTkMilestoneId("");
+            }}
+            className={newRowInputClass}
+          />
         </td>
         <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
+          <QuickCreateSelect
+            entity="milestone"
             value={tkMilestoneId}
-            onChange={(e) => setTkMilestoneId(e.target.value)}
-          >
-            {msForTkProject.length === 0 ? (
-              <option value="">Add a milestone first</option>
-            ) : (
-              msForTkProject.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))
-            )}
-          </select>
+            onChange={setTkMilestoneId}
+            filter={{ projectId: tkProjectId }}
+            defaults={{ projectId: tkProjectId }}
+            className={newRowInputClass}
+          />
         </td>
         <td className="p-2 align-top">
           <input
@@ -2072,7 +2040,7 @@ function CrudAppendRow({
             });
             setTkTitle("");
             await refreshSchedule();
-          }, !tkTitle.trim() || !tkMilestoneId || projects.length === 0)}
+          }, !tkTitle.trim() || !tkMilestoneId)}
           {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
         </td>
       </tr>
@@ -2087,21 +2055,12 @@ function CrudAppendRow({
     return (
       <tr className="border-t bg-slate-50/90">
         <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
+          <QuickCreateSelect
+            entity="task"
             value={tdTaskId}
-            onChange={(e) => setTdTaskId(e.target.value)}
-          >
-            {tasks.length === 0 ? (
-              <option value="">No tasks</option>
-            ) : (
-              tasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))
-            )}
-          </select>
+            onChange={setTdTaskId}
+            className={newRowInputClass}
+          />
         </td>
         <td className="p-2 align-middle text-sm text-slate-600">{tdProjectLabel}</td>
         <td className="p-2 align-top">
@@ -2137,21 +2096,12 @@ function CrudAppendRow({
     return (
       <tr className="border-t bg-slate-50/90">
         <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
+          <QuickCreateSelect
+            entity="task"
             value={teTaskId}
-            onChange={(e) => setTeTaskId(e.target.value)}
-          >
-            {tasks.length === 0 ? (
-              <option value="">No tasks</option>
-            ) : (
-              tasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))
-            )}
-          </select>
+            onChange={setTeTaskId}
+            className={newRowInputClass}
+          />
         </td>
         <td colSpan={6} className="p-2 align-middle text-xs text-slate-500">
           Log time on a task; add minutes and notes inline after create.
@@ -2176,18 +2126,14 @@ function CrudAppendRow({
       <tr className="border-t bg-slate-50/90">
         <td className="w-10 p-2 align-top text-xs text-slate-400">—</td>
         <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
+          <QuickCreateSelect
+            entity="supplier"
             value={prSupplierId}
-            onChange={(e) => setPrSupplierId(e.target.value)}
-          >
-            <option value="">(no supplier)</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+            onChange={setPrSupplierId}
+            allowEmpty
+            emptyLabel="(no supplier)"
+            className={newRowInputClass}
+          />
         </td>
         <td className="p-2 align-top">
           <input
@@ -2226,34 +2172,20 @@ function CrudAppendRow({
     return (
       <tr className="border-t bg-slate-50/90">
         <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
+          <QuickCreateSelect
+            entity="project"
             value={lnProjectId}
-            onChange={(e) => setLnProjectId(e.target.value)}
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            onChange={setLnProjectId}
+            className={newRowInputClass}
+          />
         </td>
         <td className="p-2 align-top">
-          <select
-            className={newRowInputClass}
+          <QuickCreateSelect
+            entity="procurement"
             value={lnProcId}
-            onChange={(e) => setLnProcId(e.target.value)}
-          >
-            {procurement.length === 0 ? (
-              <option value="">No purchasing records</option>
-            ) : (
-              procurement.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))
-            )}
-          </select>
+            onChange={setLnProcId}
+            className={newRowInputClass}
+          />
         </td>
         <td className="p-2 align-top">
           <input
@@ -2764,7 +2696,7 @@ function EditDetailModal({
     return <SupplierEditModal supplier={su} onClose={onClose} onSaved={onSaved} />;
   }
   if (target.tab === "projects" && p) {
-    return <ProjectEditModal project={p} clients={clients} onClose={onClose} onSaved={onSaved} />;
+    return <ProjectEditModal project={p} onClose={onClose} onSaved={onSaved} />;
   }
   if (target.tab === "milestones" && m) {
     const pn = projects.find((x) => x.id === m.projectId)?.name ?? m.projectId;
@@ -2776,7 +2708,6 @@ function EditDetailModal({
       <TaskEditModal
         task={t}
         projectLabel={pl}
-        milestones={milestones.filter((x) => x.projectId === t.projectId)}
         orgUsers={orgUsers}
         onClose={onClose}
         onSaved={onSaved}
@@ -2796,12 +2727,7 @@ function EditDetailModal({
   }
   if (target.tab === "procurement" && pr) {
     return (
-      <ProcurementEditModal
-        row={pr}
-        suppliers={suppliers}
-        onClose={onClose}
-        onSaved={onSaved}
-      />
+      <ProcurementEditModal row={pr} onClose={onClose} onSaved={onSaved} />
     );
   }
   if (target.tab === "procurementLines" && ln) {
@@ -2810,7 +2736,6 @@ function EditDetailModal({
       <ProcurementLineEditModal
         line={ln}
         procurementTitle={parent?.title ?? ln.procurementId}
-        projects={projects}
         onClose={onClose}
         onSaved={onSaved}
       />
@@ -2933,12 +2858,10 @@ function SupplierEditModal({
 
 function ProjectEditModal({
   project,
-  clients,
   onClose,
   onSaved,
 }: {
   project: Project;
-  clients: Client[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -2999,21 +2922,19 @@ function ProjectEditModal({
       <label className="block text-sm font-medium">Code</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={code} onChange={(e) => setCode(e.target.value)} />
       <label className="block text-sm font-medium">Customer</label>
-      <select className="mb-2 w-full rounded border px-2 py-1" value={clientId} onChange={(e) => setClientId(e.target.value)}>
-        {clients.map((cl) => (
-          <option key={cl.id} value={cl.id}>
-            {cl.name}
-          </option>
-        ))}
-      </select>
+      <QuickCreateSelect
+        entity="client"
+        value={clientId}
+        onChange={setClientId}
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
       <label className="block text-sm font-medium">Status</label>
-      <select className="mb-2 w-full rounded border px-2 py-1" value={status} onChange={(e) => setStatus(e.target.value as Project["status"])}>
-        {STATUS_OPTS.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      <EnumSelect
+        value={status}
+        options={STATUS_OPTS.map((s) => ({ value: s, label: s }))}
+        onSave={(v) => setStatus(v as Project["status"])}
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
       <label className="block text-sm font-medium">Start</label>
       <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
       <label className="block text-sm font-medium">End</label>
@@ -3095,14 +3016,12 @@ function MilestoneEditModal({
 function TaskEditModal({
   task,
   projectLabel,
-  milestones,
   orgUsers,
   onClose,
   onSaved,
 }: {
   task: Task;
   projectLabel: string;
-  milestones: Milestone[];
   orgUsers: OrgUser[];
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -3178,13 +3097,14 @@ function TaskEditModal({
       <label className="block text-sm font-medium">Title</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
       <label className="block text-sm font-medium">Milestone</label>
-      <select className="mb-2 w-full rounded border px-2 py-1" value={milestoneId} onChange={(e) => setMilestoneId(e.target.value)}>
-        {milestones.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name}
-          </option>
-        ))}
-      </select>
+      <QuickCreateSelect
+        entity="milestone"
+        value={milestoneId}
+        onChange={setMilestoneId}
+        filter={{ projectId: task.projectId }}
+        defaults={{ projectId: task.projectId }}
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
       <label className="block text-sm font-medium">Description</label>
       <textarea className="mb-2 w-full rounded border px-2 py-1" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
       <label className="block text-sm font-medium">Start</label>
@@ -3285,23 +3205,21 @@ function TodoEditModal({
       <label className="block text-sm font-medium">Title</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
       <label className="block text-sm font-medium">Status</label>
-      <select className="mb-2 w-full rounded border px-2 py-1" value={status} onChange={(e) => setStatus(e.target.value as Todo["status"])}>
-        {TODO_STATUS.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      <EnumSelect
+        value={status}
+        options={TODO_STATUS.map((s) => ({ value: s, label: s }))}
+        onSave={(v) => setStatus(v as Todo["status"])}
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
       <label className="block text-sm font-medium">Due</label>
       <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
       <label className="block text-sm font-medium">Priority</label>
-      <select className="mb-2 w-full rounded border px-2 py-1" value={priority} onChange={(e) => setPriority(e.target.value as Todo["priority"])}>
-        {TODO_PRIORITY.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      <EnumSelect
+        value={priority}
+        options={TODO_PRIORITY.map((s) => ({ value: s, label: s }))}
+        onSave={(v) => setPriority(v as Todo["priority"])}
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
       <label className="block text-sm font-medium">Order</label>
       <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
       <label className="block text-sm font-medium">Assignee</label>
@@ -3393,12 +3311,10 @@ function TimeEntryEditModal({
 
 function ProcurementEditModal({
   row,
-  suppliers,
   onClose,
   onSaved,
 }: {
   row: Procurement;
-  suppliers: Supplier[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -3459,26 +3375,21 @@ function ProcurementEditModal({
       <label className="block text-sm font-medium">Title</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
       <label className="block text-sm font-medium">Supplier</label>
-      <select
-        className="mb-2 w-full rounded border px-2 py-1"
+      <QuickCreateSelect
+        entity="supplier"
         value={supplierId}
-        onChange={(e) => setSupplierId(e.target.value)}
-      >
-        <option value="">(none)</option>
-        {suppliers.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-      </select>
+        onChange={setSupplierId}
+        allowEmpty
+        emptyLabel="(none)"
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
       <label className="block text-sm font-medium">Status</label>
-      <select className="mb-2 w-full rounded border px-2 py-1" value={status} onChange={(e) => setStatus(e.target.value as Procurement["status"])}>
-        {PROC_STATUS.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      <EnumSelect
+        value={status}
+        options={PROC_STATUS.map((s) => ({ value: s, label: s }))}
+        onSave={(v) => setStatus(v as Procurement["status"])}
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
       <label className="block text-sm font-medium">Need by</label>
       <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={needBy} onChange={(e) => setNeedBy(e.target.value)} />
       <label className="block text-sm font-medium">SAP PO</label>
@@ -3501,13 +3412,11 @@ function ProcurementEditModal({
 function ProcurementLineEditModal({
   line,
   procurementTitle,
-  projects,
   onClose,
   onSaved,
 }: {
   line: ProcurementLine;
   procurementTitle: string;
-  projects: Project[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -3574,13 +3483,12 @@ function ProcurementLineEditModal({
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
       <p className="mb-2 text-sm text-slate-600">Purchasing: {procurementTitle}</p>
       <label className="block text-sm font-medium">Project</label>
-      <select className="mb-2 w-full rounded border px-2 py-1" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-        {projects.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </select>
+      <QuickCreateSelect
+        entity="project"
+        value={projectId}
+        onChange={setProjectId}
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
       <label className="block text-sm font-medium">Part #</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={partNumber} onChange={(e) => setPartNumber(e.target.value)} />
       <label className="block text-sm font-medium">Description</label>
