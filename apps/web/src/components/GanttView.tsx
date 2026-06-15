@@ -5,11 +5,11 @@ import {
   countWorkDays,
   resolveGanttTaskDates,
 } from "../lib/workDays";
+import { resolveGanttScale, thinGanttDayLabels } from "../lib/ganttScale";
 
 const DAYS_VISIBLE_KEY = "gantt-days-visible";
 const DAYS_VISIBLE_OPTIONS = [14, 21, 30, 45, 60, 90, 120, 180] as const;
 const DEFAULT_DAYS_VISIBLE = 60;
-const MIN_COLUMN_WIDTH = 10;
 
 function readDaysVisible(): number {
   try {
@@ -32,9 +32,16 @@ function toStartOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-function columnWidthForViewport(viewportWidth: number, daysVisible: number): number {
-  if (viewportWidth <= 0) return 38;
-  return Math.max(MIN_COLUMN_WIDTH, Math.floor(viewportWidth / daysVisible));
+function scaleStatusLine(scale: ReturnType<typeof resolveGanttScale>, daysVisible: number): string {
+  if (scale.unit === "days") {
+    return `${daysVisible} days across the chart (${scale.columnWidth}px per day). Scroll for the full timeline.`;
+  }
+  if (scale.unit === "weeks") {
+    const weeks = Math.round(daysVisible / 7);
+    return `${daysVisible} days (~${weeks} weeks) across the chart — week view to keep labels readable. Scroll for more.`;
+  }
+  const months = Math.max(1, Math.round(daysVisible / 30));
+  return `${daysVisible} days (~${months} months) across the chart — month view to keep labels readable. Scroll for more.`;
 }
 
 // frappe-gantt mutates the DOM; re-init on data change
@@ -104,14 +111,14 @@ export function GanttView({
       };
     });
 
-    const columnWidth = columnWidthForViewport(viewportWidth, daysVisible);
+    const scale = resolveGanttScale(viewportWidth, daysVisible);
 
     const gantt = new Gantt(
       el,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       items as any,
       {
-        view_mode: "Day",
+        view_mode: scale.viewMode,
         on_click: (t: { id: string } | null) => {
           void t;
         },
@@ -154,10 +161,13 @@ export function GanttView({
       },
     );
 
-    gantt.options.column_width = columnWidth;
-    gantt.options.view_mode = "Day";
-    gantt.options.step = 24;
+    gantt.options.column_width = scale.columnWidth;
+    gantt.options.view_mode = scale.viewMode;
+    gantt.options.step = scale.step;
     gantt.render();
+    if (scale.viewMode === "Day") {
+      thinGanttDayLabels(el, scale.columnWidth);
+    }
     ganttRef.current = gantt;
   }, [data, daysVisible, viewportWidth]);
 
@@ -169,7 +179,7 @@ export function GanttView({
     );
   }
 
-  const columnWidth = columnWidthForViewport(viewportWidth, daysVisible);
+  const scale = resolveGanttScale(viewportWidth, daysVisible);
 
   return (
     <div ref={viewportRef} className="rounded border bg-white p-2 min-h-[320px]">
@@ -211,7 +221,7 @@ export function GanttView({
       </div>
       <p className="mb-2 text-xs text-slate-400">
         {viewportWidth > 0
-          ? `~${daysVisible} days fit across the chart (${columnWidth}px per day). Scroll horizontally for the full timeline.`
+          ? scaleStatusLine(scale, daysVisible)
           : "Adjust days on screen to zoom the timeline."}
       </p>
       <div className="overflow-x-auto">
