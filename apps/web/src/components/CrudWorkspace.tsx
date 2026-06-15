@@ -52,7 +52,7 @@ type Task = {
   description: string | null;
   startAt: string | null;
   endAt: string | null;
-  estHours: number | null;
+  estDays: number | null;
   actualHours: number | null;
   percentComplete: number;
   useDerivedPercent: boolean;
@@ -3031,7 +3031,7 @@ function TaskEditModal({
   const [milestoneId, setMilestoneId] = useState(task.milestoneId);
   const [startAt, setStartAt] = useState(isoToLocal(task.startAt));
   const [endAt, setEndAt] = useState(isoToLocal(task.endAt));
-  const [estHours, setEstHours] = useState(task.estHours == null ? "" : String(task.estHours));
+  const [estDays, setEstDays] = useState(task.estDays == null ? "" : String(task.estDays));
   const [actualHours, setActualHours] = useState(task.actualHours == null ? "" : String(task.actualHours));
   const [percentComplete, setPercentComplete] = useState(String(task.percentComplete));
   const [useDerived, setUseDerived] = useState(task.useDerivedPercent);
@@ -3045,7 +3045,7 @@ function TaskEditModal({
     setMilestoneId(task.milestoneId);
     setStartAt(isoToLocal(task.startAt));
     setEndAt(isoToLocal(task.endAt));
-    setEstHours(task.estHours == null ? "" : String(task.estHours));
+    setEstDays(task.estDays == null ? "" : String(task.estDays));
     setActualHours(task.actualHours == null ? "" : String(task.actualHours));
     setPercentComplete(String(task.percentComplete));
     setUseDerived(task.useDerivedPercent);
@@ -3073,7 +3073,7 @@ function TaskEditModal({
                   milestoneId,
                   startAt: localToIso(startAt),
                   endAt: localToIso(endAt),
-                  estHours: estHours.trim() ? Number(estHours) : null,
+                  estDays: estDays.trim() ? Number(estDays) : null,
                   actualHours: actualHours.trim() ? Number(actualHours) : null,
                   percentComplete: Number(percentComplete) || 0,
                   useDerivedPercent: useDerived,
@@ -3111,8 +3111,8 @@ function TaskEditModal({
       <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
       <label className="block text-sm font-medium">End</label>
       <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
-      <label className="block text-sm font-medium">Est hours</label>
-      <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={estHours} onChange={(e) => setEstHours(e.target.value)} />
+      <label className="block text-sm font-medium">Duration (work days)</label>
+      <input type="number" min={0} step={1} className="mb-2 w-full rounded border px-2 py-1" value={estDays} onChange={(e) => setEstDays(e.target.value)} />
       <label className="block text-sm font-medium">Actual hours</label>
       <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={actualHours} onChange={(e) => setActualHours(e.target.value)} />
       <label className="block text-sm font-medium">% complete</label>

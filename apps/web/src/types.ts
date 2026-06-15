@@ -25,7 +25,7 @@ export type Task = {
   title: string;
   startAt: string | null;
   endAt: string | null;
-  estHours: number | null;
+  estDays: number | null;
   actualHours: number | null;
   percentComplete: number;
   useDerivedPercent: boolean;

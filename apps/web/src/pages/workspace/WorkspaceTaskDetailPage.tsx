@@ -15,7 +15,7 @@ type Task = {
   description: string | null;
   startAt: string | null;
   endAt: string | null;
-  estHours: number | null;
+  estDays: number | null;
   actualHours: number | null;
   percentComplete: number;
   useDerivedPercent: boolean;
@@ -81,6 +81,7 @@ export function WorkspaceTaskDetailPage() {
   const [description, setDescription] = useState("");
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
+  const [estDays, setEstDays] = useState("");
   const [orderIndex, setOrderIndex] = useState("0");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -100,6 +101,7 @@ export function WorkspaceTaskDetailPage() {
     setDescription(task.description ?? "");
     setStartAt(isoToLocal(task.startAt));
     setEndAt(isoToLocal(task.endAt));
+    setEstDays(task.estDays == null ? "" : String(task.estDays));
     setOrderIndex(String(task.orderIndex));
   }, [task]);
 
@@ -159,6 +161,18 @@ export function WorkspaceTaskDetailPage() {
           </div>
         </div>
         <div>
+          <label className="block text-sm font-medium">Duration (work days)</label>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            className="mt-1 w-full max-w-xs rounded border px-2 py-1.5"
+            value={estDays}
+            onChange={(e) => setEstDays(e.target.value)}
+          />
+          <p className="mt-1 text-xs text-slate-500">Used on the Gantt when start/end are not set. Weekends are excluded.</p>
+        </div>
+        <div>
           <label className="block text-sm font-medium">Order</label>
           <input type="number" className="mt-1 w-full max-w-xs rounded border px-2 py-1.5" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
         </div>
@@ -176,6 +190,7 @@ export function WorkspaceTaskDetailPage() {
                 description: description.trim() || null,
                 startAt: localToIso(startAt),
                 endAt: localToIso(endAt),
+                estDays: estDays.trim() ? Number(estDays) : null,
                 orderIndex: Number(orderIndex) || 0,
                 version: task.version,
               }),

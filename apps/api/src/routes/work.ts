@@ -633,7 +633,7 @@ app.post("/tasks", async (c) => {
       description: p.data.description,
       startAt: p.data.startAt,
       endAt: p.data.endAt,
-      estHours: p.data.estHours ?? null,
+      estDays: p.data.estDays ?? null,
       percentComplete: p.data.percentComplete,
       useDerivedPercent: p.data.useDerivedPercent,
       orderIndex: p.data.orderIndex,
@@ -692,8 +692,8 @@ app.patch("/tasks/:id", async (c) => {
           : p.data.description,
       startAt: p.data.startAt === undefined ? cur[0]!.startAt : p.data.startAt,
       endAt: p.data.endAt === undefined ? cur[0]!.endAt : p.data.endAt,
-      estHours:
-        p.data.estHours === undefined ? cur[0]!.estHours : p.data.estHours,
+      estDays:
+        p.data.estDays === undefined ? cur[0]!.estDays : p.data.estDays,
       actualHours:
         p.data.actualHours === undefined
           ? cur[0]!.actualHours

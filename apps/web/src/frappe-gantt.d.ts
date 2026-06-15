@@ -12,8 +12,8 @@ declare module "frappe-gantt" {
     on_click?: (task: GanttTask) => void;
     on_date_change?: (
       task: GanttTask,
-      start: string,
-      end: string,
+      start: Date,
+      end: Date,
     ) => void;
     on_progress_change?: (task: GanttTask, progress: number) => void;
   };

@@ -1,11 +1,19 @@
 import { useEffect, useRef } from "react";
 import Gantt from "frappe-gantt";
 import type { Schedule } from "../types";
+import {
+  countWorkDays,
+  resolveGanttTaskDates,
+} from "../lib/workDays";
 
 function useLatest<T>(v: T) {
   const r = useRef(v);
   r.current = v;
   return r;
+}
+
+function toStartOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
 // frappe-gantt mutates the DOM; re-init on data change
@@ -36,12 +44,7 @@ export function GanttView({
       return;
     }
     const items = tasks.map((t) => {
-      const start = t.startAt
-        ? t.startAt.slice(0, 10)
-        : new Date().toISOString().slice(0, 10);
-      const end = t.endAt
-        ? t.endAt.slice(0, 10)
-        : start;
+      const { start, end } = resolveGanttTaskDates(t);
       const deps = taskDependencies
         .filter((d) => d.taskId === t.id)
         .map((d) => d.predecessorTaskId)
@@ -72,13 +75,15 @@ export function GanttView({
             if (!t) {
               return;
             }
+            const estDays = countWorkDays(toStartOfDay(start), toStartOfDay(end));
             const res = await fetch("/api/tasks/" + task.id, {
               method: "PATCH",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                startAt: start,
-                endAt: end,
+                startAt: start.toISOString(),
+                endAt: end.toISOString(),
+                estDays,
                 version: t.version,
               }),
             });
@@ -121,6 +126,9 @@ export function GanttView({
   }
   return (
     <div className="bg-white p-2 rounded border overflow-x-auto min-h-[320px]">
+      <p className="mb-2 text-xs text-slate-500">
+        Task duration is in working days (Mon–Fri). Bars without dates use duration to set length; weekends are skipped.
+      </p>
       <div ref={ref} className="gantt-target" />
     </div>
   );

@@ -233,7 +233,7 @@ export const task = pgTable(
     description: text("description"),
     startAt: timestamp("start_at", { withTimezone: true }),
     endAt: timestamp("end_at", { withTimezone: true }),
-    estHours: doublePrecision("est_hours"),
+    estDays: doublePrecision("est_days"),
     actualHours: doublePrecision("actual_hours").default(0),
     percentComplete: doublePrecision("percent_complete")
       .notNull()

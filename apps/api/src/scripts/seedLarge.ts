@@ -187,7 +187,7 @@ async function main() {
         description: "Seeded task for load testing UI",
         startAt: new Date(Date.now() + i * 86_400_000),
         endAt: new Date(Date.now() + (i + 2) * 86_400_000),
-        estHours: 4 + (i % 5),
+        estDays: 1 + (i % 5),
         actualHours: (i % 3) * 2,
         percentComplete: (i % 5) * 20,
         useDerivedPercent: true,
