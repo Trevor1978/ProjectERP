@@ -813,92 +813,78 @@ export function CrudWorkspace() {
       })),
     },
     tasks: {
-      dataHeaders: ["Project", "Milestone", "Title", "%", "Order", "Derived", "Assignee"],
-      rows: tasks.map((t) => {
-        const msForProject = milestones.filter((x) => x.projectId === t.projectId);
-        return {
-          key: t.id,
-          action: rowActions("tasks", t.id, t.title, undefined, { openHref: `/workspace/tasks/${t.id}` }),
-          cells: [
-            <span key="p">{projectName.get(t.projectId) ?? t.projectId}</span>,
-            <EntitySelect
-              key="m"
-              entity="milestone"
-              value={t.milestoneId}
-              filter={{ projectId: t.projectId }}
-              onSave={(v) =>
-                api("/api/tasks/" + t.id, {
-                  method: "PATCH",
-                  body: JSON.stringify({ milestoneId: v, version: t.version }),
-                }).then(refreshSchedule)
-              }
-            />,
-            <InlineText
-              key="ti"
-              value={t.title}
-              onSave={(v) =>
-                api("/api/tasks/" + t.id, {
-                  method: "PATCH",
-                  body: JSON.stringify({ title: v, version: t.version }),
-                }).then(refreshSchedule)
-              }
-            />,
-            <InlineNumber
-              key="pc"
-              value={t.percentComplete}
-              min={0}
-              max={100}
-              onSave={(v) =>
-                api("/api/tasks/" + t.id, {
-                  method: "PATCH",
-                  body: JSON.stringify({ percentComplete: v, version: t.version }),
-                }).then(refreshSchedule)
-              }
-            />,
-            <InlineNumber
-              key="ord"
-              value={t.orderIndex}
-              onSave={(v) =>
-                api("/api/tasks/" + t.id, {
-                  method: "PATCH",
-                  body: JSON.stringify({ orderIndex: v, version: t.version }),
-                }).then(refreshSchedule)
-              }
-            />,
-            <InlineCheckbox
-              key="der"
-              value={t.useDerivedPercent}
-              onSave={(v) =>
-                api("/api/tasks/" + t.id, {
-                  method: "PATCH",
-                  body: JSON.stringify({ useDerivedPercent: v, version: t.version }),
-                }).then(refreshSchedule)
-              }
-            />,
-            <InlineSelect
-              key="as"
-              value={t.assigneeId ?? ""}
-              options={assigneeOptions}
-              onSave={(v) =>
-                api("/api/tasks/" + t.id, {
-                  method: "PATCH",
-                  body: JSON.stringify({ assigneeId: v || null, version: t.version }),
-                }).then(refreshSchedule)
-              }
-            />,
-          ],
-          search: `${projectName.get(t.projectId) ?? ""} ${milestoneName.get(t.milestoneId) ?? ""} ${t.title}`,
-          sort: [
-            projectName.get(t.projectId) ?? "",
-            milestoneName.get(t.milestoneId) ?? "",
-            t.title,
-            t.percentComplete,
-            t.orderIndex,
-            t.useDerivedPercent ? 1 : 0,
-            userName.get(t.assigneeId ?? "") ?? "",
-          ],
-        };
-      }),
+      dataHeaders: ["Project", "Milestone", "Title", "Start", "Est days", "%"],
+      rows: tasks.map((t) => ({
+        key: t.id,
+        action: rowActions("tasks", t.id, t.title, undefined, { openHref: `/workspace/tasks/${t.id}` }),
+        cells: [
+          <span key="p">{projectName.get(t.projectId) ?? t.projectId}</span>,
+          <EntitySelect
+            key="m"
+            entity="milestone"
+            value={t.milestoneId}
+            filter={{ projectId: t.projectId }}
+            onSave={(v) =>
+              api("/api/tasks/" + t.id, {
+                method: "PATCH",
+                body: JSON.stringify({ milestoneId: v, version: t.version }),
+              }).then(refreshSchedule)
+            }
+          />,
+          <InlineText
+            key="ti"
+            value={t.title}
+            onSave={(v) =>
+              api("/api/tasks/" + t.id, {
+                method: "PATCH",
+                body: JSON.stringify({ title: v, version: t.version }),
+              }).then(refreshSchedule)
+            }
+          />,
+          <InlineDateTime
+            key="s"
+            value={t.startAt}
+            onSave={(v) =>
+              api("/api/tasks/" + t.id, {
+                method: "PATCH",
+                body: JSON.stringify({ startAt: v, version: t.version }),
+              }).then(refreshSchedule)
+            }
+          />,
+          <InlineNumberNullable
+            key="ed"
+            value={t.estDays}
+            int
+            onSave={(v) =>
+              api("/api/tasks/" + t.id, {
+                method: "PATCH",
+                body: JSON.stringify({ estDays: v, version: t.version }),
+              }).then(refreshSchedule)
+            }
+          />,
+          <InlineNumber
+            key="pc"
+            value={t.percentComplete}
+            min={0}
+            max={100}
+            onSave={(v) =>
+              api("/api/tasks/" + t.id, {
+                method: "PATCH",
+                body: JSON.stringify({ percentComplete: v, version: t.version }),
+              }).then(refreshSchedule)
+            }
+          />,
+        ],
+        search: `${projectName.get(t.projectId) ?? ""} ${milestoneName.get(t.milestoneId) ?? ""} ${t.title} ${t.startAt ?? ""} ${t.estDays ?? ""}`,
+        sort: [
+          projectName.get(t.projectId) ?? "",
+          milestoneName.get(t.milestoneId) ?? "",
+          t.title,
+          t.startAt ?? "",
+          t.estDays ?? 0,
+          t.percentComplete,
+        ],
+      })),
     },
     todos: {
       dataHeaders: ["Task", "Project", "Title", "Description", "Status", "Due", "Priority", "Order", "Assignee"],
@@ -1724,6 +1710,8 @@ function CrudAppendRow({
   );
   const [tkMilestoneId, setTkMilestoneId] = useState(msForTkProject[0]?.id ?? "");
   const [tkTitle, setTkTitle] = useState("");
+  const [tkStartAt, setTkStartAt] = useState("");
+  const [tkEstDays, setTkEstDays] = useState("");
   useEffect(() => {
     if (msForTkProject.length && !msForTkProject.some((m) => m.id === tkMilestoneId)) {
       setTkMilestoneId(msForTkProject[0]!.id);
@@ -2019,8 +2007,24 @@ function CrudAppendRow({
             onChange={(e) => setTkTitle(e.target.value)}
           />
         </td>
-        <td colSpan={4} className="p-2 align-middle text-xs text-slate-500">
-          % / assignee: edit after create.
+        <td className="p-2 align-top">
+          <input
+            type="datetime-local"
+            className={newRowInputClass}
+            value={tkStartAt}
+            onChange={(e) => setTkStartAt(e.target.value)}
+          />
+        </td>
+        <td className="p-2 align-top">
+          <input
+            type="number"
+            min={0}
+            step={1}
+            className={newRowInputClass}
+            placeholder="Days"
+            value={tkEstDays}
+            onChange={(e) => setTkEstDays(e.target.value)}
+          />
         </td>
         <td className={stickyActionsTd}>
           {createBtn(async () => {
@@ -2033,12 +2037,16 @@ function CrudAppendRow({
                 projectId: tkProjectId,
                 milestoneId: tkMilestoneId,
                 title,
+                startAt: localToIso(tkStartAt),
+                estDays: tkEstDays.trim() ? Number(tkEstDays) : undefined,
                 percentComplete: 0,
                 useDerivedPercent: true,
                 orderIndex: 0,
               }),
             });
             setTkTitle("");
+            setTkStartAt("");
+            setTkEstDays("");
             await refreshSchedule();
           }, !tkTitle.trim() || !tkMilestoneId)}
           {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
