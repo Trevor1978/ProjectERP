@@ -72,6 +72,30 @@ export function countWorkDays(start: Date, end: Date): number {
   return count;
 }
 
+/** Task end timestamp from start + work days (inclusive), preserving start time-of-day. */
+export function computeTaskEndAt(startAt: Date, estDays: number): Date {
+  const days = Math.max(1, Math.round(estDays));
+  const endDay = addWorkDays(startAt, days);
+  const end = new Date(endDay);
+  end.setHours(
+    startAt.getHours(),
+    startAt.getMinutes(),
+    startAt.getSeconds(),
+    startAt.getMilliseconds(),
+  );
+  return end;
+}
+
+export function formatTaskEndIso(
+  startAt: string | null,
+  estDays: number | null,
+): string | null {
+  if (!startAt) return null;
+  const start = new Date(startAt);
+  if (Number.isNaN(start.getTime())) return null;
+  return computeTaskEndAt(start, estDays ?? 1).toISOString();
+}
+
 export function resolveGanttTaskDates(task: {
   startAt: string | null;
   endAt: string | null;
@@ -79,29 +103,11 @@ export function resolveGanttTaskDates(task: {
 }): { start: string; end: string } {
   const duration =
     task.estDays != null && task.estDays > 0 ? Math.round(task.estDays) : 1;
-  const hasStart = Boolean(task.startAt);
-  const hasEnd = Boolean(task.endAt);
 
-  let startDate: Date;
-  let endDate: Date;
-
-  if (hasStart && hasEnd) {
-    startDate = parseDateOnly(task.startAt!);
-    endDate = parseDateOnly(task.endAt!);
-  } else if (hasStart) {
-    startDate = parseDateOnly(task.startAt!);
-    endDate = addWorkDays(startDate, duration);
-  } else if (hasEnd) {
-    endDate = parseDateOnly(task.endAt!);
-    startDate = subtractWorkDays(endDate, duration);
-  } else {
-    startDate = startOfDay(new Date());
-    endDate = addWorkDays(startDate, duration);
-  }
-
-  if (endDate < startDate) {
-    endDate = addWorkDays(startDate, duration);
-  }
+  const startDate = task.startAt
+    ? parseDateOnly(task.startAt)
+    : startOfDay(new Date());
+  const endDate = addWorkDays(startDate, duration);
 
   return {
     start: formatDateOnly(startDate),

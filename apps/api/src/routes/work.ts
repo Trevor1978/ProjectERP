@@ -46,6 +46,7 @@ import { requireAuth, type AuthUser } from "../lib/session.js";
 import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
 import { syncTaskPercentFromTodos } from "../lib/deriveTaskPercent.js";
+import { resolveTaskEndAt } from "../lib/workDays.js";
 
 const app = new Hono();
 
@@ -624,6 +625,10 @@ app.post("/tasks", async (c) => {
   if (m[0]!.projectId !== p.data.projectId) {
     return c.json({ error: "Milestone not in project" }, 400);
   }
+  const startAt = p.data.startAt ?? null;
+  const estDays = p.data.estDays ?? null;
+  const endAt = resolveTaskEndAt(startAt, estDays);
+
   const [t] = await db
     .insert(task)
     .values({
@@ -631,9 +636,9 @@ app.post("/tasks", async (c) => {
       milestoneId: p.data.milestoneId,
       title: p.data.title,
       description: p.data.description,
-      startAt: p.data.startAt,
-      endAt: p.data.endAt,
-      estDays: p.data.estDays ?? null,
+      startAt,
+      endAt,
+      estDays,
       percentComplete: p.data.percentComplete,
       useDerivedPercent: p.data.useDerivedPercent,
       orderIndex: p.data.orderIndex,
@@ -681,6 +686,12 @@ app.patch("/tasks/:id", async (c) => {
       return c.json({ error: "Milestone not in project" }, 400);
     }
   }
+  const startAt =
+    p.data.startAt === undefined ? cur[0]!.startAt : p.data.startAt;
+  const estDays =
+    p.data.estDays === undefined ? cur[0]!.estDays : p.data.estDays;
+  const endAt = resolveTaskEndAt(startAt, estDays);
+
   const [t] = await db
     .update(task)
     .set({
@@ -690,10 +701,9 @@ app.patch("/tasks/:id", async (c) => {
         p.data.description === undefined
           ? cur[0]!.description
           : p.data.description,
-      startAt: p.data.startAt === undefined ? cur[0]!.startAt : p.data.startAt,
-      endAt: p.data.endAt === undefined ? cur[0]!.endAt : p.data.endAt,
-      estDays:
-        p.data.estDays === undefined ? cur[0]!.estDays : p.data.estDays,
+      startAt,
+      endAt,
+      estDays,
       actualHours:
         p.data.actualHours === undefined
           ? cur[0]!.actualHours

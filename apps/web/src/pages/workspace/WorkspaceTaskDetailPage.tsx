@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { QuickCreateSelect } from "../../components/QuickCreateSelect";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
+import { formatTaskEndIso } from "../../lib/workDays";
 
 type Milestone = { id: string; projectId: string; name: string; version: number };
 type Task = {
@@ -80,8 +81,11 @@ export function WorkspaceTaskDetailPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [startAt, setStartAt] = useState("");
-  const [endAt, setEndAt] = useState("");
   const [estDays, setEstDays] = useState("");
+  const computedEnd = useMemo(() => {
+    const iso = formatTaskEndIso(localToIso(startAt), estDays.trim() ? Number(estDays) : null);
+    return iso ? isoToLocal(iso) : "";
+  }, [startAt, estDays]);
   const [orderIndex, setOrderIndex] = useState("0");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -100,7 +104,6 @@ export function WorkspaceTaskDetailPage() {
     setTitle(task.title);
     setDescription(task.description ?? "");
     setStartAt(isoToLocal(task.startAt));
-    setEndAt(isoToLocal(task.endAt));
     setEstDays(task.estDays == null ? "" : String(task.estDays));
     setOrderIndex(String(task.orderIndex));
   }, [task]);
@@ -157,7 +160,13 @@ export function WorkspaceTaskDetailPage() {
           </div>
           <div>
             <label className="block text-sm font-medium">End</label>
-            <input type="datetime-local" className="mt-1 w-full rounded border px-2 py-1.5" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
+            <input
+              type="datetime-local"
+              readOnly
+              className="mt-1 w-full rounded border bg-slate-50 px-2 py-1.5 text-slate-600"
+              value={computedEnd}
+              tabIndex={-1}
+            />
           </div>
         </div>
         <div>
@@ -170,7 +179,7 @@ export function WorkspaceTaskDetailPage() {
             value={estDays}
             onChange={(e) => setEstDays(e.target.value)}
           />
-          <p className="mt-1 text-xs text-slate-500">Used on the Gantt when start/end are not set. Weekends are excluded.</p>
+          <p className="mt-1 text-xs text-slate-500">End date is computed from start and work days (weekends excluded).</p>
         </div>
         <div>
           <label className="block text-sm font-medium">Order</label>
@@ -189,7 +198,6 @@ export function WorkspaceTaskDetailPage() {
                 title: title.trim(),
                 description: description.trim() || null,
                 startAt: localToIso(startAt),
-                endAt: localToIso(endAt),
                 estDays: estDays.trim() ? Number(estDays) : null,
                 orderIndex: Number(orderIndex) || 0,
                 version: task.version,

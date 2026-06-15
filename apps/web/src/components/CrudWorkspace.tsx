@@ -16,6 +16,7 @@ import { WorkspaceCsvToolbar } from "./WorkspaceCsvToolbar";
 import { ColumnFilterInput } from "./ColumnFilterInput";
 import { buildCsvImportHandler } from "../lib/workspaceCsvImport";
 import { EntitySelect, EnumSelect, QuickCreateSelect } from "./QuickCreateSelect";
+import { formatTaskEndIso } from "../lib/workDays";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Supplier = {
@@ -813,7 +814,7 @@ export function CrudWorkspace() {
       })),
     },
     tasks: {
-      dataHeaders: ["Project", "Milestone", "Title", "Start", "Est days", "%"],
+      dataHeaders: ["Project", "Milestone", "Title", "Start", "Est days", "End", "%"],
       rows: tasks.map((t) => ({
         key: t.id,
         action: rowActions("tasks", t.id, t.title, undefined, { openHref: `/workspace/tasks/${t.id}` }),
@@ -862,6 +863,12 @@ export function CrudWorkspace() {
               }).then(refreshSchedule)
             }
           />,
+          <span key="en" className="text-slate-600">
+            {(() => {
+              const endIso = formatTaskEndIso(t.startAt, t.estDays);
+              return endIso ? isoToLocal(endIso) : "—";
+            })()}
+          </span>,
           <InlineNumber
             key="pc"
             value={t.percentComplete}
@@ -882,6 +889,7 @@ export function CrudWorkspace() {
           t.title,
           t.startAt ?? "",
           t.estDays ?? 0,
+          formatTaskEndIso(t.startAt, t.estDays) ?? "",
           t.percentComplete,
         ],
       })),
@@ -2026,6 +2034,15 @@ function CrudAppendRow({
             onChange={(e) => setTkEstDays(e.target.value)}
           />
         </td>
+        <td className="p-2 align-top text-sm text-slate-500">
+          {(() => {
+            const endIso = formatTaskEndIso(
+              localToIso(tkStartAt),
+              tkEstDays.trim() ? Number(tkEstDays) : null,
+            );
+            return endIso ? isoToLocal(endIso) : "—";
+          })()}
+        </td>
         <td className={stickyActionsTd}>
           {createBtn(async () => {
             const title = tkTitle.trim();
@@ -3038,8 +3055,11 @@ function TaskEditModal({
   const [description, setDescription] = useState(task.description ?? "");
   const [milestoneId, setMilestoneId] = useState(task.milestoneId);
   const [startAt, setStartAt] = useState(isoToLocal(task.startAt));
-  const [endAt, setEndAt] = useState(isoToLocal(task.endAt));
   const [estDays, setEstDays] = useState(task.estDays == null ? "" : String(task.estDays));
+  const computedEnd = useMemo(() => {
+    const iso = formatTaskEndIso(localToIso(startAt), estDays.trim() ? Number(estDays) : null);
+    return iso ? isoToLocal(iso) : "";
+  }, [startAt, estDays]);
   const [actualHours, setActualHours] = useState(task.actualHours == null ? "" : String(task.actualHours));
   const [percentComplete, setPercentComplete] = useState(String(task.percentComplete));
   const [useDerived, setUseDerived] = useState(task.useDerivedPercent);
@@ -3052,7 +3072,6 @@ function TaskEditModal({
     setDescription(task.description ?? "");
     setMilestoneId(task.milestoneId);
     setStartAt(isoToLocal(task.startAt));
-    setEndAt(isoToLocal(task.endAt));
     setEstDays(task.estDays == null ? "" : String(task.estDays));
     setActualHours(task.actualHours == null ? "" : String(task.actualHours));
     setPercentComplete(String(task.percentComplete));
@@ -3080,7 +3099,6 @@ function TaskEditModal({
                   description: description.trim() || null,
                   milestoneId,
                   startAt: localToIso(startAt),
-                  endAt: localToIso(endAt),
                   estDays: estDays.trim() ? Number(estDays) : null,
                   actualHours: actualHours.trim() ? Number(actualHours) : null,
                   percentComplete: Number(percentComplete) || 0,
@@ -3118,7 +3136,14 @@ function TaskEditModal({
       <label className="block text-sm font-medium">Start</label>
       <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
       <label className="block text-sm font-medium">End</label>
-      <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
+      <input
+        type="datetime-local"
+        readOnly
+        className="mb-2 w-full rounded border bg-slate-50 px-2 py-1 text-slate-600"
+        value={computedEnd}
+        tabIndex={-1}
+      />
+      <p className="mb-2 text-xs text-slate-500">Computed from start date and work days (weekends excluded).</p>
       <label className="block text-sm font-medium">Duration (work days)</label>
       <input type="number" min={0} step={1} className="mb-2 w-full rounded border px-2 py-1" value={estDays} onChange={(e) => setEstDays(e.target.value)} />
       <label className="block text-sm font-medium">Actual hours</label>

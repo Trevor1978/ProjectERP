@@ -133,7 +133,6 @@ export function GanttView({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 startAt: start.toISOString(),
-                endAt: end.toISOString(),
                 estDays,
                 version: t.version,
               }),
