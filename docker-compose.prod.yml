@@ -6,6 +6,7 @@
 #
 # Local smoke: cp .env.example .env.prod, set secrets, then:
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# For local access without Coolify, temporarily add ports: ["8080:80"] under web.
 
 services:
   postgres:
@@ -52,8 +53,6 @@ services:
       dockerfile: docker/Dockerfile.web
       args:
         VITE_API_URL: ""
-    ports:
-      - "80:80"
     depends_on:
       - api
     restart: unless-stopped
