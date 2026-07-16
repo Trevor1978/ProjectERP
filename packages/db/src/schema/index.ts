@@ -291,7 +291,7 @@ export const todo = pgTable(
     title: text("title").notNull(),
     description: text("description"),
     status: text("status", {
-      enum: ["backlog", "in_progress", "blocked", "done"],
+      enum: ["backlog", "in_progress", "blocked", "testing", "done"],
     })
       .notNull()
       .default("backlog"),
@@ -684,3 +684,21 @@ export const auditLog = pgTable("audit_log", {
     .notNull()
     .defaultNow(),
 });
+
+/** Idempotency log for 07:00 digest jobs (date is calendar day in DIGEST_TZ). */
+export const digestRun = pgTable(
+  "digest_run",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    runDate: text("run_date").notNull(),
+    kind: text("kind", {
+      enum: ["daily", "weekly"],
+    }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("digest_run_date_kind").on(t.runDate, t.kind)],
+);

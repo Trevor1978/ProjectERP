@@ -66,7 +66,7 @@ type Todo = {
   taskId: string;
   title: string;
   description: string | null;
-  status: "backlog" | "in_progress" | "blocked" | "done";
+  status: "backlog" | "in_progress" | "blocked" | "testing" | "done";
   dueAt: string | null;
   priority: "low" | "normal" | "high" | "urgent";
   orderIndex: number;
@@ -141,7 +141,7 @@ const LABEL: Record<Tab, string> = {
 };
 
 const STATUS_OPTS = ["draft", "active", "on_hold", "closed"] as const;
-const TODO_STATUS = ["backlog", "in_progress", "blocked", "done"] as const;
+const TODO_STATUS = ["backlog", "in_progress", "blocked", "testing", "done"] as const;
 const TODO_PRIORITY = ["low", "normal", "high", "urgent"] as const;
 const PROC_STATUS = [
   "draft",

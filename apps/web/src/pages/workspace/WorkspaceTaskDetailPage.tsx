@@ -28,7 +28,7 @@ type Todo = {
   id: string;
   taskId: string;
   title: string;
-  status: "backlog" | "in_progress" | "blocked" | "done";
+  status: "backlog" | "in_progress" | "blocked" | "testing" | "done";
   dueAt: string | null;
   priority: "low" | "normal" | "high" | "urgent";
   orderIndex: number;

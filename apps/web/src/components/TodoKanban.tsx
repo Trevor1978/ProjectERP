@@ -15,6 +15,7 @@ const cols = [
   { id: "backlog", label: "Backlog" },
   { id: "in_progress", label: "In progress" },
   { id: "blocked", label: "Blocked" },
+  { id: "testing", label: "Testing" },
   { id: "done", label: "Done" },
 ] as const;
 

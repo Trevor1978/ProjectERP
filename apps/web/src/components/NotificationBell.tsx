@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 
 type N = {
@@ -9,7 +10,28 @@ type N = {
   readAt: string | null;
   createdAt: string;
   kind: string;
+  dataJson: string | null;
 };
+
+function notificationHref(n: N): string | null {
+  if (!n.dataJson) return null;
+  try {
+    const data = JSON.parse(n.dataJson) as {
+      entityType?: string;
+      entityId?: string;
+    };
+    if (!data.entityId) return null;
+    if (data.entityType === "todo") {
+      return `/workspace/todos/${data.entityId}`;
+    }
+    if (data.entityType === "procurement") {
+      return `/workspace/purchasing/${data.entityId}`;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 export function NotificationBell() {
   const qc = useQueryClient();
@@ -19,6 +41,8 @@ export function NotificationBell() {
   const { data } = useQuery({
     queryKey: ["notifications"],
     queryFn: () => api<{ notifications: N[] }>("/api/notifications"),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {
@@ -62,30 +86,45 @@ export function NotificationBell() {
           {list.length === 0 && (
             <div className="p-3 text-slate-500">No notifications yet.</div>
           )}
-          {list.map((n) => (
-            <div
-              key={n.id}
-              className={
-                "p-2 border-b border-slate-100 " +
-                (!n.readAt ? "bg-amber-50" : "")
-              }
-            >
-              <div className="font-medium">{n.title}</div>
-              {n.body && <div className="text-slate-600 text-xs mt-0.5">{n.body}</div>}
-              <div className="flex justify-between items-center mt-1">
-                <span className="text-[10px] text-slate-400">{n.kind}</span>
-                {!n.readAt && (
-                  <button
-                    type="button"
-                    className="text-xs text-blue-700"
-                    onClick={() => void markRead(n.id)}
+          {list.map((n) => {
+            const href = notificationHref(n);
+            return (
+              <div
+                key={n.id}
+                className={
+                  "p-2 border-b border-slate-100 " +
+                  (!n.readAt ? "bg-amber-50" : "")
+                }
+              >
+                {href ? (
+                  <Link
+                    to={href}
+                    className="font-medium text-slate-900 hover:underline"
+                    onClick={() => setOpen(false)}
                   >
-                    Mark read
-                  </button>
+                    {n.title}
+                  </Link>
+                ) : (
+                  <div className="font-medium">{n.title}</div>
                 )}
+                {n.body && (
+                  <div className="text-slate-600 text-xs mt-0.5">{n.body}</div>
+                )}
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-[10px] text-slate-400">{n.kind}</span>
+                  {!n.readAt && (
+                    <button
+                      type="button"
+                      className="text-xs text-blue-700"
+                      onClick={() => void markRead(n.id)}
+                    >
+                      Mark read
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

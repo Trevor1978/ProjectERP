@@ -36,7 +36,7 @@ export type Todo = {
   id: string;
   taskId: string;
   title: string;
-  status: "backlog" | "in_progress" | "blocked" | "done";
+  status: "backlog" | "in_progress" | "blocked" | "testing" | "done";
   orderIndex: number;
   version: number;
 };

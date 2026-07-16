@@ -217,7 +217,7 @@ async function main() {
   }
 
   const todoRows: (typeof todo.$inferInsert)[] = [];
-  const todoStatuses = ["backlog", "in_progress", "blocked", "done"] as const;
+  const todoStatuses = ["backlog", "in_progress", "blocked", "testing", "done"] as const;
   for (const t of taskRows) {
     for (let i = 0; i < todosPerTask; i++) {
       todoRows.push({
