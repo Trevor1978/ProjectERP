@@ -819,7 +819,8 @@ app.post("/todos", async (c) => {
       dueAt: p.data.dueAt,
       priority: p.data.priority,
       orderIndex: p.data.orderIndex,
-      assigneeId: p.data.assigneeId ?? null,
+      assigneeId:
+        p.data.assigneeId === undefined ? a.id : p.data.assigneeId,
     })
     .returning();
   await syncTaskPercentFromTodos(t[0]!.id);

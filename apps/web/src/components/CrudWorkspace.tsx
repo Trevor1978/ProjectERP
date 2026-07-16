@@ -323,11 +323,19 @@ function attachTableRowMeta(
   });
 }
 
-export function CrudWorkspace() {
+export function CrudWorkspace({
+  fixedTab,
+  fixedProjectId,
+  embedded = false,
+}: {
+  fixedTab?: Tab;
+  fixedProjectId?: string;
+  embedded?: boolean;
+} = {}) {
   const qc = useQueryClient();
   const { data: meRes } = useMe();
   const me = meRes?.user ?? null;
-  const [tab, setTab] = useState<Tab>("projects");
+  const [tab, setTab] = useState<Tab>(fixedTab ?? "projects");
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const procurementMergeOrderRef = useRef<string[]>([]);
@@ -344,6 +352,10 @@ export function CrudWorkspace() {
   const kanbanUrlSyncSigRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (fixedTab) {
+      setTab(fixedTab);
+      return;
+    }
     if (!table) {
       navigate("/workspace/projects", { replace: true });
       return;
@@ -354,7 +366,7 @@ export function CrudWorkspace() {
       return;
     }
     setTab(t);
-  }, [table, navigate]);
+  }, [table, navigate, fixedTab]);
 
   useEffect(() => {
     if (tab !== "todos") {
@@ -543,7 +555,9 @@ export function CrudWorkspace() {
     () => [{ value: "", label: "(unassigned)" }, ...orgUsers.map((u) => ({ value: u.id, label: u.name }))],
     [orgUsers],
   );
-  const [kanbanProjectId, setKanbanProjectId] = useState("all");
+  const [kanbanProjectId, setKanbanProjectId] = useState(
+    fixedProjectId ?? "all",
+  );
   const [kanbanTaskId, setKanbanTaskId] = useState("all");
   const [kanbanAssigneeId, setKanbanAssigneeId] = useState("all");
   const [kanbanStatus, setKanbanStatus] = useState("all");
@@ -594,18 +608,23 @@ export function CrudWorkspace() {
     userName,
   ]);
 
-  const wsProjectId = searchParams.get("projectId")?.trim() ?? "";
+  const wsProjectId =
+    fixedProjectId ?? searchParams.get("projectId")?.trim() ?? "";
   const wsTaskId = searchParams.get("taskId")?.trim() ?? "";
   const wsMilestoneId = searchParams.get("milestoneId")?.trim() ?? "";
 
   useEffect(() => {
     if (tab !== "todos" || todoView !== "kanban") return;
+    if (fixedProjectId) {
+      setKanbanProjectId(fixedProjectId);
+      return;
+    }
     const sig = `${wsProjectId}\0${wsTaskId}`;
     if (kanbanUrlSyncSigRef.current === sig) return;
     kanbanUrlSyncSigRef.current = sig;
     setKanbanProjectId(wsProjectId || "all");
     setKanbanTaskId(wsTaskId || "all");
-  }, [tab, todoView, wsProjectId, wsTaskId]);
+  }, [tab, todoView, wsProjectId, wsTaskId, fixedProjectId]);
 
   const rowsByTab: Record<Tab, { dataHeaders: string[]; rows: TableRow[] }> = {
     customers: {
@@ -895,7 +914,7 @@ export function CrudWorkspace() {
       })),
     },
     todos: {
-      dataHeaders: ["Task", "Project", "Title", "Description", "Status", "Due", "Priority", "Order", "Assignee"],
+      dataHeaders: ["Project", "Task", "Title", "Description", "Status", "Due", "Priority", "Order", "Assignee"],
       rows: todos.map((td) => {
         const task = tasks.find((t) => t.id === td.taskId);
         const projectId = task?.projectId ?? "";
@@ -904,8 +923,8 @@ export function CrudWorkspace() {
         key: td.id,
         action: rowActions("todos", td.id, td.title, undefined, { openHref: `/workspace/todos/${td.id}` }),
         cells: [
-          <span key="tk">{taskName.get(td.taskId) ?? td.taskId}</span>,
           <span key="pj">{projectLabel || "—"}</span>,
+          <span key="tk">{taskName.get(td.taskId) ?? td.taskId}</span>,
           <InlineText
             key="ti"
             value={td.title}
@@ -982,8 +1001,8 @@ export function CrudWorkspace() {
         ],
         search: `${projectLabel} ${taskName.get(td.taskId) ?? ""} ${td.title} ${td.description ?? ""} ${td.status} ${td.priority}`,
         sort: [
-          taskName.get(td.taskId) ?? "",
           projectLabel,
+          taskName.get(td.taskId) ?? "",
           td.title,
           td.description ?? "",
           td.status,
@@ -993,8 +1012,8 @@ export function CrudWorkspace() {
           userName.get(td.assigneeId ?? "") ?? "",
         ],
         filterValues: [
-          filterCell(taskName.get(td.taskId), td.taskId),
           filterCell(projectLabel, projectId),
+          filterCell(taskName.get(td.taskId), td.taskId),
           filterCell(td.title),
           filterCell(td.description),
           filterCell(td.status),
@@ -1367,11 +1386,15 @@ export function CrudWorkspace() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{LABEL[tab]}</h1>
-        <span className="text-xs text-slate-500">Org-wide</span>
+        <h1 className={embedded ? "text-lg font-semibold text-slate-800" : "text-2xl font-semibold"}>
+          {LABEL[tab]}
+        </h1>
+        <span className="text-xs text-slate-500">
+          {fixedProjectId ? "This project" : "Org-wide"}
+        </span>
       </div>
 
-      {(wsProjectId || wsTaskId || wsMilestoneId) && (
+      {!embedded && (wsProjectId || wsTaskId || wsMilestoneId) && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
           <span>
             URL filters active
@@ -1415,7 +1438,12 @@ export function CrudWorkspace() {
               entity="project"
               value={kanbanProjectId}
               onChange={setKanbanProjectId}
-              prependOptions={[{ value: "all", label: "All projects" }]}
+              disabled={Boolean(fixedProjectId)}
+              prependOptions={
+                fixedProjectId
+                  ? undefined
+                  : [{ value: "all", label: "All projects" }]
+              }
               className="rounded border px-2 py-1 text-sm"
             />
             <QuickCreateSelect
@@ -1595,6 +1623,7 @@ export function CrudWorkspace() {
               tasks={tasks}
               todos={todos}
               procurement={procurement}
+              defaultProjectId={fixedProjectId}
               refreshClients={refreshClients}
               refreshSuppliers={refreshSuppliers}
               refreshProjects={refreshProjects}
@@ -1665,6 +1694,7 @@ function CrudAppendRow({
   tasks,
   todos,
   procurement,
+  defaultProjectId,
   refreshClients,
   refreshSuppliers,
   refreshProjects,
@@ -1682,6 +1712,7 @@ function CrudAppendRow({
   tasks: Task[];
   todos: Todo[];
   procurement: Procurement[];
+  defaultProjectId?: string;
   refreshClients: () => Promise<void>;
   refreshSuppliers: () => Promise<void>;
   refreshProjects: () => Promise<void>;
@@ -1726,8 +1757,47 @@ function CrudAppendRow({
     }
   }, [msForTkProject, tkMilestoneId]);
 
-  const [tdTaskId, setTdTaskId] = useState(tasks[0]?.id ?? "");
+  const [tdProjectId, setTdProjectId] = useState(
+    defaultProjectId ?? projects[0]?.id ?? tasks[0]?.projectId ?? "",
+  );
+  const milestonesForTdProject = useMemo(
+    () => milestones.filter((m) => m.projectId === tdProjectId),
+    [milestones, tdProjectId],
+  );
+  const [tdMilestoneId, setTdMilestoneId] = useState(
+    milestonesForTdProject[0]?.id ?? "",
+  );
+  const tasksForTdMilestone = useMemo(
+    () =>
+      tasks.filter(
+        (t) =>
+          t.projectId === tdProjectId && t.milestoneId === tdMilestoneId,
+      ),
+    [tasks, tdProjectId, tdMilestoneId],
+  );
+  const [tdTaskId, setTdTaskId] = useState(
+    tasksForTdMilestone[0]?.id ?? "",
+  );
   const [tdTitle, setTdTitle] = useState("");
+  useEffect(() => {
+    if (defaultProjectId && tdProjectId !== defaultProjectId) {
+      setTdProjectId(defaultProjectId);
+      return;
+    }
+    if (projects.length && !projects.some((p) => p.id === tdProjectId)) {
+      setTdProjectId(projects[0]!.id);
+    }
+  }, [projects, tdProjectId, defaultProjectId]);
+  useEffect(() => {
+    if (!milestonesForTdProject.some((m) => m.id === tdMilestoneId)) {
+      setTdMilestoneId(milestonesForTdProject[0]?.id ?? "");
+    }
+  }, [milestonesForTdProject, tdMilestoneId]);
+  useEffect(() => {
+    if (!tasksForTdMilestone.some((t) => t.id === tdTaskId)) {
+      setTdTaskId(tasksForTdMilestone[0]?.id ?? "");
+    }
+  }, [tasksForTdMilestone, tdTaskId]);
 
   const [teTaskId, setTeTaskId] = useState(tasks[0]?.id ?? "");
 
@@ -2073,21 +2143,50 @@ function CrudAppendRow({
   }
 
   if (tab === "todos") {
-    const tdTask = tasks.find((t) => t.id === tdTaskId);
-    const tdProjectLabel = tdTask
-      ? (projects.find((p) => p.id === tdTask.projectId)?.name ?? "—")
-      : "—";
     return (
       <tr className="border-t bg-slate-50/90">
+        <td className="p-2 align-top">
+          <QuickCreateSelect
+            entity="project"
+            value={tdProjectId}
+            onChange={(value) => {
+              setTdProjectId(value);
+              setTdMilestoneId("");
+              setTdTaskId("");
+            }}
+            disabled={Boolean(defaultProjectId)}
+            className={newRowInputClass}
+          />
+          <QuickCreateSelect
+            entity="milestone"
+            value={tdMilestoneId}
+            onChange={(value) => {
+              setTdMilestoneId(value);
+              setTdTaskId("");
+            }}
+            filter={{ projectId: tdProjectId }}
+            defaults={{ projectId: tdProjectId }}
+            disabled={!tdProjectId}
+            className={`${newRowInputClass} mt-1`}
+          />
+        </td>
         <td className="p-2 align-top">
           <QuickCreateSelect
             entity="task"
             value={tdTaskId}
             onChange={setTdTaskId}
+            filter={{
+              projectId: tdProjectId,
+              milestoneId: tdMilestoneId,
+            }}
+            defaults={{
+              projectId: tdProjectId,
+              milestoneId: tdMilestoneId,
+            }}
+            disabled={!tdProjectId || !tdMilestoneId}
             className={newRowInputClass}
           />
         </td>
-        <td className="p-2 align-middle text-sm text-slate-600">{tdProjectLabel}</td>
         <td className="p-2 align-top">
           <input
             className={newRowInputClass}

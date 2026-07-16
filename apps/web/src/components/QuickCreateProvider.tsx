@@ -102,7 +102,11 @@ export function QuickCreateProvider({ children }: { children: ReactNode }) {
             .map((m) => ({ value: m.id, label: m.name }));
         case "task":
           return tasks
-            .filter((t) => !filter?.projectId || t.projectId === filter.projectId)
+            .filter(
+              (t) =>
+                (!filter?.projectId || t.projectId === filter.projectId) &&
+                (!filter?.milestoneId || t.milestoneId === filter.milestoneId),
+            )
             .map((t) => ({ value: t.id, label: t.title }));
         case "todo":
           return todos

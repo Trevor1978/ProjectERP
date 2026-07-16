@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { ProjectItemsPanel } from "../../components/ProjectItemsPanel";
+import { CrudWorkspace } from "../../components/CrudWorkspace";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { QuickCreateSelect } from "../../components/QuickCreateSelect";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
@@ -224,6 +225,14 @@ export function WorkspaceProjectDetailPage() {
             {childBusy ? "…" : "Add milestone"}
           </button>
         </div>
+      </div>
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <CrudWorkspace
+          fixedTab="todos"
+          fixedProjectId={project.id}
+          embedded
+        />
       </div>
 
       <ProjectItemsPanel projectId={project.id} />
