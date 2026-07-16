@@ -1742,7 +1742,9 @@ function CrudAppendRow({
   const [msProjectId, setMsProjectId] = useState(projects[0]?.id ?? "");
   const [msName, setMsName] = useState("");
 
-  const [tkProjectId, setTkProjectId] = useState(projects[0]?.id ?? "");
+  const [tkProjectId, setTkProjectId] = useState(
+    defaultProjectId ?? projects[0]?.id ?? "",
+  );
   const msForTkProject = useMemo(
     () => milestones.filter((m) => m.projectId === tkProjectId),
     [milestones, tkProjectId],
@@ -1752,8 +1754,17 @@ function CrudAppendRow({
   const [tkStartAt, setTkStartAt] = useState("");
   const [tkEstDays, setTkEstDays] = useState("");
   useEffect(() => {
-    if (msForTkProject.length && !msForTkProject.some((m) => m.id === tkMilestoneId)) {
-      setTkMilestoneId(msForTkProject[0]!.id);
+    if (defaultProjectId && tkProjectId !== defaultProjectId) {
+      setTkProjectId(defaultProjectId);
+      return;
+    }
+    if (projects.length && !projects.some((p) => p.id === tkProjectId)) {
+      setTkProjectId(projects[0]!.id);
+    }
+  }, [projects, tkProjectId, defaultProjectId]);
+  useEffect(() => {
+    if (!msForTkProject.some((m) => m.id === tkMilestoneId)) {
+      setTkMilestoneId(msForTkProject[0]?.id ?? "");
     }
   }, [msForTkProject, tkMilestoneId]);
 
@@ -2064,6 +2075,7 @@ function CrudAppendRow({
               setTkProjectId(v);
               setTkMilestoneId("");
             }}
+            disabled={Boolean(defaultProjectId)}
             className={newRowInputClass}
           />
         </td>

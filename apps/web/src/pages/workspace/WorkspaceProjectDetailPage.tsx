@@ -229,6 +229,14 @@ export function WorkspaceProjectDetailPage() {
 
       <div className="mt-8 border-t border-slate-200 pt-6">
         <CrudWorkspace
+          fixedTab="tasks"
+          fixedProjectId={project.id}
+          embedded
+        />
+      </div>
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <CrudWorkspace
           fixedTab="todos"
           fixedProjectId={project.id}
           embedded
