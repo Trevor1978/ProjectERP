@@ -187,27 +187,38 @@ export const authApp = new Hono()
     if (!a) {
       return c.json({ error: "Unauthorized" }, 401);
     }
-    const result = await sendTestDailyDigest({
-      userId: a.id,
-      userName: a.name,
-      userEmail: a.email,
-    });
-    if (!result.ok) {
+    try {
+      const result = await sendTestDailyDigest({
+        userId: a.id,
+        userName: a.name,
+        userEmail: a.email,
+      });
+      // Use 400 (not 502): Cloudflare replaces origin 502 bodies with its HTML page.
+      if (!result.ok) {
+        return c.json(
+          {
+            error: result.error,
+            itemCount: result.itemCount,
+            subject: result.subject,
+          },
+          400,
+        );
+      }
+      return c.json({
+        ok: true,
+        itemCount: result.itemCount,
+        subject: result.subject,
+        id: result.id,
+      });
+    } catch (e) {
+      console.error("[digest] test daily email failed:", e);
       return c.json(
         {
-          error: result.error,
-          itemCount: result.itemCount,
-          subject: result.subject,
+          error: e instanceof Error ? e.message : "Failed to send test email",
         },
-        502,
+        400,
       );
     }
-    return c.json({
-      ok: true,
-      itemCount: result.itemCount,
-      subject: result.subject,
-      id: result.id,
-    });
   })
   .get("/me", (c) => {
     const a = c.get("auth");

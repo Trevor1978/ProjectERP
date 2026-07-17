@@ -72,11 +72,19 @@ export async function api<T>(
     } catch {
       err = t;
     }
-    throw new Error(
-      typeof err === "object" && err && "error" in err
-        ? String((err as { error: string }).error)
-        : t || r.statusText,
-    );
+    if (typeof err === "object" && err && "error" in err) {
+      throw new Error(String((err as { error: string }).error));
+    }
+    // Cloudflare/nginx HTML error pages are useless in the UI.
+    if (
+      typeof t === "string" &&
+      /<!DOCTYPE html>|Bad gateway|Error code 502/i.test(t)
+    ) {
+      throw new Error(
+        `Request failed (${r.status}). Check API logs and email env vars (RESEND_API_KEY, EMAIL_FROM).`,
+      );
+    }
+    throw new Error(t || r.statusText);
   }
   return r.json() as Promise<T>;
 }
