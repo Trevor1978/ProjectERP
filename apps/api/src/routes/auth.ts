@@ -1,15 +1,21 @@
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import argon2 from "argon2";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db, user, organization, session } from "@project-erp/db";
-import { registerBody, loginBody } from "@project-erp/validators";
+import {
+  registerBody,
+  loginBody,
+  profileUpdate,
+} from "@project-erp/validators";
 import {
   setSessionCookie,
   clearSessionCookie,
   sessionIdCreate,
   getSessionId,
+  type AuthUser,
 } from "../lib/session.js";
+import { sendTestDailyDigest } from "../lib/runDigests.js";
 
 function slugify(s: string) {
   return (
@@ -134,6 +140,74 @@ export const authApp = new Hono()
     }
     clearSessionCookie(c, secureFromEnv());
     return c.json({ ok: true });
+  })
+  .patch("/profile", async (c) => {
+    const a = c.get("auth") as AuthUser | null;
+    if (!a) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const parsed = profileUpdate.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.flatten() }, 400);
+    }
+    const email = parsed.data.email.trim().toLowerCase();
+    const existing = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(and(eq(user.email, email), ne(user.id, a.id)))
+      .limit(1);
+    if (existing.length > 0) {
+      return c.json({ error: "That email address is already in use" }, 409);
+    }
+    const [updated] = await db
+      .update(user)
+      .set({
+        name: parsed.data.name.trim(),
+        email,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, a.id))
+      .returning();
+    if (!updated) {
+      return c.json({ error: "User not found" }, 404);
+    }
+    return c.json({
+      user: {
+        id: updated.id,
+        email: updated.email,
+        name: updated.name,
+        organizationId: updated.organizationId,
+        globalRole: updated.globalRole,
+        org: a.org,
+      },
+    });
+  })
+  .post("/profile/test-daily-email", async (c) => {
+    const a = c.get("auth") as AuthUser | null;
+    if (!a) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const result = await sendTestDailyDigest({
+      userId: a.id,
+      userName: a.name,
+      userEmail: a.email,
+    });
+    if (!result.ok) {
+      return c.json(
+        {
+          error: result.error,
+          itemCount: result.itemCount,
+          subject: result.subject,
+        },
+        502,
+      );
+    }
+    return c.json({
+      ok: true,
+      itemCount: result.itemCount,
+      subject: result.subject,
+      id: result.id,
+    });
   })
   .get("/me", (c) => {
     const a = c.get("auth");

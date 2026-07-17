@@ -17,6 +17,13 @@ export const loginBody = z.object({
   password: z.string().min(1).max(128),
 });
 
+export const profileUpdate = z
+  .object({
+    name: z.string().trim().min(1).max(255),
+    email: z.string().trim().toLowerCase().email(),
+  })
+  .strict();
+
 export const orgCreate = z.object({ name: z.string().min(1).max(255) });
 
 export const clientCreate = z.object({

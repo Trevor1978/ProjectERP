@@ -138,6 +138,49 @@ async function sendDailyEmails(
   return { sent, errors };
 }
 
+/**
+ * Send the same daily digest used by the scheduler to one user.
+ * Test sends are allowed with no due items so delivery/configuration can be verified.
+ */
+export async function sendTestDailyDigest(opts: {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  now?: Date;
+}): Promise<
+  | { ok: true; itemCount: number; subject: string; id?: string }
+  | { ok: false; itemCount: number; subject: string; error: string }
+> {
+  const now = opts.now ?? new Date();
+  const todayYmd = zonedParts(now, digestTimeZone()).ymd;
+  const items = await loadDailyDueItems(now, opts.userId);
+  const mail = buildDailyEmail({
+    userName: opts.userName,
+    dateLabel: dateLabel(todayYmd),
+    items,
+  });
+  const result = await sendResendEmail({
+    to: opts.userEmail,
+    subject: mail.subject,
+    html: mail.html,
+    text: mail.text,
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      itemCount: items.length,
+      subject: mail.subject,
+      error: result.error,
+    };
+  }
+  return {
+    ok: true,
+    itemCount: items.length,
+    subject: mail.subject,
+    id: result.id,
+  };
+}
+
 async function sendWeeklyEmails(
   byUser: Map<string, DueItem[]>,
   weekStartYmd: string,

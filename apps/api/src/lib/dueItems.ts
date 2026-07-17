@@ -55,6 +55,7 @@ async function loadTodosInRange(
   rangeStart: Date,
   rangeEndExclusive: Date,
   todayYmd: string,
+  userId?: string,
 ): Promise<DueItem[]> {
   const tz = digestTimeZone();
   const rows = await db
@@ -75,6 +76,7 @@ async function loadTodosInRange(
         isNotNull(todo.assigneeId),
         gte(todo.dueAt, rangeStart),
         lt(todo.dueAt, rangeEndExclusive),
+        userId ? eq(todo.assigneeId, userId) : undefined,
       ),
     );
 
@@ -96,6 +98,7 @@ async function loadProcurementInRange(
   rangeStart: Date,
   rangeEndExclusive: Date,
   todayYmd: string,
+  userId?: string,
 ): Promise<DueItem[]> {
   const tz = digestTimeZone();
   const rows = await db
@@ -116,6 +119,7 @@ async function loadProcurementInRange(
         isNotNull(procurementRequest.createdById),
         gte(procurementRequest.needBy, rangeStart),
         lt(procurementRequest.needBy, rangeEndExclusive),
+        userId ? eq(procurementRequest.createdById, userId) : undefined,
       ),
     );
 
@@ -134,7 +138,10 @@ async function loadProcurementInRange(
 }
 
 /** Overdue + due today + due tomorrow (for daily digest / in-app). */
-export async function loadDailyDueItems(now = new Date()): Promise<DueItem[]> {
+export async function loadDailyDueItems(
+  now = new Date(),
+  userId?: string,
+): Promise<DueItem[]> {
   const tz = digestTimeZone();
   const today = zonedParts(now, tz).ymd;
   const dayAfterTomorrow = addCalendarDays(today, 2);
@@ -142,8 +149,8 @@ export async function loadDailyDueItems(now = new Date()): Promise<DueItem[]> {
   const rangeStart = new Date(0);
 
   const [todos, procs] = await Promise.all([
-    loadTodosInRange(rangeStart, rangeEnd, today),
-    loadProcurementInRange(rangeStart, rangeEnd, today),
+    loadTodosInRange(rangeStart, rangeEnd, today, userId),
+    loadProcurementInRange(rangeStart, rangeEnd, today, userId),
   ]);
 
   return [...todos, ...procs].filter(

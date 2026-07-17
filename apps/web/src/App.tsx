@@ -22,6 +22,7 @@ import { WorkspacePurchasingLineDetailPage } from "./pages/workspace/WorkspacePu
 import { WorkspaceMachinesPage } from "./pages/workspace/WorkspaceMachinesPage";
 import { WorkspaceMachineDetailPage } from "./pages/workspace/WorkspaceMachineDetailPage";
 import { WorkspaceOrganizationPage } from "./pages/workspace/WorkspaceOrganizationPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { QuickCreateProvider } from "./components/QuickCreateProvider";
 import { House } from "lucide-react";
 
@@ -75,9 +76,17 @@ function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-3 text-sm">
           <GlobalSearch />
           <NotificationBell />
-          <span className="hidden max-w-[200px] truncate text-white/60 sm:inline" title={user.name}>
-            {user.name} <span className="text-white/40">({user.org.name})</span>
-          </span>
+          <Link
+            to="/profile"
+            className="max-w-[200px] truncate text-white/60 hover:text-white"
+            title="Edit profile"
+          >
+            <span className="sm:hidden">Profile</span>
+            <span className="hidden sm:inline">
+              {user.name}{" "}
+              <span className="text-white/40">({user.org.name})</span>
+            </span>
+          </Link>
           <button
             type="button"
             onClick={() => void logout()}
@@ -170,6 +179,16 @@ export default function App() {
           <Layout>
             <AuthGate>
               <ProjectPage />
+            </AuthGate>
+          </Layout>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <Layout>
+            <AuthGate>
+              <ProfilePage />
             </AuthGate>
           </Layout>
         }
