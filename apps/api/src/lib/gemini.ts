@@ -34,6 +34,7 @@ export type WorkCompleteCatalogs = {
   technicianName?: string;
 };
 
+/** OpenAPI-style schema for Gemini structured JSON. */
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
@@ -170,6 +171,67 @@ ABN: 56 053 584 384 · PO Box 81 · 17 Drapers Road · MITTAGONG NSW 2575 · P: 
 Tone: clear, professional field-service English. Fill unknowns with reasonable inference from notes or "Not specified".`;
 }
 
+function extractJsonText(raw: string): string {
+  const trimmed = raw.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence?.[1]) return fence[1].trim();
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
+  return trimmed;
+}
+
+async function callGemini(opts: {
+  model: string;
+  apiKey: string;
+  prompt: string;
+  useSchema: boolean;
+}): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model)}:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
+  const generationConfig: Record<string, unknown> = {
+    responseMimeType: "application/json",
+    temperature: 0.2,
+    maxOutputTokens: 8192,
+  };
+  if (opts.useSchema) {
+    generationConfig.responseSchema = RESPONSE_SCHEMA;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
+      generationConfig,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Gemini HTTP ${res.status}: ${body.slice(0, 800)}`);
+  }
+
+  const data = (await res.json()) as {
+    candidates?: {
+      content?: { parts?: { text?: string }[] };
+      finishReason?: string;
+    }[];
+    error?: { message?: string };
+  };
+  if (data.error?.message) {
+    throw new Error(`Gemini error: ${data.error.message}`);
+  }
+  const candidate = data.candidates?.[0];
+  const text =
+    candidate?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+  if (!text.trim()) {
+    throw new Error(
+      `Gemini returned an empty response (finishReason=${candidate?.finishReason ?? "unknown"})`,
+    );
+  }
+  return text;
+}
+
 export async function parseWorkNotesWithGemini(opts: {
   workType: "machine" | "customer_service";
   notes: string;
@@ -182,38 +244,22 @@ export async function parseWorkNotesWithGemini(opts: {
     throw new Error("GEMINI_API_KEY is not set");
   }
   const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
   const prompt = buildPrompt(opts);
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-        temperature: 0.2,
-      },
-    }),
-  });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Gemini HTTP ${res.status}: ${body.slice(0, 500)}`);
-  }
-
-  const data = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  };
-  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-  if (!text.trim()) {
-    throw new Error("Gemini returned an empty response");
+  let text: string;
+  try {
+    text = await callGemini({ model, apiKey, prompt, useSchema: true });
+  } catch (first) {
+    console.warn(
+      "[gemini] structured call failed, retrying without schema:",
+      first instanceof Error ? first.message : first,
+    );
+    text = await callGemini({ model, apiKey, prompt, useSchema: false });
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(extractJsonText(text));
   } catch {
     throw new Error("Gemini returned invalid JSON");
   }

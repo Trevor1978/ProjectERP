@@ -84,7 +84,7 @@ export async function api<T>(
       /<!DOCTYPE html>|Bad gateway|Error code 502/i.test(t)
     ) {
       throw new Error(
-        `Request failed (${r.status}). Check API logs and email env vars (RESEND_API_KEY, EMAIL_FROM).`,
+        `Request failed (${r.status}). The API may be down, timed out, or misconfigured (check Coolify API logs and GEMINI_API_KEY).`,
       );
     }
     throw new Error(t || r.statusText);

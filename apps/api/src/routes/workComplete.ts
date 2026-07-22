@@ -53,6 +53,15 @@ function catalogIdIn(list: CatalogItem[], id: string | null | undefined): string
 
 app.post("/work-complete/parse", async (c) => {
   const a = c.get("auth") as AuthUser;
+  if (!process.env.GEMINI_API_KEY?.trim()) {
+    return c.json(
+      {
+        error:
+          "GEMINI_API_KEY is not set on the API server. Add it in Coolify env for the api service, then redeploy.",
+      },
+      400,
+    );
+  }
   const p = workCompleteParse.safeParse(await c.req.json());
   if (!p.success) {
     return c.json({ error: p.error.flatten() }, 400);
@@ -140,11 +149,13 @@ app.post("/work-complete/parse", async (c) => {
       },
     });
   } catch (e) {
+    console.error("[work-complete] parse failed:", e);
+    // Use 400 (not 502): Cloudflare/nginx replace origin 502 bodies with HTML.
     return c.json(
       {
         error: e instanceof Error ? e.message : "AI parse failed",
       },
-      502,
+      400,
     );
   }
 
@@ -262,6 +273,8 @@ app.post("/work-complete/confirm", async (c) => {
     markdownStorage = saved.markdownStorage;
     pdfStorage = saved.pdfStorage;
   } catch (e) {
+    console.error("[work-complete] PDF failed:", e);
+    // Use 400 (not 502): Cloudflare/nginx replace origin 502 bodies with HTML.
     return c.json(
       {
         error:
@@ -269,7 +282,7 @@ app.post("/work-complete/confirm", async (c) => {
             ? `Report PDF failed: ${e.message}`
             : "Report PDF failed",
       },
-      502,
+      400,
     );
   }
 
