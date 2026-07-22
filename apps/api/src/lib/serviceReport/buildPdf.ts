@@ -87,7 +87,7 @@ async function resolveChromeLaunch(): Promise<{
   if (process.platform === "linux") {
     try {
       const chromium = await import("@sparticuz/chromium");
-      chromium.default.setGraphicsMode(false);
+      chromium.default.setGraphicsMode = false;
       const executablePath = await chromium.default.executablePath();
       return {
         executablePath,
