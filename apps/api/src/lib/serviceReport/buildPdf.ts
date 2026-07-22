@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -67,6 +67,30 @@ export function serviceReportPath(
   return path.join(serviceReportDir(organizationId), storageName);
 }
 
+async function resolveChromeLaunch(): Promise<{
+  executablePath?: string;
+  args: string[];
+}> {
+  const override = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
+  const baseArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"];
+
+  if (override && existsSync(override)) {
+    return { executablePath: override, args: baseArgs };
+  }
+
+  try {
+    const chromium = await import("@sparticuz/chromium");
+    const executablePath = await chromium.default.executablePath();
+    return {
+      executablePath,
+      args: [...chromium.default.args, ...baseArgs],
+    };
+  } catch {
+    // Local/dev: let md-to-pdf / puppeteer use its default browser.
+    return { args: baseArgs };
+  }
+}
+
 export async function saveServiceReportFiles(
   organizationId: string,
   markdown: string,
@@ -86,7 +110,7 @@ export async function saveServiceReportFiles(
   const cssPath = path.join(dir, `${id}.css`);
   writeFileSync(cssPath, SERVICE_REPORT_CSS, "utf8");
 
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH?.trim() || undefined;
+  const launch = await resolveChromeLaunch();
 
   try {
     await mdToPdf(
@@ -99,14 +123,16 @@ export async function saveServiceReportFiles(
           format: "A4",
           printBackground: true,
         },
-        launch_options: executablePath
-          ? { executablePath, args: ["--no-sandbox", "--disable-setuid-sandbox"] }
-          : { args: ["--no-sandbox", "--disable-setuid-sandbox"] },
+        launch_options: {
+          args: launch.args,
+          ...(launch.executablePath
+            ? { executablePath: launch.executablePath }
+            : {}),
+        },
       },
     );
   } finally {
     try {
-      const { unlinkSync } = await import("node:fs");
       unlinkSync(cssPath);
     } catch {
       /* ignore */
