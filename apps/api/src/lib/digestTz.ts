@@ -113,3 +113,57 @@ export function formatDueForEmail(due: Date, timeZone = digestTimeZone()): strin
     minute: "2-digit",
   }).format(due);
 }
+
+/**
+ * Parse an AI-produced datetime into UTC ISO.
+ * Models often append `Z` to local wall times; treat missing/`Z`/`+00:00`
+ * offsets as org timezone wall clock. Explicit non-UTC offsets are trusted.
+ */
+export function parseAiDateTime(
+  raw: string | null | undefined,
+  timeZone = digestTimeZone(),
+): string | null {
+  if (raw == null) return null;
+  const s = raw.trim();
+  if (!s) return null;
+
+  const m = s.match(
+    /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/i,
+  );
+  if (!m) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  const ymd = m[1]!;
+  const hour = Number(m[2]);
+  const minute = Number(m[3]);
+  const second = Number(m[4] ?? "0");
+  const offset = m[5];
+
+  if (offset && !/^Z$/i.test(offset) && !/^[+-]00:?00$/.test(offset)) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  return fromZonedTime(ymd, hour, minute, second, timeZone).toISOString();
+}
+
+/** Current wall-clock ISO with offset for prompts (e.g. 2026-07-22T15:04:05+10:00). */
+export function nowInTimeZoneIso(timeZone = digestTimeZone()): string {
+  const now = new Date();
+  const p = zonedParts(now, timeZone);
+  const asUtc = fromZonedTime(p.ymd, p.hour, p.minute, p.second, timeZone);
+  const wallAsUtc = Date.UTC(
+    p.year,
+    p.month - 1,
+    p.day,
+    p.hour,
+    p.minute,
+    p.second,
+  );
+  const offsetMinutes = Math.round((wallAsUtc - asUtc.getTime()) / 60000);
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMinutes);
+  return `${p.ymd}T${pad2(p.hour)}:${pad2(p.minute)}:${pad2(p.second)}${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+}

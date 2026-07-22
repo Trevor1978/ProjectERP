@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  digestTimeZone,
+  nowInTimeZoneIso,
+  parseAiDateTime,
+} from "./digestTz.js";
 
 const geminiDraftSchema = z.object({
   suggestedClientId: z.string().nullable().optional(),
@@ -91,7 +96,8 @@ function buildPrompt(opts: {
   assetId?: string | null;
   catalogs: WorkCompleteCatalogs;
 }): string {
-  const today = new Date().toISOString();
+  const timeZone = digestTimeZone();
+  const nowLocal = nowInTimeZoneIso(timeZone);
   return `You are a field-service assistant for Spantec. Parse the technician's natural-language work notes into structured ERP fields and a client-ready service report.
 
 Work type: ${opts.workType}
@@ -100,7 +106,8 @@ Work type: ${opts.workType}
 Pre-selected clientId: ${opts.clientId ?? "(none)"}
 Pre-selected assetId: ${opts.assetId ?? "(none)"}
 Current technician display name: ${opts.catalogs.technicianName ?? "(unknown)"}
-Current datetime (ISO): ${today}
+Organization timezone: ${timeZone}
+Current local datetime: ${nowLocal}
 
 Customers (id: label):
 ${formatCatalog(opts.catalogs.clients)}
@@ -124,7 +131,7 @@ Rules:
 2. Prefer pre-selected ids when provided.
 3. If no suitable existing task, set createNewTask=true and propose newTaskTitle; set suggestedTaskId=null.
 4. Otherwise createNewTask=false and set suggestedTaskId to the best matching task.
-5. timeEntry.startedAt / endedAt / performedAt must be ISO-8601 datetimes when known; durationMinutes is a positive integer when hours can be inferred.
+5. Times in the notes are local wall-clock times in ${timeZone}. Emit timeEntry.startedAt / endedAt / serviceLog.performedAt as ISO-8601 WITH that timezone offset (example: 2026-07-21T09:00:00+10:00). Do NOT append Z / treat local times as UTC. durationMinutes is a positive integer when hours can be inferred.
 6. serviceLog.title is a short summary; description is a concise work summary for the machine history.
 7. reportMarkdown must be a complete Spantec service report in markdown with this structure (no YAML front-matter):
 
@@ -248,6 +255,22 @@ function isModelUnavailableError(err: unknown): boolean {
   return /Gemini HTTP 404|no longer available|NOT_FOUND|not found/i.test(msg);
 }
 
+function normalizeDraftTimes(draft: GeminiWorkDraft): GeminiWorkDraft {
+  const tz = digestTimeZone();
+  return {
+    ...draft,
+    timeEntry: {
+      ...draft.timeEntry,
+      startedAt: parseAiDateTime(draft.timeEntry.startedAt, tz),
+      endedAt: parseAiDateTime(draft.timeEntry.endedAt, tz),
+    },
+    serviceLog: {
+      ...draft.serviceLog,
+      performedAt: parseAiDateTime(draft.serviceLog.performedAt, tz),
+    },
+  };
+}
+
 export async function parseWorkNotesWithGemini(opts: {
   workType: "machine" | "customer_service";
   notes: string;
@@ -309,5 +332,5 @@ export async function parseWorkNotesWithGemini(opts: {
   if (!draft.success) {
     throw new Error(`Gemini JSON failed validation: ${draft.error.message}`);
   }
-  return draft.data;
+  return normalizeDraftTimes(draft.data);
 }
