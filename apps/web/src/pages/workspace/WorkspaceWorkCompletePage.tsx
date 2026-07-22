@@ -91,9 +91,12 @@ export function WorkspaceWorkCompletePage() {
   const projects = projectsData?.projects ?? [];
   const tasks = tasksData?.tasks ?? [];
 
+  // Include unassigned machines: existing assets often have null clientId.
   const entryMachines = useMemo(() => {
     if (workType === "customer_service" && entryClientId) {
-      return assets.filter((a) => a.clientId === entryClientId);
+      return assets.filter(
+        (a) => a.clientId === entryClientId || a.clientId == null,
+      );
     }
     return assets;
   }, [assets, workType, entryClientId]);
@@ -101,7 +104,9 @@ export function WorkspaceWorkCompletePage() {
   const reviewMachines = useMemo(() => {
     if (!draft) return [];
     if (draft.workType === "customer_service" && draft.clientId) {
-      return assets.filter((a) => a.clientId === draft.clientId);
+      return assets.filter(
+        (a) => a.clientId === draft.clientId || a.clientId == null,
+      );
     }
     return assets;
   }, [assets, draft]);
@@ -276,11 +281,12 @@ export function WorkspaceWorkCompletePage() {
               onChange={(e) => setEntryAssetId(e.target.value)}
             >
               <option value="">—</option>
-              {entryMachines.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} · {a.site}
-                </option>
-              ))}
+                {entryMachines.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} · {a.site}
+                    {a.clientId ? "" : " (unassigned)"}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -376,6 +382,7 @@ export function WorkspaceWorkCompletePage() {
                 {reviewMachines.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} · {a.site}
+                    {a.clientId ? "" : " (unassigned)"}
                   </option>
                 ))}
               </select>

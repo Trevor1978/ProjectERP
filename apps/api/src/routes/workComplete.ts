@@ -80,7 +80,10 @@ app.post("/work-complete/parse", async (c) => {
     .orderBy(asc(asset.name));
 
   if (p.data.workType === "customer_service" && p.data.clientId) {
-    assetRows = assetRows.filter((r) => r.clientId === p.data.clientId);
+    // Keep unassigned machines in the AI catalog (legacy rows often have null clientId).
+    assetRows = assetRows.filter(
+      (r) => r.clientId === p.data.clientId || r.clientId == null,
+    );
   }
 
   const pids = await visibleProjectIds(a);
@@ -238,7 +241,7 @@ app.post("/work-complete/confirm", async (c) => {
   if (assets.length === 0) {
     return c.json({ error: "Machine not found" }, 404);
   }
-  const assetRow = assets[0]!;
+  let assetRow = assets[0]!;
 
   if (data.workType === "customer_service") {
     if (assetRow.clientId && assetRow.clientId !== data.clientId) {
@@ -256,6 +259,14 @@ app.post("/work-complete/confirm", async (c) => {
     if (clients.length === 0) {
       return c.json({ error: "Customer not found" }, 404);
     }
+    // Link unassigned machines to the customer on first service-call save.
+    if (!assetRow.clientId) {
+      await db
+        .update(asset)
+        .set({ clientId: data.clientId!, updatedAt: new Date() })
+        .where(eq(asset.id, assetRow.id));
+      assetRow = { ...assetRow, clientId: data.clientId! };
+    }
   }
 
   const pr = await requireProject(a, data.projectId);
@@ -263,28 +274,12 @@ app.post("/work-complete/confirm", async (c) => {
     return c.json({ error: pr.error }, pr.status);
   }
 
-  let markdownStorage: string;
-  let pdfStorage: string;
-  try {
-    const saved = await saveServiceReportFiles(
-      a.organizationId,
-      data.reportMarkdown,
-    );
-    markdownStorage = saved.markdownStorage;
-    pdfStorage = saved.pdfStorage;
-  } catch (e) {
-    console.error("[work-complete] PDF failed:", e);
-    // Use 400 (not 502): Cloudflare/nginx replace origin 502 bodies with HTML.
-    return c.json(
-      {
-        error:
-          e instanceof Error
-            ? `Report PDF failed: ${e.message}`
-            : "Report PDF failed",
-      },
-      400,
-    );
-  }
+  const saved = await saveServiceReportFiles(
+    a.organizationId,
+    data.reportMarkdown,
+  );
+  const markdownStorage = saved.markdownStorage;
+  const pdfStorage = saved.pdfStorage;
 
   let taskId = data.taskId ?? null;
   if (!taskId && data.newTask?.title) {

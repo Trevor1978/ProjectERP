@@ -87,6 +87,7 @@ async function resolveChromeLaunch(): Promise<{
   if (process.platform === "linux") {
     try {
       const chromium = await import("@sparticuz/chromium");
+      chromium.default.setGraphicsMode(false);
       const executablePath = await chromium.default.executablePath();
       return {
         executablePath,
@@ -132,50 +133,58 @@ ${body}
 export async function saveServiceReportFiles(
   organizationId: string,
   markdown: string,
-): Promise<{ markdownStorage: string; pdfStorage: string }> {
+): Promise<{ markdownStorage: string; pdfStorage: string | null }> {
   const dir = serviceReportDir(organizationId);
   mkdirSync(dir, { recursive: true });
   const id = randomUUID();
   const markdownStorage = `${id}.md`;
-  const pdfStorage = `${id}.pdf`;
+  const pdfStorageName = `${id}.pdf`;
   const mdPath = path.join(dir, markdownStorage);
-  const pdfPath = path.join(dir, pdfStorage);
+  const pdfPath = path.join(dir, pdfStorageName);
 
   const withLogo = ensureLogoInMarkdown(markdown);
   writeFileSync(mdPath, withLogo, "utf8");
 
-  const embedded = embedLocalImages(withLogo, dir);
-  const html = markdownToHtmlDocument(embedded);
-  const launch = await resolveChromeLaunch();
-
-  if (!launch.executablePath) {
-    throw new Error(
-      "No Chromium/Chrome executable found for PDF generation. Set PUPPETEER_EXECUTABLE_PATH or install Chrome.",
-    );
-  }
-
-  const browser = await puppeteer.launch({
-    executablePath: launch.executablePath,
-    args: launch.args,
-    headless: true,
-  });
   try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "load" });
-    await page.pdf({
-      path: pdfPath,
-      format: "A4",
-      printBackground: true,
+    const embedded = embedLocalImages(withLogo, dir);
+    const html = markdownToHtmlDocument(embedded);
+    const launch = await resolveChromeLaunch();
+
+    if (!launch.executablePath) {
+      throw new Error(
+        "No Chromium/Chrome executable found for PDF generation. Set PUPPETEER_EXECUTABLE_PATH or install Chrome.",
+      );
+    }
+
+    const browser = await puppeteer.launch({
+      executablePath: launch.executablePath,
+      args: launch.args,
+      headless: true,
     });
-  } finally {
-    await browser.close();
-  }
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "load" });
+      await page.pdf({
+        path: pdfPath,
+        format: "A4",
+        printBackground: true,
+      });
+    } finally {
+      await browser.close();
+    }
 
-  if (!existsSync(pdfPath)) {
-    throw new Error("PDF generation did not produce an output file");
-  }
+    if (!existsSync(pdfPath)) {
+      throw new Error("PDF generation did not produce an output file");
+    }
 
-  return { markdownStorage, pdfStorage };
+    return { markdownStorage, pdfStorage: pdfStorageName };
+  } catch (e) {
+    console.error(
+      "[service-report] PDF failed (markdown still saved):",
+      e instanceof Error ? e.message : e,
+    );
+    return { markdownStorage, pdfStorage: null };
+  }
 }
 
 export async function readServiceReportFile(
