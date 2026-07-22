@@ -72,23 +72,47 @@ async function resolveChromeLaunch(): Promise<{
   args: string[];
 }> {
   const override = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
-  const baseArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"];
+  const baseArgs = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+  ];
 
   if (override && existsSync(override)) {
     return { executablePath: override, args: baseArgs };
   }
 
-  try {
-    const chromium = await import("@sparticuz/chromium");
-    const executablePath = await chromium.default.executablePath();
-    return {
-      executablePath,
-      args: [...chromium.default.args, ...baseArgs],
-    };
-  } catch {
-    // Local/dev: let md-to-pdf / puppeteer use its default browser.
-    return { args: baseArgs };
+  // @sparticuz/chromium ships a Linux binary only (Coolify / Docker).
+  if (process.platform === "linux") {
+    try {
+      const chromium = await import("@sparticuz/chromium");
+      const executablePath = await chromium.default.executablePath();
+      return {
+        executablePath,
+        args: [...chromium.default.args, ...baseArgs],
+      };
+    } catch (e) {
+      console.warn(
+        "[service-report] @sparticuz/chromium unavailable:",
+        e instanceof Error ? e.message : e,
+      );
+    }
   }
+
+  const localChromeCandidates = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+  ];
+  for (const p of localChromeCandidates) {
+    if (existsSync(p)) {
+      return { executablePath: p, args: baseArgs };
+    }
+  }
+
+  // Fall back to puppeteer's bundled browser if installed.
+  return { args: baseArgs };
 }
 
 export async function saveServiceReportFiles(
