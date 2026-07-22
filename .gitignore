@@ -13,4 +13,4 @@ playwright-report
 test-results
 # Local Elecdes BOM samples (see apps/api/test/fixtures/README.md); use `git add -f` to track a small fixture
 apps/api/test/fixtures/*.dbf
-*.code-workspace
+*.code-workspacedata/
