@@ -613,6 +613,10 @@ export const asset = pgTable("asset", {
   organizationId: text("organization_id")
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
+  /** Optional customer that owns / hosts this machine (service-call targeting). */
+  clientId: text("client_id").references(() => client.id, {
+    onDelete: "set null",
+  }),
   site: text("site").notNull(),
   line: text("line").notNull(),
   serial: text("serial"),
@@ -657,6 +661,15 @@ export const assetServiceLog = pgTable(
       .notNull()
       .defaultNow(),
     technicianName: text("technician_name"),
+    workType: text("work_type", {
+      enum: ["machine", "customer_service"],
+    }),
+    rawNotes: text("raw_notes"),
+    timeEntryId: text("time_entry_id").references(() => timeEntry.id, {
+      onDelete: "set null",
+    }),
+    reportMarkdownStorage: text("report_markdown_storage"),
+    reportPdfStorage: text("report_pdf_storage"),
     version: integer("version").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

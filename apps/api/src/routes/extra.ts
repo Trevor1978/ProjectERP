@@ -14,6 +14,7 @@ import {
   assetServiceLog,
   projectAsset,
   projectBudget,
+  client,
 } from "@project-erp/db";
 import {
   savedFilterCreate,
@@ -23,6 +24,7 @@ import {
   handoverCreate,
   commentCreate,
   assetCreate,
+  assetPatch,
   assetServiceLogCreate,
   assetServiceLogPatch,
 } from "@project-erp/validators";
@@ -436,10 +438,15 @@ app.post("/comments", async (c) => {
 /* --- Assets --- */
 app.get("/assets", async (c) => {
   const a = c.get("auth") as AuthUser;
+  const clientId = c.req.query("clientId");
+  const conditions = [eq(asset.organizationId, a.organizationId)];
+  if (clientId) {
+    conditions.push(eq(asset.clientId, clientId));
+  }
   const rows = await db
     .select()
     .from(asset)
-    .where(eq(asset.organizationId, a.organizationId));
+    .where(and(...conditions));
   return c.json({ assets: rows });
 });
 
@@ -452,6 +459,20 @@ app.post("/assets", async (c) => {
   if (!p.success) {
     return c.json({ error: p.error.flatten() }, 400);
   }
+  if (p.data.clientId) {
+    const clients = await db
+      .select({ id: client.id })
+      .from(client)
+      .where(
+        and(
+          eq(client.id, p.data.clientId),
+          eq(client.organizationId, a.organizationId),
+        ),
+      );
+    if (clients.length === 0) {
+      return c.json({ error: "Customer not found" }, 404);
+    }
+  }
   const [row] = await db
     .insert(asset)
     .values({
@@ -460,7 +481,61 @@ app.post("/assets", async (c) => {
       site: p.data.site,
       line: p.data.line,
       serial: p.data.serial ?? null,
+      clientId: p.data.clientId ?? null,
     })
+    .returning();
+  return c.json({ asset: row });
+});
+
+app.patch("/assets/:assetId", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  if (a.globalRole !== "org_admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const assetId = c.req.param("assetId");
+  const p = assetPatch.safeParse(await c.req.json());
+  if (!p.success) {
+    return c.json({ error: p.error.flatten() }, 400);
+  }
+  const cur = await db
+    .select()
+    .from(asset)
+    .where(
+      and(eq(asset.id, assetId), eq(asset.organizationId, a.organizationId)),
+    );
+  if (cur.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const row0 = cur[0]!;
+  if (p.data.version !== undefined && p.data.version !== row0.version) {
+    return c.json({ error: "Version conflict" }, 409);
+  }
+  if (p.data.clientId) {
+    const clients = await db
+      .select({ id: client.id })
+      .from(client)
+      .where(
+        and(
+          eq(client.id, p.data.clientId),
+          eq(client.organizationId, a.organizationId),
+        ),
+      );
+    if (clients.length === 0) {
+      return c.json({ error: "Customer not found" }, 404);
+    }
+  }
+  const [row] = await db
+    .update(asset)
+    .set({
+      name: p.data.name ?? row0.name,
+      site: p.data.site ?? row0.site,
+      line: p.data.line ?? row0.line,
+      serial: p.data.serial === undefined ? row0.serial : p.data.serial,
+      clientId: p.data.clientId === undefined ? row0.clientId : p.data.clientId,
+      version: row0.version + 1,
+      updatedAt: new Date(),
+    })
+    .where(eq(asset.id, assetId))
     .returning();
   return c.json({ asset: row });
 });

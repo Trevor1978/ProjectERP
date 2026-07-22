@@ -17,13 +17,21 @@ RUN pnpm --filter @project-erp/validators build && \
 RUN pnpm --filter @project-erp/api deploy --prod /deploy
 
 FROM node:20-bookworm-slim AS runner
-RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client \
+    chromium \
+    fonts-liberation \
+    fonts-dejavu-core \
+    ca-certificates \
   && rm -rf /var/lib/apt/lists/*
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 # Migrations: pin drizzle-kit + drizzle-orm together under /migrations
 WORKDIR /migrations
 RUN npm init -y >/dev/null 2>&1 && npm install drizzle-kit@0.30.1 drizzle-orm@0.38.3 postgres@3.4.5 --omit=dev
 WORKDIR /app
 COPY --from=builder /deploy /app
+COPY apps/api/assets /app/assets
 COPY packages/db/drizzle /migrations/drizzle
 COPY docker/drizzle.migrate.config.cjs /migrations/drizzle.migrate.config.cjs
 COPY docker/api-entrypoint.sh /api-entrypoint.sh

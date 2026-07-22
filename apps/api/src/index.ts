@@ -11,6 +11,7 @@ import { orgApp } from "./routes/org.js";
 import { extraApp } from "./routes/extra.js";
 import { projectItemsApp } from "./routes/projectItems.js";
 import { internalApp } from "./routes/internal.js";
+import { workCompleteApp } from "./routes/workComplete.js";
 
 const port = Number(process.env.PORT) || 3001;
 const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:5173";
@@ -37,6 +38,7 @@ app.route("/api", procurementApp);
 app.route("/api", orgApp);
 app.route("/api", extraApp);
 app.route("/api", projectItemsApp);
+app.route("/api", workCompleteApp);
 /** Cron / ops — auth via CRON_SECRET bearer, not session. */
 app.route("/api/internal", internalApp);
 

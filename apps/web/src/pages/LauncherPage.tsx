@@ -11,10 +11,12 @@ import {
   Truck,
   Users,
   Cog,
+  Wrench,
 } from "lucide-react";
 import { WORKSPACE_NAV_ITEMS, type WorkspaceTableSlug } from "../lib/workspaceNav";
 
 const ICON_BY_SLUG: Record<WorkspaceTableSlug, LucideIcon> = {
+  "work-complete": Wrench,
   customers: Users,
   suppliers: Truck,
   projects: FolderKanban,
@@ -29,6 +31,7 @@ const ICON_BY_SLUG: Record<WorkspaceTableSlug, LucideIcon> = {
 
 /** Tile backgrounds — icon uses white foreground */
 const TILE_STYLE: Record<WorkspaceTableSlug, { className: string }> = {
+  "work-complete": { className: "bg-gradient-to-br from-orange-500 to-red-600 shadow-orange-500/25" },
   customers: { className: "bg-gradient-to-br from-sky-500 to-blue-600 shadow-sky-500/25" },
   suppliers: { className: "bg-gradient-to-br from-amber-500 to-orange-600 shadow-orange-500/25" },
   projects: { className: "bg-gradient-to-br from-indigo-500 to-violet-600 shadow-indigo-500/25" },

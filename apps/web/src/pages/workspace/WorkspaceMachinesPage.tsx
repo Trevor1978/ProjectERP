@@ -11,7 +11,10 @@ type Asset = {
   site: string;
   line: string;
   serial: string | null;
+  clientId: string | null;
 };
+
+type Client = { id: string; name: string };
 
 export function WorkspaceMachinesPage() {
   const qc = useQueryClient();
@@ -23,19 +26,29 @@ export function WorkspaceMachinesPage() {
     queryFn: () => api<{ assets: Asset[] }>("/api/assets"),
   });
 
+  const { data: clientsData } = useQuery({
+    queryKey: ["clients"],
+    queryFn: () => api<{ clients: Client[] }>("/api/clients"),
+  });
+
   const [name, setName] = useState("");
   const [site, setSite] = useState("");
   const [line, setLine] = useState("");
   const [serial, setSerial] = useState("");
+  const [clientId, setClientId] = useState("");
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
 
   const assets = data?.assets ?? [];
+  const clients = clientsData?.clients ?? [];
+  const clientName = (id: string | null) =>
+    id ? clients.find((c) => c.id === id)?.name ?? "—" : "—";
 
   return (
     <WorkspaceDetailChrome backTo="/" backLabel="← Home" title="Machines">
       <p className="mb-4 text-sm text-tesla-text-secondary">
         Track equipment and open a machine to view service history or send a customer report.
+        Assign a customer so service calls can target that machine.
       </p>
 
       {isAdmin && (
@@ -75,6 +88,23 @@ export function WorkspaceMachinesPage() {
                 onChange={(e) => setSerial(e.target.value)}
               />
             </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-tesla-text-secondary">
+                Customer (optional)
+              </label>
+              <select
+                className="mt-1 w-full rounded-sm border border-tesla-border bg-white px-2 py-1"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+              >
+                <option value="">— Internal / unassigned —</option>
+                {clients.map((cl) => (
+                  <option key={cl.id} value={cl.id}>
+                    {cl.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <button
             type="button"
@@ -90,6 +120,7 @@ export function WorkspaceMachinesPage() {
                   site: site.trim(),
                   line: line.trim(),
                   serial: serial.trim() || null,
+                  clientId: clientId || null,
                 }),
               })
                 .then(async () => {
@@ -97,6 +128,7 @@ export function WorkspaceMachinesPage() {
                   setSite("");
                   setLine("");
                   setSerial("");
+                  setClientId("");
                   await qc.invalidateQueries({ queryKey: ["assets"] });
                 })
                 .catch((e: Error) => setCreateErr(e.message))
@@ -124,6 +156,7 @@ export function WorkspaceMachinesPage() {
             <thead className="bg-tesla-muted text-left">
               <tr>
                 <th className="px-3 py-2 font-medium">Name</th>
+                <th className="px-3 py-2 font-medium">Customer</th>
                 <th className="px-3 py-2 font-medium">Site</th>
                 <th className="px-3 py-2 font-medium">Line</th>
                 <th className="px-3 py-2 font-medium">Serial</th>
@@ -139,6 +172,9 @@ export function WorkspaceMachinesPage() {
                     >
                       {a.name}
                     </Link>
+                  </td>
+                  <td className="px-3 py-2 text-tesla-text-secondary">
+                    {clientName(a.clientId)}
                   </td>
                   <td className="px-3 py-2 text-tesla-text-secondary">{a.site}</td>
                   <td className="px-3 py-2 text-tesla-text-secondary">{a.line}</td>

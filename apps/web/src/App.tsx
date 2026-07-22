@@ -21,6 +21,7 @@ import { WorkspacePurchasingDetailPage } from "./pages/workspace/WorkspacePurcha
 import { WorkspacePurchasingLineDetailPage } from "./pages/workspace/WorkspacePurchasingLineDetailPage";
 import { WorkspaceMachinesPage } from "./pages/workspace/WorkspaceMachinesPage";
 import { WorkspaceMachineDetailPage } from "./pages/workspace/WorkspaceMachineDetailPage";
+import { WorkspaceWorkCompletePage } from "./pages/workspace/WorkspaceWorkCompletePage";
 import { WorkspaceOrganizationPage } from "./pages/workspace/WorkspaceOrganizationPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { QuickCreateProvider } from "./components/QuickCreateProvider";
@@ -63,6 +64,9 @@ function Layout({ children }: { children: React.ReactNode }) {
           </Link>
           <Link to="/workspace/machines" className="text-sm text-white/70 hover:text-white">
             Machines
+          </Link>
+          <Link to="/workspace/work-complete" className="text-sm text-white/70 hover:text-white">
+            Log work
           </Link>
           {user.globalRole === "org_admin" && (
             <Link
@@ -170,6 +174,7 @@ export default function App() {
         <Route path="purchasing-lines/:lineId" element={<WorkspacePurchasingLineDetailPage />} />
         <Route path="machines" element={<WorkspaceMachinesPage />} />
         <Route path="machines/:assetId" element={<WorkspaceMachineDetailPage />} />
+        <Route path="work-complete" element={<WorkspaceWorkCompletePage />} />
         <Route path="organization" element={<WorkspaceOrganizationPage />} />
         <Route path=":table" element={<HomePage />} />
       </Route>

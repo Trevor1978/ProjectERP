@@ -281,7 +281,19 @@ export const assetCreate = z.object({
   site: z.string().min(1).max(200),
   line: z.string().min(1).max(200),
   serial: z.string().max(200).optional().nullable(),
+  clientId: id.optional().nullable(),
 });
+
+export const assetPatch = z
+  .object({
+    name: z.string().min(1).max(500).optional(),
+    site: z.string().min(1).max(200).optional(),
+    line: z.string().min(1).max(200).optional(),
+    serial: z.string().max(200).optional().nullable(),
+    clientId: id.optional().nullable(),
+    version,
+  })
+  .strict();
 
 export const assetServiceLogCreate = z.object({
   assetId: id,
@@ -300,6 +312,44 @@ export const assetServiceLogPatch = z
     version,
   })
   .strict();
+
+export const workCompleteWorkType = z.enum(["machine", "customer_service"]);
+
+export const workCompleteParse = z.object({
+  workType: workCompleteWorkType,
+  notes: z.string().min(1).max(50000),
+  clientId: id.optional().nullable(),
+  assetId: id.optional().nullable(),
+});
+
+export const workCompleteConfirm = z.object({
+  workType: workCompleteWorkType,
+  rawNotes: z.string().max(50000).optional().nullable(),
+  clientId: id.optional().nullable(),
+  assetId: id,
+  projectId: id,
+  taskId: id.optional().nullable(),
+  newTask: z
+    .object({
+      title: z.string().min(1).max(500),
+      milestoneId: id.optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  timeEntry: z.object({
+    startedAt: z.coerce.date().optional().nullable(),
+    endedAt: z.coerce.date().optional().nullable(),
+    durationMinutes: z.number().int().positive().optional().nullable(),
+    note: z.string().max(5000).optional().nullable(),
+  }),
+  serviceLog: z.object({
+    title: z.string().min(1).max(500),
+    description: z.string().max(10000).optional().nullable(),
+    performedAt: z.coerce.date().optional().nullable(),
+    technicianName: z.string().max(200).optional().nullable(),
+  }),
+  reportMarkdown: z.string().min(1).max(200000),
+});
 
 export const procurementMerge = z.object({
   ids: z.array(id).min(2),

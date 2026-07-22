@@ -44,6 +44,9 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-}
       CRON_SECRET: ${CRON_SECRET:-}
       DIGEST_TZ: ${DIGEST_TZ:-Australia/Brisbane}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      PUPPETEER_EXECUTABLE_PATH: ${PUPPETEER_EXECUTABLE_PATH:-/usr/bin/chromium}
     volumes:
       - projecterp_uploads:/data/uploads
     depends_on:

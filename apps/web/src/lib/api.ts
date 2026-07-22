@@ -73,7 +73,10 @@ export async function api<T>(
       err = t;
     }
     if (typeof err === "object" && err && "error" in err) {
-      throw new Error(String((err as { error: string }).error));
+      const e = (err as { error: unknown }).error;
+      throw new Error(
+        typeof e === "string" ? e : JSON.stringify(e),
+      );
     }
     // Cloudflare/nginx HTML error pages are useless in the UI.
     if (
