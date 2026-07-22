@@ -232,6 +232,22 @@ async function callGemini(opts: {
   return text;
 }
 
+function resolveModelCandidates(): string[] {
+  const preferred = process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
+  const fallbacks = [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-flash-latest",
+    "gemini-2.0-flash",
+  ];
+  return [preferred, ...fallbacks.filter((m) => m !== preferred)];
+}
+
+function isModelUnavailableError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /Gemini HTTP 404|no longer available|NOT_FOUND|not found/i.test(msg);
+}
+
 export async function parseWorkNotesWithGemini(opts: {
   workType: "machine" | "customer_service";
   notes: string;
@@ -243,18 +259,43 @@ export async function parseWorkNotesWithGemini(opts: {
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not set");
   }
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
   const prompt = buildPrompt(opts);
+  const models = resolveModelCandidates();
 
-  let text: string;
-  try {
-    text = await callGemini({ model, apiKey, prompt, useSchema: true });
-  } catch (first) {
-    console.warn(
-      "[gemini] structured call failed, retrying without schema:",
-      first instanceof Error ? first.message : first,
-    );
-    text = await callGemini({ model, apiKey, prompt, useSchema: false });
+  let lastError: unknown;
+  let text: string | null = null;
+
+  for (const model of models) {
+    try {
+      try {
+        text = await callGemini({ model, apiKey, prompt, useSchema: true });
+      } catch (first) {
+        if (isModelUnavailableError(first)) throw first;
+        console.warn(
+          `[gemini] ${model} structured call failed, retrying without schema:`,
+          first instanceof Error ? first.message : first,
+        );
+        text = await callGemini({ model, apiKey, prompt, useSchema: false });
+      }
+      console.info(`[gemini] using model ${model}`);
+      break;
+    } catch (e) {
+      lastError = e;
+      if (isModelUnavailableError(e)) {
+        console.warn(
+          `[gemini] model unavailable, trying next:`,
+          e instanceof Error ? e.message : e,
+        );
+        continue;
+      }
+      throw e;
+    }
+  }
+
+  if (!text) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Gemini request failed for all candidate models");
   }
 
   let parsed: unknown;
