@@ -17,7 +17,7 @@ RUN pnpm --filter @project-erp/validators build && \
     pnpm --filter @project-erp/api build
 RUN pnpm --filter @project-erp/api deploy --prod /deploy
 
-# Skip Puppeteer's bundled Chrome download — PDF uses @sparticuz/chromium (much smaller than apt chromium).
+# PDF via puppeteer-core + @sparticuz/chromium (no full puppeteer / apt chromium).
 FROM node:20-bookworm-slim AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
@@ -25,7 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     ca-certificates \
   && rm -rf /var/lib/apt/lists/*
-ENV PUPPETEER_SKIP_DOWNLOAD=true
 # Migrations: pin drizzle-kit + drizzle-orm together under /migrations
 WORKDIR /migrations
 RUN npm init -y >/dev/null 2>&1 && npm install drizzle-kit@0.30.1 drizzle-orm@0.38.3 postgres@3.4.5 --omit=dev

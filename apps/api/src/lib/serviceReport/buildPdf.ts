@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { mdToPdf } from "md-to-pdf";
+import { marked } from "marked";
+import puppeteer from "puppeteer-core";
 import { SERVICE_REPORT_CSS } from "./css.js";
 
 const UPLOAD_ROOT = process.env.UPLOAD_DIR ?? path.join(process.cwd(), "data", "uploads");
@@ -111,8 +112,21 @@ async function resolveChromeLaunch(): Promise<{
     }
   }
 
-  // Fall back to puppeteer's bundled browser if installed.
   return { args: baseArgs };
+}
+
+function markdownToHtmlDocument(markdown: string): string {
+  const body = marked.parse(markdown, { async: false }) as string;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>${SERVICE_REPORT_CSS}</style>
+</head>
+<body>
+${body}
+</body>
+</html>`;
 }
 
 export async function saveServiceReportFiles(
@@ -131,36 +145,30 @@ export async function saveServiceReportFiles(
   writeFileSync(mdPath, withLogo, "utf8");
 
   const embedded = embedLocalImages(withLogo, dir);
-  const cssPath = path.join(dir, `${id}.css`);
-  writeFileSync(cssPath, SERVICE_REPORT_CSS, "utf8");
-
+  const html = markdownToHtmlDocument(embedded);
   const launch = await resolveChromeLaunch();
 
-  try {
-    await mdToPdf(
-      { content: embedded },
-      {
-        basedir: dir,
-        dest: pdfPath,
-        stylesheet: [cssPath],
-        pdf_options: {
-          format: "A4",
-          printBackground: true,
-        },
-        launch_options: {
-          args: launch.args,
-          ...(launch.executablePath
-            ? { executablePath: launch.executablePath }
-            : {}),
-        },
-      },
+  if (!launch.executablePath) {
+    throw new Error(
+      "No Chromium/Chrome executable found for PDF generation. Set PUPPETEER_EXECUTABLE_PATH or install Chrome.",
     );
+  }
+
+  const browser = await puppeteer.launch({
+    executablePath: launch.executablePath,
+    args: launch.args,
+    headless: true,
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "load" });
+    await page.pdf({
+      path: pdfPath,
+      format: "A4",
+      printBackground: true,
+    });
   } finally {
-    try {
-      unlinkSync(cssPath);
-    } catch {
-      /* ignore */
-    }
+    await browser.close();
   }
 
   if (!existsSync(pdfPath)) {
