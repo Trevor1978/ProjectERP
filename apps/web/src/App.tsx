@@ -21,6 +21,8 @@ import { WorkspacePurchasingDetailPage } from "./pages/workspace/WorkspacePurcha
 import { WorkspacePurchasingLineDetailPage } from "./pages/workspace/WorkspacePurchasingLineDetailPage";
 import { WorkspaceMachinesPage } from "./pages/workspace/WorkspaceMachinesPage";
 import { WorkspaceMachineDetailPage } from "./pages/workspace/WorkspaceMachineDetailPage";
+import { WorkspaceServiceHistoryPage } from "./pages/workspace/WorkspaceServiceHistoryPage";
+import { WorkspaceServiceHistoryDetailPage } from "./pages/workspace/WorkspaceServiceHistoryDetailPage";
 import { WorkspaceWorkCompletePage } from "./pages/workspace/WorkspaceWorkCompletePage";
 import { WorkspaceOrganizationPage } from "./pages/workspace/WorkspaceOrganizationPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -174,6 +176,8 @@ export default function App() {
         <Route path="purchasing-lines/:lineId" element={<WorkspacePurchasingLineDetailPage />} />
         <Route path="machines" element={<WorkspaceMachinesPage />} />
         <Route path="machines/:assetId" element={<WorkspaceMachineDetailPage />} />
+        <Route path="service-history" element={<WorkspaceServiceHistoryPage />} />
+        <Route path="service-history/:logId" element={<WorkspaceServiceHistoryDetailPage />} />
         <Route path="work-complete" element={<WorkspaceWorkCompletePage />} />
         <Route path="organization" element={<WorkspaceOrganizationPage />} />
         <Route path=":table" element={<HomePage />} />

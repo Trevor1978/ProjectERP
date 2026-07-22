@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api } from "../../lib/api";
 import { useMe } from "../../hooks/useMe";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { DeleteConfirmModal } from "../../components/DeleteConfirmModal";
 
 type Asset = {
   id: string;
@@ -38,6 +39,10 @@ export function WorkspaceMachinesPage() {
   const [clientId, setClientId] = useState("");
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
 
   const assets = data?.assets ?? [];
   const clients = clientsData?.clients ?? [];
@@ -160,6 +165,9 @@ export function WorkspaceMachinesPage() {
                 <th className="px-3 py-2 font-medium">Site</th>
                 <th className="px-3 py-2 font-medium">Line</th>
                 <th className="px-3 py-2 font-medium">Serial</th>
+                {isAdmin ? (
+                  <th className="px-3 py-2 font-medium">Actions</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -179,12 +187,39 @@ export function WorkspaceMachinesPage() {
                   <td className="px-3 py-2 text-tesla-text-secondary">{a.site}</td>
                   <td className="px-3 py-2 text-tesla-text-secondary">{a.line}</td>
                   <td className="px-3 py-2 text-tesla-text-secondary">{a.serial ?? "—"}</td>
+                  {isAdmin ? (
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        className="text-red-700 underline"
+                        onClick={() =>
+                          setDeleteTarget({ id: a.id, label: a.name })
+                        }
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <DeleteConfirmModal
+        open={Boolean(deleteTarget)}
+        recordTitle={deleteTarget?.label ?? ""}
+        previewPath={
+          deleteTarget ? `/api/assets/${deleteTarget.id}/delete-preview` : ""
+        }
+        deletePath={deleteTarget ? `/api/assets/${deleteTarget.id}` : ""}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={async () => {
+          setDeleteTarget(null);
+          await qc.invalidateQueries({ queryKey: ["assets"] });
+        }}
+      />
     </WorkspaceDetailChrome>
   );
 }

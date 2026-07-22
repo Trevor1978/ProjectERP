@@ -30,6 +30,13 @@ import {
 } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
 import { requireProject } from "../lib/projectAccess.js";
+import {
+  executeDeleteAsset,
+  executeDeleteServiceLog,
+  previewDeleteAsset,
+  previewDeleteServiceLog,
+} from "../lib/deleteResource.js";
+import { writeAudit } from "../lib/audit.js";
 
 const app = new Hono();
 app.use("/*", requireAuth);
@@ -333,6 +340,27 @@ app.patch("/documents/:id", async (c) => {
   return c.json({ document: row });
 });
 
+app.delete("/documents/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const cur = await db
+    .select()
+    .from(documentLink)
+    .where(eq(documentLink.id, id));
+  if (cur.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const pr = await requireProject(a, cur[0]!.projectId);
+  if ("error" in pr) {
+    return c.json({ error: pr.error }, pr.status);
+  }
+  await db.delete(documentLink).where(eq(documentLink.id, id));
+  await writeAudit(a, "document.delete", "document_link", id, {
+    projectId: cur[0]!.projectId,
+  });
+  return c.json({ ok: true });
+});
+
 /* --- Handover --- */
 app.get("/projects/:projectId/handover", async (c) => {
   const a = c.get("auth") as AuthUser;
@@ -540,6 +568,30 @@ app.patch("/assets/:assetId", async (c) => {
   return c.json({ asset: row });
 });
 
+app.get("/assets/:assetId/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const assetId = c.req.param("assetId");
+  const p = await previewDeleteAsset(a, assetId);
+  if ("status" in p) {
+    return c.json({ error: p.status === 403 ? "Forbidden" : "Not found" }, p.status);
+  }
+  return c.json({ preview: p });
+});
+
+app.delete("/assets/:assetId", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const assetId = c.req.param("assetId");
+  const ok = await executeDeleteAsset(a, assetId);
+  if (!ok) {
+    const p = await previewDeleteAsset(a, assetId);
+    if ("status" in p) {
+      return c.json({ error: p.status === 403 ? "Forbidden" : "Not found" }, p.status);
+    }
+    return c.json({ error: p.blockedReason ?? "Cannot delete" }, 400);
+  }
+  return c.json({ ok: true });
+});
+
 app.get("/assets/:assetId", async (c) => {
   const a = c.get("auth") as AuthUser;
   const assetId = c.req.param("assetId");
@@ -573,6 +625,65 @@ app.get("/assets/:assetId/service-logs", async (c) => {
     .where(eq(assetServiceLog.assetId, assetId))
     .orderBy(desc(assetServiceLog.performedAt));
   return c.json({ logs });
+});
+
+app.get("/asset-service-logs", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const assetId = c.req.query("assetId");
+  const conditions = [eq(asset.organizationId, a.organizationId)];
+  if (assetId) {
+    conditions.push(eq(assetServiceLog.assetId, assetId));
+  }
+  const rows = await db
+    .select({
+      log: assetServiceLog,
+      assetName: asset.name,
+      assetSite: asset.site,
+      clientId: asset.clientId,
+    })
+    .from(assetServiceLog)
+    .innerJoin(asset, eq(assetServiceLog.assetId, asset.id))
+    .where(and(...conditions))
+    .orderBy(desc(assetServiceLog.performedAt));
+  return c.json({
+    logs: rows.map((r) => ({
+      ...r.log,
+      assetName: r.assetName,
+      assetSite: r.assetSite,
+      clientId: r.clientId,
+    })),
+  });
+});
+
+app.get("/asset-service-logs/:id/delete-preview", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const p = await previewDeleteServiceLog(a, id);
+  if ("status" in p) {
+    return c.json({ error: p.status === 403 ? "Forbidden" : "Not found" }, p.status);
+  }
+  return c.json({ preview: p });
+});
+
+app.get("/asset-service-logs/:id", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const rows = await db
+    .select({ log: assetServiceLog, asset: asset })
+    .from(assetServiceLog)
+    .innerJoin(asset, eq(assetServiceLog.assetId, asset.id))
+    .where(eq(assetServiceLog.id, id));
+  if (rows.length === 0 || rows[0]!.asset.organizationId !== a.organizationId) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json({
+    log: {
+      ...rows[0]!.log,
+      assetName: rows[0]!.asset.name,
+      assetSite: rows[0]!.asset.site,
+      clientId: rows[0]!.asset.clientId,
+    },
+  });
 });
 
 app.post("/asset-service-logs", async (c) => {
@@ -647,15 +758,14 @@ app.patch("/asset-service-logs/:id", async (c) => {
 app.delete("/asset-service-logs/:id", async (c) => {
   const a = c.get("auth") as AuthUser;
   const id = c.req.param("id");
-  const cur = await db
-    .select({ log: assetServiceLog, asset: asset })
-    .from(assetServiceLog)
-    .innerJoin(asset, eq(assetServiceLog.assetId, asset.id))
-    .where(eq(assetServiceLog.id, id));
-  if (cur.length === 0 || cur[0]!.asset.organizationId !== a.organizationId) {
-    return c.json({ error: "Not found" }, 404);
+  const ok = await executeDeleteServiceLog(a, id);
+  if (!ok) {
+    const p = await previewDeleteServiceLog(a, id);
+    if ("status" in p) {
+      return c.json({ error: p.status === 403 ? "Forbidden" : "Not found" }, p.status);
+    }
+    return c.json({ error: p.blockedReason ?? "Cannot delete" }, 400);
   }
-  await db.delete(assetServiceLog).where(eq(assetServiceLog.id, id));
   return c.json({ ok: true });
 });
 
@@ -702,6 +812,31 @@ app.post("/projects/:projectId/assets", async (c) => {
     })
     .returning();
   return c.json({ link: l });
+});
+
+app.delete("/projects/:projectId/assets/:assetId", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("projectId");
+  const assetId = c.req.param("assetId");
+  const pr = await requireProject(a, id);
+  if ("error" in pr) {
+    return c.json({ error: pr.error }, pr.status);
+  }
+  const cur = await db
+    .select()
+    .from(projectAsset)
+    .where(
+      and(eq(projectAsset.projectId, id), eq(projectAsset.assetId, assetId)),
+    );
+  if (cur.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  await db
+    .delete(projectAsset)
+    .where(
+      and(eq(projectAsset.projectId, id), eq(projectAsset.assetId, assetId)),
+    );
+  return c.json({ ok: true });
 });
 
 export const extraApp = app;

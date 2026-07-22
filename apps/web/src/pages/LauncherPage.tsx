@@ -5,6 +5,7 @@ import {
   Clock,
   Flag,
   FolderKanban,
+  History,
   ListChecks,
   ListTree,
   ShoppingCart,
@@ -27,6 +28,7 @@ const ICON_BY_SLUG: Record<WorkspaceTableSlug, LucideIcon> = {
   purchasing: ShoppingCart,
   "purchasing-lines": ListTree,
   machines: Cog,
+  "service-history": History,
 };
 
 /** Tile backgrounds — icon uses white foreground */
@@ -42,6 +44,7 @@ const TILE_STYLE: Record<WorkspaceTableSlug, { className: string }> = {
   purchasing: { className: "bg-gradient-to-br from-lime-600 to-green-700 shadow-lime-600/25" },
   "purchasing-lines": { className: "bg-gradient-to-br from-slate-600 to-slate-800 shadow-slate-600/25" },
   machines: { className: "bg-gradient-to-br from-zinc-600 to-zinc-800 shadow-zinc-600/25" },
+  "service-history": { className: "bg-gradient-to-br from-teal-600 to-emerald-800 shadow-teal-600/25" },
 };
 
 export function LauncherPage() {

@@ -1,11 +1,14 @@
 import { and, count, eq, inArray } from "drizzle-orm";
 import {
+  asset,
+  assetServiceLog,
   client,
   db,
   milestone,
   procurementRequest,
   procurementRequestLine,
   project,
+  projectAsset,
   projectBudget,
   projectMember,
   supplier,
@@ -566,5 +569,96 @@ export async function executeDeleteTimeEntry(a: AuthUser, entryId: string): Prom
   await db.delete(timeEntry).where(eq(timeEntry.id, entryId));
   await recalcTaskHours(taskId);
   await writeAudit(a, "time.delete", "time_entry", entryId, {});
+  return true;
+}
+
+export async function previewDeleteAsset(
+  a: AuthUser,
+  assetId: string,
+): Promise<DeletePreviewResponse | { status: 403 | 404 }> {
+  if (a.globalRole !== "org_admin") {
+    return { status: 403 };
+  }
+  const rows = await db
+    .select()
+    .from(asset)
+    .where(and(eq(asset.id, assetId), eq(asset.organizationId, a.organizationId)));
+  if (rows.length === 0) {
+    return { status: 404 };
+  }
+  const [logCount] = await db
+    .select({ n: count() })
+    .from(assetServiceLog)
+    .where(eq(assetServiceLog.assetId, assetId));
+  const [linkCount] = await db
+    .select({ n: count() })
+    .from(projectAsset)
+    .where(eq(projectAsset.assetId, assetId));
+  const nLogs = Number(logCount?.n ?? 0);
+  const nLinks = Number(linkCount?.n ?? 0);
+  return {
+    canDelete: true,
+    blockedReason: null,
+    bullets: [
+      "• This machine will be removed.",
+      nLogs > 0
+        ? `• ${nLogs} service history entr${nLogs === 1 ? "y" : "ies"} will be deleted.`
+        : "• No service history entries.",
+      nLinks > 0
+        ? `• ${nLinks} project link${nLinks === 1 ? "" : "s"} will be removed.`
+        : "• No project links.",
+    ],
+    recordLabel: rows[0]!.name,
+  };
+}
+
+export async function executeDeleteAsset(
+  a: AuthUser,
+  assetId: string,
+): Promise<boolean> {
+  const p = await previewDeleteAsset(a, assetId);
+  if ("status" in p || !p.canDelete) {
+    return false;
+  }
+  await db
+    .delete(asset)
+    .where(and(eq(asset.id, assetId), eq(asset.organizationId, a.organizationId)));
+  await writeAudit(a, "asset.delete", "asset", assetId, {});
+  return true;
+}
+
+export async function previewDeleteServiceLog(
+  a: AuthUser,
+  logId: string,
+): Promise<DeletePreviewResponse | { status: 403 | 404 }> {
+  const cur = await db
+    .select({ log: assetServiceLog, asset: asset })
+    .from(assetServiceLog)
+    .innerJoin(asset, eq(assetServiceLog.assetId, asset.id))
+    .where(eq(assetServiceLog.id, logId));
+  if (cur.length === 0 || cur[0]!.asset.organizationId !== a.organizationId) {
+    return { status: 404 };
+  }
+  return {
+    canDelete: true,
+    blockedReason: null,
+    bullets: [
+      "• This service history entry will be removed.",
+      "• Linked markdown/PDF report files (if any) will no longer be available.",
+    ],
+    recordLabel: cur[0]!.log.title,
+  };
+}
+
+export async function executeDeleteServiceLog(
+  a: AuthUser,
+  logId: string,
+): Promise<boolean> {
+  const p = await previewDeleteServiceLog(a, logId);
+  if ("status" in p || !p.canDelete) {
+    return false;
+  }
+  await db.delete(assetServiceLog).where(eq(assetServiceLog.id, logId));
+  await writeAudit(a, "asset_service_log.delete", "asset_service_log", logId, {});
   return true;
 }
