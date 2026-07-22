@@ -136,8 +136,8 @@ export function ProjectTeamPanel({ projectId }: { projectId: string }) {
       )}
       {me?.user?.globalRole !== "org_admin" && (
         <p className="text-xs text-slate-500">
-          Invite new org users: <code className="text-xs">POST /api/org/users</code>{" "}
-          (org admin) or an admin can add people here.
+          Ask an org admin to invite users under Organization → People, then add them
+          here if needed.
         </p>
       )}
       <ul className="border rounded bg-white divide-y text-sm">

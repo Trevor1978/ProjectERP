@@ -6,6 +6,8 @@ import {
   user,
   organizationProfile,
   organizationReportImage,
+  project,
+  projectMember,
 } from "@project-erp/db";
 import { z } from "zod";
 import { requireAuth, type AuthUser } from "../lib/session.js";
@@ -22,6 +24,13 @@ const invite = z.object({
   password: z.string().min(8).max(128),
   name: z.string().min(1).max(255),
   globalRole: z.enum(["member", "org_admin"]).default("member"),
+  /** When true (default), add the user to every existing project in the org. */
+  addToAllProjects: z.boolean().default(true),
+});
+
+const userPatch = z.object({
+  globalRole: z.enum(["member", "org_admin"]).optional(),
+  name: z.string().min(1).max(255).optional(),
 });
 
 const profilePatch = z.object({
@@ -45,6 +54,30 @@ app.use("/*", requireAuth);
 
 function requireOrgAdmin(a: AuthUser) {
   return a.globalRole === "org_admin";
+}
+
+async function addUserToAllOrgProjects(
+  organizationId: string,
+  userId: string,
+  role: "viewer" | "member" | "pm" | "admin" = "member",
+): Promise<number> {
+  const projects = await db
+    .select({ id: project.id })
+    .from(project)
+    .where(eq(project.organizationId, organizationId));
+  if (projects.length === 0) return 0;
+  let added = 0;
+  for (const p of projects) {
+    const [row] = await db
+      .insert(projectMember)
+      .values({ projectId: p.id, userId, role })
+      .onConflictDoNothing({
+        target: [projectMember.projectId, projectMember.userId],
+      })
+      .returning({ id: projectMember.id });
+    if (row) added += 1;
+  }
+  return added;
 }
 
 async function getOrCreateProfile(organizationId: string) {
@@ -299,7 +332,17 @@ app.get("/org/users", async (c) => {
     })
     .from(user)
     .where(eq(user.organizationId, a.organizationId));
-  return c.json({ users: rows });
+
+  const withCounts = await Promise.all(
+    rows.map(async (u) => {
+      const [mc] = await db
+        .select({ n: count() })
+        .from(projectMember)
+        .where(eq(projectMember.userId, u.id));
+      return { ...u, projectCount: Number(mc?.n ?? 0) };
+    }),
+  );
+  return c.json({ users: withCounts });
 });
 
 app.post("/org/users", async (c) => {
@@ -334,7 +377,76 @@ app.post("/org/users", async (c) => {
       name: user.name,
       globalRole: user.globalRole,
     });
-  return c.json({ user: u });
+  let projectsAdded = 0;
+  if (p.data.addToAllProjects && u) {
+    projectsAdded = await addUserToAllOrgProjects(a.organizationId, u.id);
+  }
+  return c.json({ user: u, projectsAdded });
+});
+
+app.patch("/org/users/:userId", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  if (a.globalRole !== "org_admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const userId = c.req.param("userId");
+  const p = userPatch.safeParse(await c.req.json());
+  if (!p.success) {
+    return c.json({ error: p.error.flatten() }, 400);
+  }
+  const rows = await db
+    .select()
+    .from(user)
+    .where(and(eq(user.id, userId), eq(user.organizationId, a.organizationId)));
+  if (rows.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  if (userId === a.id && p.data.globalRole === "member") {
+    return c.json(
+      { error: "You cannot demote yourself from org admin" },
+      400,
+    );
+  }
+  const [updated] = await db
+    .update(user)
+    .set({
+      name: p.data.name ?? rows[0]!.name,
+      globalRole: p.data.globalRole ?? rows[0]!.globalRole,
+      updatedAt: new Date(),
+    })
+    .where(eq(user.id, userId))
+    .returning({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      globalRole: user.globalRole,
+    });
+  return c.json({ user: updated });
+});
+
+app.post("/org/users/:userId/grant-all-projects", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  if (a.globalRole !== "org_admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const userId = c.req.param("userId");
+  const rows = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(and(eq(user.id, userId), eq(user.organizationId, a.organizationId)));
+  if (rows.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const projectsAdded = await addUserToAllOrgProjects(a.organizationId, userId);
+  const [mc] = await db
+    .select({ n: count() })
+    .from(projectMember)
+    .where(eq(projectMember.userId, userId));
+  return c.json({
+    ok: true,
+    projectsAdded,
+    projectCount: Number(mc?.n ?? 0),
+  });
 });
 
 export const orgApp = app;

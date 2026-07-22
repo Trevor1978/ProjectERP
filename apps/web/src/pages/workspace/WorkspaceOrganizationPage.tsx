@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiFetchUrl, apiForm } from "../../lib/api";
 import { useMe } from "../../hooks/useMe";
 import { ORG_PROFILE_QUERY_KEY, useOrgProfile } from "../../hooks/useOrgProfile";
@@ -15,6 +15,14 @@ type ProfileFields = {
   email: string;
   website: string;
   taxId: string;
+};
+
+type OrgUser = {
+  id: string;
+  email: string;
+  name: string;
+  globalRole: "member" | "org_admin";
+  projectCount: number;
 };
 
 function fieldsFromProfile(p: OrgProfile): ProfileFields {
@@ -37,10 +45,27 @@ export function WorkspaceOrganizationPage() {
   const { data, isLoading, error } = useOrgProfile();
   const profile = data?.profile;
 
+  const { data: usersData, isLoading: usersLoading } = useQuery({
+    queryKey: ["org-users"],
+    queryFn: () => api<{ users: OrgUser[] }>("/api/org/users"),
+    enabled: isAdmin,
+  });
+
   const [fields, setFields] = useState<ProfileFields | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
+
+  const [inviteName, setInviteName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [inviteRole, setInviteRole] = useState<"member" | "org_admin">("member");
+  const [inviteAddProjects, setInviteAddProjects] = useState(true);
+  const [inviting, setInviting] = useState(false);
+  const [inviteErr, setInviteErr] = useState<string | null>(null);
+  const [inviteOk, setInviteOk] = useState<string | null>(null);
+  const [peopleBusyId, setPeopleBusyId] = useState<string | null>(null);
+  const [peopleErr, setPeopleErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile) setFields(fieldsFromProfile(profile));
@@ -121,6 +146,75 @@ export function WorkspaceOrganizationPage() {
     if (!window.confirm(`Remove "${img.fileName}" from report images?`)) return;
     await api(`/api/org/report-images/${img.id}`, { method: "DELETE", body: "{}" });
     await qc.invalidateQueries({ queryKey: ORG_PROFILE_QUERY_KEY });
+  };
+
+  const inviteUser = async () => {
+    setInviteErr(null);
+    setInviteOk(null);
+    setInviting(true);
+    try {
+      const res = await api<{ user: OrgUser; projectsAdded: number }>("/api/org/users", {
+        method: "POST",
+        body: JSON.stringify({
+          name: inviteName.trim(),
+          email: inviteEmail.trim(),
+          password: invitePassword,
+          globalRole: inviteRole,
+          addToAllProjects: inviteAddProjects,
+        }),
+      });
+      setInviteName("");
+      setInviteEmail("");
+      setInvitePassword("");
+      setInviteOk(
+        `Created ${res.user.name}` +
+          (res.projectsAdded
+            ? ` and added to ${res.projectsAdded} project${res.projectsAdded === 1 ? "" : "s"}`
+            : inviteAddProjects
+              ? " (no projects yet)"
+              : ""),
+      );
+      await qc.invalidateQueries({ queryKey: ["org-users"] });
+    } catch (e) {
+      setInviteErr(e instanceof Error ? e.message : "Invite failed");
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const grantAllProjects = async (u: OrgUser) => {
+    setPeopleErr(null);
+    setPeopleBusyId(u.id);
+    try {
+      const res = await api<{ projectsAdded: number; projectCount: number }>(
+        `/api/org/users/${u.id}/grant-all-projects`,
+        { method: "POST", body: "{}" },
+      );
+      setInviteOk(
+        `${u.name}: added to ${res.projectsAdded} more project${res.projectsAdded === 1 ? "" : "s"} (now on ${res.projectCount})`,
+      );
+      await qc.invalidateQueries({ queryKey: ["org-users"] });
+    } catch (e) {
+      setPeopleErr(e instanceof Error ? e.message : "Failed to grant access");
+    } finally {
+      setPeopleBusyId(null);
+    }
+  };
+
+  const setUserRole = async (u: OrgUser, globalRole: "member" | "org_admin") => {
+    setPeopleErr(null);
+    setPeopleBusyId(u.id);
+    try {
+      await api(`/api/org/users/${u.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ globalRole }),
+      });
+      await qc.invalidateQueries({ queryKey: ["org-users"] });
+    } catch (e) {
+      setPeopleErr(e instanceof Error ? e.message : "Failed to update role");
+    } finally {
+      setPeopleBusyId(null);
+    }
   };
 
   if (isLoading || !fields) {
@@ -250,6 +344,141 @@ export function WorkspaceOrganizationPage() {
             />
           </div>
         </div>
+      </section>
+
+      <section className="mb-8 rounded-lg border border-tesla-border bg-white p-4 shadow-sm">
+        <h2 className="mb-1 text-sm font-semibold text-tesla-text">People</h2>
+        <p className="mb-3 text-xs text-tesla-text-secondary">
+          Org members only see projects they belong to. New users are added to all
+          existing projects by default so they can see shared work.
+        </p>
+        {!isAdmin ? (
+          <p className="text-sm text-tesla-text-secondary">Only org admins can manage people.</p>
+        ) : (
+          <>
+            <div className="mb-4 grid gap-2 rounded-sm border border-dashed border-tesla-border bg-tesla-muted/20 p-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-medium text-tesla-text-secondary">Name</label>
+                <input
+                  className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1.5 text-sm"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-tesla-text-secondary">Email</label>
+                <input
+                  type="email"
+                  className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1.5 text-sm"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-tesla-text-secondary">
+                  Temporary password
+                </label>
+                <input
+                  type="password"
+                  className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1.5 text-sm"
+                  value={invitePassword}
+                  onChange={(e) => setInvitePassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-tesla-text-secondary">Role</label>
+                <select
+                  className="mt-1 w-full rounded-sm border border-tesla-border bg-white px-2 py-1.5 text-sm"
+                  value={inviteRole}
+                  onChange={(e) =>
+                    setInviteRole(e.target.value as "member" | "org_admin")
+                  }
+                >
+                  <option value="member">Member</option>
+                  <option value="org_admin">Org admin</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-tesla-text sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={inviteAddProjects}
+                  onChange={(e) => setInviteAddProjects(e.target.checked)}
+                />
+                Add to all existing projects
+              </label>
+              <div className="sm:col-span-2">
+                <button
+                  type="button"
+                  disabled={
+                    inviting ||
+                    !inviteName.trim() ||
+                    !inviteEmail.trim() ||
+                    invitePassword.length < 8
+                  }
+                  className="rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
+                  onClick={() => void inviteUser()}
+                >
+                  {inviting ? "Creating…" : "Create user"}
+                </button>
+              </div>
+              {inviteErr && <p className="text-sm text-red-600 sm:col-span-2">{inviteErr}</p>}
+              {inviteOk && <p className="text-sm text-emerald-700 sm:col-span-2">{inviteOk}</p>}
+              {peopleErr && <p className="text-sm text-red-600 sm:col-span-2">{peopleErr}</p>}
+            </div>
+
+            {usersLoading ? (
+              <p className="text-sm text-tesla-text-secondary">Loading people…</p>
+            ) : (
+              <ul className="divide-y divide-tesla-border rounded-sm border border-tesla-border text-sm">
+                {(usersData?.users ?? []).map((u) => (
+                  <li
+                    key={u.id}
+                    className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-tesla-text">{u.name}</p>
+                      <p className="truncate text-xs text-tesla-text-secondary">
+                        {u.email} · {u.globalRole} · {u.projectCount} project
+                        {u.projectCount === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {u.globalRole !== "org_admin" ? (
+                        <button
+                          type="button"
+                          disabled={peopleBusyId === u.id}
+                          className="text-xs text-blue-700 underline disabled:opacity-50"
+                          onClick={() => void setUserRole(u, "org_admin")}
+                        >
+                          Make admin
+                        </button>
+                      ) : u.id !== meData?.user?.id ? (
+                        <button
+                          type="button"
+                          disabled={peopleBusyId === u.id}
+                          className="text-xs text-blue-700 underline disabled:opacity-50"
+                          onClick={() => void setUserRole(u, "member")}
+                        >
+                          Make member
+                        </button>
+                      ) : null}
+                      {u.globalRole !== "org_admin" ? (
+                        <button
+                          type="button"
+                          disabled={peopleBusyId === u.id}
+                          className="text-xs text-blue-700 underline disabled:opacity-50"
+                          onClick={() => void grantAllProjects(u)}
+                        >
+                          Add to all projects
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
       </section>
 
       <section className="rounded-lg border border-tesla-border bg-white p-4 shadow-sm">
