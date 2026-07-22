@@ -62,6 +62,7 @@ export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
   const [dKind, setDKind] = useState<"drawing" | "program" | "photo" | "other">(
     "other",
   );
+  const [docErr, setDocErr] = useState("");
 
   useEffect(() => {
     if (budget?.budget) {
@@ -216,6 +217,7 @@ export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
       <section>
         <h2 className="text-lg font-semibold mb-2">Document links</h2>
         <p className="text-sm text-slate-500 mb-2">Links to SharePoint, drawings, etc.</p>
+        {docErr ? <p className="mb-2 text-sm text-red-600">{docErr}</p> : null}
         <form onSubmit={(e) => void addDocument(e)} className="flex flex-wrap gap-2 mb-4">
           <select
             className="border rounded text-sm"
@@ -248,7 +250,7 @@ export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
         </form>
         <ul className="space-y-1 text-sm">
           {(docs?.documents ?? []).map((d) => (
-            <li key={d.id}>
+            <li key={d.id} className="flex flex-wrap items-center gap-2">
               <a
                 href={d.url}
                 target="_blank"
@@ -258,6 +260,20 @@ export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
                 {d.label}
               </a>{" "}
               <span className="text-slate-400">({d.kind})</span>
+              <button
+                type="button"
+                className="text-xs text-red-700 underline"
+                onClick={() => {
+                  setDocErr("");
+                  void api("/api/documents/" + d.id, { method: "DELETE" })
+                    .then(() =>
+                      qc.invalidateQueries({ queryKey: ["documents", projectId] }),
+                    )
+                    .catch((e: Error) => setDocErr(e.message));
+                }}
+              >
+                Delete
+              </button>
             </li>
           ))}
         </ul>

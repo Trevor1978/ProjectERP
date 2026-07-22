@@ -541,6 +541,36 @@ app.post("/projects/:projectId/members", async (c) => {
   return c.json({ member: row });
 });
 
+app.delete("/projects/:projectId/members/:memberId", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("projectId");
+  const memberId = c.req.param("memberId");
+  const pr = await requireProject(a, id);
+  if ("error" in pr) {
+    return c.json({ error: pr.error }, pr.status);
+  }
+  if (a.globalRole !== "org_admin") {
+    const me = await db
+      .select()
+      .from(projectMember)
+      .where(
+        and(eq(projectMember.projectId, id), eq(projectMember.userId, a.id)),
+      );
+    if (me.length === 0 || (me[0]!.role !== "pm" && me[0]!.role !== "admin")) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+  }
+  const cur = await db
+    .select()
+    .from(projectMember)
+    .where(and(eq(projectMember.id, memberId), eq(projectMember.projectId, id)));
+  if (cur.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  await db.delete(projectMember).where(eq(projectMember.id, memberId));
+  return c.json({ ok: true });
+});
+
 app.post("/milestones", async (c) => {
   const a = c.get("auth") as AuthUser;
   const p = milestoneCreate.safeParse(await c.req.json());

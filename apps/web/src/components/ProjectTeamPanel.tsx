@@ -57,6 +57,25 @@ export function ProjectTeamPanel({ projectId }: { projectId: string }) {
     }
   }
 
+  async function removeMember(memberId: string) {
+    setErr("");
+    try {
+      await api(`/api/projects/${projectId}/members/${memberId}`, {
+        method: "DELETE",
+      });
+      await qc.invalidateQueries({ queryKey: ["project-members", projectId] });
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  const canManage =
+    me?.user?.globalRole === "org_admin" ||
+    members.some(
+      (m) =>
+        m.userId === me?.user?.id && (m.role === "pm" || m.role === "admin"),
+    );
+
   return (
     <div className="space-y-4 max-w-2xl">
       <p className="text-sm text-slate-600">
@@ -126,11 +145,20 @@ export function ProjectTeamPanel({ projectId }: { projectId: string }) {
           <li className="p-3 text-slate-500">No members loaded.</li>
         )}
         {members.map((m) => (
-          <li key={m.id} className="p-3 flex justify-between">
+          <li key={m.id} className="p-3 flex justify-between gap-2 items-center">
             <code className="text-xs text-slate-500">{m.userId}</code>
             <span className="font-medium uppercase text-xs text-slate-600">
               {m.role}
             </span>
+            {canManage ? (
+              <button
+                type="button"
+                className="text-xs text-red-700 underline"
+                onClick={() => void removeMember(m.id)}
+              >
+                Remove
+              </button>
+            ) : null}
           </li>
         ))}
       </ul>
