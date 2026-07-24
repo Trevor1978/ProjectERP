@@ -5,8 +5,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Pencil, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useMe } from "../hooks/useMe";
-import type { User } from "../types";
+import type { Schedule, User } from "../types";
 import { TodoKanban } from "./TodoKanban";
+import { GanttView } from "./GanttView";
 import { workspaceSlugToTab, workspaceTabToSlug } from "../lib/workspaceNav";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
@@ -348,6 +349,7 @@ export function CrudWorkspace({
   const { table } = useParams<{ table: string }>();
   const [searchParams] = useSearchParams();
   const [todoView, setTodoView] = useState<"table" | "kanban">("table");
+  const [taskView, setTaskView] = useState<"table" | "gantt">("table");
   const [showCompleted, setShowCompleted] = useState(false);
   const kanbanUrlSyncSigRef = useRef<string | null>(null);
 
@@ -372,13 +374,18 @@ export function CrudWorkspace({
     if (tab !== "todos") {
       setTodoView("table");
     }
+    if (tab !== "tasks") {
+      setTaskView("table");
+    }
   }, [tab]);
 
   useEffect(() => {
     const v = searchParams.get("view");
-    if (tab !== "todos") return;
-    if (v === "kanban" || v === "table") {
+    if (tab === "todos" && (v === "kanban" || v === "table")) {
       setTodoView(v === "kanban" ? "kanban" : "table");
+    }
+    if (tab === "tasks" && (v === "gantt" || v === "table")) {
+      setTaskView(v === "gantt" ? "gantt" : "table");
     }
   }, [tab, searchParams]);
 
@@ -613,6 +620,10 @@ export function CrudWorkspace({
   const wsTaskId = searchParams.get("taskId")?.trim() ?? "";
   const wsMilestoneId = searchParams.get("milestoneId")?.trim() ?? "";
 
+  const [ganttProjectId, setGanttProjectId] = useState(
+    () => fixedProjectId ?? "",
+  );
+
   useEffect(() => {
     if (tab !== "todos" || todoView !== "kanban") return;
     if (fixedProjectId) {
@@ -625,6 +636,34 @@ export function CrudWorkspace({
     setKanbanProjectId(wsProjectId || "all");
     setKanbanTaskId(wsTaskId || "all");
   }, [tab, todoView, wsProjectId, wsTaskId, fixedProjectId]);
+
+  useEffect(() => {
+    if (tab !== "tasks" || taskView !== "gantt") return;
+    if (fixedProjectId) {
+      setGanttProjectId(fixedProjectId);
+      return;
+    }
+    if (wsProjectId) {
+      setGanttProjectId(wsProjectId);
+      return;
+    }
+    if (!ganttProjectId && projects[0]) {
+      setGanttProjectId(projects[0].id);
+    }
+  }, [tab, taskView, fixedProjectId, wsProjectId, projects, ganttProjectId]);
+
+  const { data: ganttSchedule, isLoading: ganttLoading } = useQuery({
+    queryKey: ["schedule", ganttProjectId],
+    queryFn: () => api<Schedule>(`/api/projects/${ganttProjectId}/schedule`),
+    enabled: Boolean(tab === "tasks" && taskView === "gantt" && ganttProjectId),
+  });
+
+  async function refreshGanttSchedule() {
+    await refreshSchedule();
+    if (ganttProjectId) {
+      await qc.invalidateQueries({ queryKey: ["schedule", ganttProjectId] });
+    }
+  }
 
   const rowsByTab: Record<Tab, { dataHeaders: string[]; rows: TableRow[] }> = {
     customers: {
@@ -1378,6 +1417,7 @@ export function CrudWorkspace({
     [currentForTable.rows],
   );
   const showTodosKanban = tab === "todos" && todoView === "kanban";
+  const showTasksGantt = tab === "tasks" && taskView === "gantt";
 
   const viewToggleClasses = (active: boolean) =>
     "rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
@@ -1427,6 +1467,26 @@ export function CrudWorkspace({
             onClick={() => setTodoView("kanban")}
           >
             Kanban
+          </button>
+        </div>
+      )}
+
+      {tab === "tasks" && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+          <span className="text-sm font-medium text-slate-700">View</span>
+          <button
+            type="button"
+            className={viewToggleClasses(taskView === "table")}
+            onClick={() => setTaskView("table")}
+          >
+            Table
+          </button>
+          <button
+            type="button"
+            className={viewToggleClasses(taskView === "gantt")}
+            onClick={() => setTaskView("gantt")}
+          >
+            Gantt
           </button>
         </div>
       )}
@@ -1502,6 +1562,37 @@ export function CrudWorkspace({
             todos={kanbanTodos}
             onUpdate={refreshSchedule}
           />
+        </div>
+      ) : showTasksGantt ? (
+        <div className="space-y-3">
+          {!fixedProjectId && (
+            <div className="flex flex-wrap items-center gap-2">
+              <QuickCreateSelect
+                entity="project"
+                value={ganttProjectId}
+                onChange={setGanttProjectId}
+                className="rounded border px-2 py-1 text-sm"
+              />
+              <span className="text-xs text-slate-500">
+                Gantt is shown for one project at a time
+              </span>
+            </div>
+          )}
+          {!ganttProjectId ? (
+            <p className="rounded border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              Select a project to view its Gantt schedule.
+            </p>
+          ) : ganttLoading || !ganttSchedule ? (
+            <p className="text-sm text-slate-500">Loading Gantt…</p>
+          ) : (
+            <GanttView
+              projectId={ganttProjectId}
+              data={ganttSchedule}
+              onAfterTaskChange={() => {
+                void refreshGanttSchedule();
+              }}
+            />
+          )}
         </div>
       ) : (
         <FilterSortTable
@@ -1816,7 +1907,9 @@ function CrudAppendRow({
   const [prTitle, setPrTitle] = useState("");
 
   const [lnProcId, setLnProcId] = useState(procurement[0]?.id ?? "");
-  const [lnProjectId, setLnProjectId] = useState(projects[0]?.id ?? "");
+  const [lnProjectId, setLnProjectId] = useState(
+    defaultProjectId ?? projects[0]?.id ?? "",
+  );
   const [lnPart, setLnPart] = useState("");
   const [lnDesc, setLnDesc] = useState("");
   const [lnQty, setLnQty] = useState("1");
@@ -1828,10 +1921,14 @@ function CrudAppendRow({
   }, [procurement, lnProcId]);
 
   useEffect(() => {
+    if (defaultProjectId && lnProjectId !== defaultProjectId) {
+      setLnProjectId(defaultProjectId);
+      return;
+    }
     if (projects.length && !projects.some((p) => p.id === lnProjectId)) {
       setLnProjectId(projects[0]!.id);
     }
-  }, [projects, lnProjectId]);
+  }, [projects, lnProjectId, defaultProjectId]);
 
   useEffect(() => {
     setErr(null);
@@ -2312,6 +2409,7 @@ function CrudAppendRow({
             entity="project"
             value={lnProjectId}
             onChange={setLnProjectId}
+            disabled={Boolean(defaultProjectId)}
             className={newRowInputClass}
           />
         </td>

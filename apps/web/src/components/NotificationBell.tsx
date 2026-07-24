@@ -36,6 +36,7 @@ function notificationHref(n: N): string | null {
 export function NotificationBell() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const { data } = useQuery({
@@ -66,23 +67,66 @@ export function NotificationBell() {
     await qc.invalidateQueries({ queryKey: ["notifications"] });
   }
 
+  async function clearAll() {
+    if (unread === 0 || clearing) return;
+    setClearing(true);
+    try {
+      await api("/api/notifications/read-all", {
+        method: "POST",
+        body: "{}",
+      });
+      await qc.invalidateQueries({ queryKey: ["notifications"] });
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
-    <div className="relative" ref={ref}>
+    <div className="group relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="relative px-2 py-1 rounded text-slate-300 hover:text-white"
+        className="relative rounded px-2 py-1 text-slate-300 hover:text-white"
         aria-label="Notifications"
       >
         <span className="text-lg">🔔</span>
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] text-[10px] leading-[18px] text-center bg-red-600 text-white rounded-full">
+          <span className="absolute -right-0.5 -top-0.5 h-[18px] min-w-[18px] rounded-full bg-red-600 text-center text-[10px] leading-[18px] text-white">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
+      {unread > 0 && !open && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void clearAll();
+          }}
+          disabled={clearing}
+          className="pointer-events-none absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 opacity-0 shadow-lg transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 disabled:opacity-50"
+        >
+          {clearing ? "Clearing…" : "Clear all"}
+        </button>
+      )}
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-80 max-h-96 overflow-y-auto bg-white text-slate-900 border border-slate-200 rounded shadow-lg z-50 text-sm">
+        <div className="absolute right-0 top-full z-50 mt-1 max-h-96 w-80 overflow-y-auto rounded border border-slate-200 bg-white text-sm text-slate-900 shadow-lg">
+          <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white px-3 py-2">
+            <span className="text-xs font-medium text-slate-600">
+              Notifications
+              {unread > 0 ? ` · ${unread} unread` : ""}
+            </span>
+            {unread > 0 && (
+              <button
+                type="button"
+                onClick={() => void clearAll()}
+                disabled={clearing}
+                className="text-xs font-medium text-blue-700 hover:underline disabled:opacity-50"
+              >
+                {clearing ? "Clearing…" : "Clear all"}
+              </button>
+            )}
+          </div>
           {list.length === 0 && (
             <div className="p-3 text-slate-500">No notifications yet.</div>
           )}
@@ -92,7 +136,7 @@ export function NotificationBell() {
               <div
                 key={n.id}
                 className={
-                  "p-2 border-b border-slate-100 " +
+                  "border-b border-slate-100 p-2 " +
                   (!n.readAt ? "bg-amber-50" : "")
                 }
               >
@@ -108,9 +152,9 @@ export function NotificationBell() {
                   <div className="font-medium">{n.title}</div>
                 )}
                 {n.body && (
-                  <div className="text-slate-600 text-xs mt-0.5">{n.body}</div>
+                  <div className="mt-0.5 text-xs text-slate-600">{n.body}</div>
                 )}
-                <div className="flex justify-between items-center mt-1">
+                <div className="mt-1 flex items-center justify-between">
                   <span className="text-[10px] text-slate-400">{n.kind}</span>
                   {!n.readAt && (
                     <button

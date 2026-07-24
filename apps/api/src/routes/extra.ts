@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   db,
   project,
@@ -258,6 +258,15 @@ app.post("/notifications/:id/read", async (c) => {
     .update(notification)
     .set({ readAt: new Date() })
     .where(eq(notification.id, id));
+  return c.json({ ok: true });
+});
+
+app.post("/notifications/read-all", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  await db
+    .update(notification)
+    .set({ readAt: new Date() })
+    .where(and(eq(notification.userId, a.id), isNull(notification.readAt)));
   return c.json({ ok: true });
 });
 
