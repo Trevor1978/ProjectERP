@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { ProjectItem, ProjectItemKind, ProjectItemStatus } from "../workspace/projectItemTypes";
@@ -7,6 +8,20 @@ import {
   PROJECT_ITEM_STATUSES,
   projectItemStatusLabel,
 } from "../workspace/projectItemTypes";
+
+type ItemFilter = "all" | "hardware" | "purchased_hardware";
+
+const PURCHASED_STATUSES = new Set<ProjectItemStatus>([
+  "on_order",
+  "partial",
+  "received",
+]);
+
+function isPurchasedHardware(item: ProjectItem): boolean {
+  if (item.kind !== "hardware") return false;
+  if ((item.linkedLineCount ?? 0) > 0) return true;
+  return PURCHASED_STATUSES.has(item.status);
+}
 
 function statusClass(s: ProjectItemStatus): string {
   switch (s) {
@@ -23,6 +38,15 @@ function statusClass(s: ProjectItemStatus): string {
   }
 }
 
+function filterBtnClass(active: boolean): string {
+  return (
+    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
+    (active
+      ? "bg-slate-900 text-white"
+      : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50")
+  );
+}
+
 export function ProjectItemsPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const queryKey = ["project-items", projectId] as const;
@@ -32,6 +56,7 @@ export function ProjectItemsPanel({ projectId }: { projectId: string }) {
   });
 
   const items = data?.items ?? [];
+  const [filter, setFilter] = useState<ItemFilter>("all");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,6 +65,21 @@ export function ProjectItemsPanel({ projectId }: { projectId: string }) {
   const [newDesc, setNewDesc] = useState("");
   const [newQty, setNewQty] = useState("1");
   const [newUnit, setNewUnit] = useState("");
+
+  const filteredItems = useMemo(() => {
+    if (filter === "hardware") {
+      return items.filter((i) => i.kind === "hardware");
+    }
+    if (filter === "purchased_hardware") {
+      return items.filter(isPurchasedHardware);
+    }
+    return items;
+  }, [items, filter]);
+
+  const purchasedHardwareCount = useMemo(
+    () => items.filter(isPurchasedHardware).length,
+    [items],
+  );
 
   const refresh = useCallback(() => {
     return qc.invalidateQueries({ queryKey });
@@ -88,17 +128,58 @@ export function ProjectItemsPanel({ projectId }: { projectId: string }) {
   }
 
   return (
-    <section className="mt-8">
-      <h2 className="mb-1 text-lg font-semibold text-slate-800">Items</h2>
+    <section className="mt-8 border-t border-slate-200 pt-6">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold text-slate-800">Items</h2>
+        <Link
+          to={`/workspace/purchasing-lines?projectId=${encodeURIComponent(projectId)}`}
+          className="text-sm font-medium text-blue-700 underline hover:text-blue-900"
+        >
+          Purchasing lines for this project
+        </Link>
+      </div>
       <p className="mb-3 text-sm text-slate-600">
-        Hardware and software required for this project. Items can exist before they appear on a
-        purchase order; add them to purchasing from the PO detail page.
+        Hardware and software required for this project. Use{" "}
+        <strong>Purchased hardware</strong> to see items on a PO or already
+        received.
       </p>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-slate-700">Show</span>
+        <button
+          type="button"
+          className={filterBtnClass(filter === "all")}
+          onClick={() => setFilter("all")}
+        >
+          All ({items.length})
+        </button>
+        <button
+          type="button"
+          className={filterBtnClass(filter === "hardware")}
+          onClick={() => setFilter("hardware")}
+        >
+          Hardware ({items.filter((i) => i.kind === "hardware").length})
+        </button>
+        <button
+          type="button"
+          className={filterBtnClass(filter === "purchased_hardware")}
+          onClick={() => setFilter("purchased_hardware")}
+        >
+          Purchased hardware ({purchasedHardwareCount})
+        </button>
+      </div>
+
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
       {isLoading ? (
         <p className="text-sm text-slate-500">Loading items…</p>
-      ) : items.length === 0 ? (
-        <p className="mb-3 text-sm text-slate-500">No items yet — add one below.</p>
+      ) : filteredItems.length === 0 ? (
+        <p className="mb-3 text-sm text-slate-500">
+          {filter === "purchased_hardware"
+            ? "No purchased hardware yet — items appear here once they are on a purchase order or marked on order / received."
+            : filter === "hardware"
+              ? "No hardware items yet — add one below."
+              : "No items yet — add one below."}
+        </p>
       ) : (
         <div className="mb-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full min-w-[36rem] border-collapse text-sm">
@@ -114,7 +195,7 @@ export function ProjectItemsPanel({ projectId }: { projectId: string }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {filteredItems.map((item) => (
                 <ProjectItemRow
                   key={item.id}
                   item={item}
@@ -339,9 +420,9 @@ function ProjectItemRow({
       </td>
       <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
         {item.linkedLineCount ?? 0}
-        {(item.receivedTotal ?? 0) > 0 && (
+        {(item.orderedTotal != null || (item.receivedTotal ?? 0) > 0) && (
           <span className="block text-xs">
-            rcv {item.receivedTotal}/{item.orderedTotal ?? "—"}
+            rcv {item.receivedTotal ?? 0}/{item.orderedTotal ?? "—"}
           </span>
         )}
       </td>

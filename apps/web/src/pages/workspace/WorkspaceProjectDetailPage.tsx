@@ -243,6 +243,14 @@ export function WorkspaceProjectDetailPage() {
         />
       </div>
 
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <CrudWorkspace
+          fixedTab="procurementLines"
+          fixedProjectId={project.id}
+          embedded
+        />
+      </div>
+
       <ProjectItemsPanel projectId={project.id} />
     </WorkspaceDetailChrome>
   );
