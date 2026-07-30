@@ -99,6 +99,14 @@ export function WorkspaceSupplierDetailPage() {
       </div>
 
       <h2 className="mb-2 text-lg font-semibold text-slate-800">Purchasing</h2>
+      <p className="mb-2 text-sm text-slate-600">
+        <Link
+          to={`/workspace/purchasing-lines?supplierId=${encodeURIComponent(supplier.id)}`}
+          className="font-medium text-blue-700 underline hover:text-blue-900"
+        >
+          View purchasing lines for this supplier
+        </Link>
+      </p>
       {purchasing.length === 0 ? (
         <p className="mb-2 text-sm text-slate-500">No purchasing records for this supplier — add one below.</p>
       ) : (

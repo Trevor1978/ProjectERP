@@ -221,23 +221,30 @@ function deleteExecutePath(tab: Tab, id: string): string {
 
 const newRowInputClass = "w-full min-w-[6rem] rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-sm placeholder:text-slate-400";
 
-/** Narrow workspace table rows when `?projectId=` / `?taskId=` / `?milestoneId=` are present (e.g. deep-linked from a project). */
+/** Narrow workspace table rows when `?projectId=` / `?taskId=` / `?milestoneId=` / `?supplierId=` are present. */
 function filterWorkspaceRowsByUrlParams(
   tab: Tab,
   rows: TableRow[],
-  filters: { projectId: string; taskId: string; milestoneId: string },
+  filters: {
+    projectId: string;
+    taskId: string;
+    milestoneId: string;
+    supplierId: string;
+  },
   entities: {
     milestones: Milestone[];
     tasks: Task[];
     todos: Todo[];
     timeEntries: TimeEntry[];
     procLines: ProcurementLine[];
+    procurement: Procurement[];
   },
 ): TableRow[] {
   const pid = filters.projectId.trim();
   const tid = filters.taskId.trim();
   const mid = filters.milestoneId.trim();
-  if (!pid && !tid && !mid) return rows;
+  const sid = filters.supplierId.trim();
+  if (!pid && !tid && !mid && !sid) return rows;
 
   if (tab === "milestones" && pid) {
     const ok = new Set(entities.milestones.filter((m) => m.projectId === pid).map((m) => m.id));
@@ -273,15 +280,35 @@ function filterWorkspaceRowsByUrlParams(
       return rows.filter((r) => ok.has(r.key));
     }
   }
-  if (tab === "procurement" && pid) {
-    const procIds = new Set(
-      entities.procLines.filter((l) => l.projectId === pid).map((l) => l.procurementId),
-    );
-    return rows.filter((r) => procIds.has(r.key));
+  if (tab === "procurement" && (pid || sid)) {
+    return rows.filter((r) => {
+      const p = entities.procurement.find((x) => x.id === r.key);
+      if (!p) return false;
+      if (sid && (p.supplierId ?? "") !== sid) return false;
+      if (pid) {
+        const hasProjectLine = entities.procLines.some(
+          (l) => l.procurementId === p.id && l.projectId === pid,
+        );
+        if (!hasProjectLine) return false;
+      }
+      return true;
+    });
   }
-  if (tab === "procurementLines" && pid) {
-    const ok = new Set(entities.procLines.filter((l) => l.projectId === pid).map((l) => l.id));
-    return rows.filter((r) => ok.has(r.key));
+  if (tab === "procurementLines") {
+    let okLines = entities.procLines;
+    if (pid) {
+      okLines = okLines.filter((l) => l.projectId === pid);
+    }
+    if (sid) {
+      const procById = new Map(entities.procurement.map((p) => [p.id, p] as const));
+      okLines = okLines.filter(
+        (l) => (procById.get(l.procurementId)?.supplierId ?? "") === sid,
+      );
+    }
+    if (pid || sid) {
+      const ok = new Set(okLines.map((l) => l.id));
+      return rows.filter((r) => ok.has(r.key));
+    }
   }
   return rows;
 }
@@ -347,7 +374,7 @@ export function CrudWorkspace({
 
   const navigate = useNavigate();
   const { table } = useParams<{ table: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [todoView, setTodoView] = useState<"table" | "kanban">("table");
   const [taskView, setTaskView] = useState<"table" | "gantt">("table");
   const [showCompleted, setShowCompleted] = useState(false);
@@ -619,6 +646,7 @@ export function CrudWorkspace({
     fixedProjectId ?? searchParams.get("projectId")?.trim() ?? "";
   const wsTaskId = searchParams.get("taskId")?.trim() ?? "";
   const wsMilestoneId = searchParams.get("milestoneId")?.trim() ?? "";
+  const wsSupplierId = searchParams.get("supplierId")?.trim() ?? "";
 
   const [ganttProjectId, setGanttProjectId] = useState(
     () => fixedProjectId ?? "",
@@ -1214,6 +1242,7 @@ export function CrudWorkspace({
       dataHeaders: [
         "Project",
         "Purchasing",
+        "Supplier",
         "Part #",
         "Description",
         "Unit",
@@ -1224,6 +1253,8 @@ export function CrudWorkspace({
       ],
       rows: procLines.map((l) => {
         const proc = procById.get(l.procurementId);
+        const supplierId = proc?.supplierId ?? "";
+        const supplierLabel = supplierName.get(supplierId) ?? "";
         return {
         key: l.id,
         rowClassName: procurementLineRowClass(
@@ -1254,6 +1285,7 @@ export function CrudWorkspace({
             }
           />,
           <span key="pr">{procName.get(l.procurementId) ?? l.procurementId}</span>,
+          <span key="sup">{supplierLabel || "—"}</span>,
           <InlineText
             key="pn"
             value={l.partNumber ?? ""}
@@ -1327,10 +1359,11 @@ export function CrudWorkspace({
             }
           />,
         ],
-        search: `${projectName.get(l.projectId) ?? ""} ${procName.get(l.procurementId) ?? ""} ${l.partNumber ?? ""} ${l.description} ${l.quantity} ${l.orderedQty ?? ""} ${l.receivedQty}`,
+        search: `${projectName.get(l.projectId) ?? ""} ${procName.get(l.procurementId) ?? ""} ${supplierLabel} ${l.partNumber ?? ""} ${l.description} ${l.quantity} ${l.orderedQty ?? ""} ${l.receivedQty}`,
         sort: [
           projectName.get(l.projectId) ?? "",
           procName.get(l.procurementId) ?? "",
+          supplierLabel,
           l.partNumber ?? "",
           l.description,
           l.unit ?? "",
@@ -1342,6 +1375,7 @@ export function CrudWorkspace({
         filterValues: [
           filterCell(projectName.get(l.projectId), l.projectId),
           filterCell(procName.get(l.procurementId), l.procurementId),
+          filterCell(supplierLabel, supplierId || undefined),
           filterCell(l.partNumber),
           filterCell(l.description),
           filterCell(l.unit),
@@ -1364,8 +1398,9 @@ export function CrudWorkspace({
         projectId: wsProjectId,
         taskId: wsTaskId,
         milestoneId: wsMilestoneId,
+        supplierId: wsSupplierId,
       },
-      { milestones, tasks, todos, timeEntries, procLines },
+      { milestones, tasks, todos, timeEntries, procLines, procurement },
     );
     rows = attachTableRowMeta(tab, rows, { projects, tasks, todos, procurement });
     if (!showCompleted && (TABS_WITH_COMPLETED as readonly string[]).includes(tab)) {
@@ -1378,6 +1413,7 @@ export function CrudWorkspace({
     wsProjectId,
     wsTaskId,
     wsMilestoneId,
+    wsSupplierId,
     milestones,
     tasks,
     todos,
@@ -1434,13 +1470,16 @@ export function CrudWorkspace({
         </span>
       </div>
 
-      {!embedded && (wsProjectId || wsTaskId || wsMilestoneId) && (
+      {!embedded && (wsProjectId || wsTaskId || wsMilestoneId || wsSupplierId) && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
           <span>
             URL filters active
             {wsProjectId ? ` · project` : ""}
             {wsTaskId ? ` · task` : ""}
             {wsMilestoneId ? ` · milestone` : ""}
+            {wsSupplierId
+              ? ` · supplier${supplierName.get(wsSupplierId) ? ` (${supplierName.get(wsSupplierId)})` : ""}`
+              : ""}
           </span>
           <Link
             to={"/workspace/" + workspaceTabToSlug(tab)}
@@ -1626,6 +1665,29 @@ export function CrudWorkspace({
           }
           extraToolbar={
             <>
+              {(tab === "procurement" || tab === "procurementLines") && (
+                <label className="flex items-center gap-1.5 text-sm text-slate-600">
+                  <span>Supplier</span>
+                  <select
+                    className="rounded border px-2 py-1 text-sm"
+                    value={wsSupplierId}
+                    onChange={(e) => {
+                      const next = new URLSearchParams(searchParams);
+                      const v = e.target.value;
+                      if (v) next.set("supplierId", v);
+                      else next.delete("supplierId");
+                      setSearchParams(next, { replace: true });
+                    }}
+                  >
+                    <option value="">All suppliers</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {(TABS_WITH_COMPLETED as readonly string[]).includes(tab) && (
                 <label className="flex cursor-pointer items-center gap-1.5 text-sm text-tesla-text-secondary">
                   <input
@@ -2420,6 +2482,9 @@ function CrudAppendRow({
             onChange={setLnProcId}
             className={newRowInputClass}
           />
+        </td>
+        <td className="p-2 align-middle text-xs text-slate-500">
+          From purchasing record
         </td>
         <td className="p-2 align-top">
           <input
