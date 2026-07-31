@@ -19,6 +19,7 @@ import { WorkspaceTodoDetailPage } from "./pages/workspace/WorkspaceTodoDetailPa
 import { WorkspaceTimeEntryDetailPage } from "./pages/workspace/WorkspaceTimeEntryDetailPage";
 import { WorkspacePurchasingDetailPage } from "./pages/workspace/WorkspacePurchasingDetailPage";
 import { WorkspacePurchasingLineDetailPage } from "./pages/workspace/WorkspacePurchasingLineDetailPage";
+import { WorkspacePurchasingAiImportPage } from "./pages/workspace/WorkspacePurchasingAiImportPage";
 import { WorkspaceMachinesPage } from "./pages/workspace/WorkspaceMachinesPage";
 import { WorkspaceMachineDetailPage } from "./pages/workspace/WorkspaceMachineDetailPage";
 import { WorkspaceServiceHistoryPage } from "./pages/workspace/WorkspaceServiceHistoryPage";
@@ -172,6 +173,7 @@ export default function App() {
         <Route path="tasks/:taskId" element={<WorkspaceTaskDetailPage />} />
         <Route path="todos/:todoId" element={<WorkspaceTodoDetailPage />} />
         <Route path="time-entries/:timeEntryId" element={<WorkspaceTimeEntryDetailPage />} />
+        <Route path="purchasing/ai-import" element={<WorkspacePurchasingAiImportPage />} />
         <Route path="purchasing/:procurementId" element={<WorkspacePurchasingDetailPage />} />
         <Route path="purchasing-lines/:lineId" element={<WorkspacePurchasingLineDetailPage />} />
         <Route path="machines" element={<WorkspaceMachinesPage />} />

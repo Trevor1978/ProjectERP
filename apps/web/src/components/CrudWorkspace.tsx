@@ -1705,6 +1705,14 @@ export function CrudWorkspace({
                 exportDataRows={csvExportRows}
                 onImport={csvImportHandler}
               />
+              {tab === "procurement" && !embedded ? (
+                <Link
+                  to="/workspace/purchasing/ai-import"
+                  className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  Import PO / invoice
+                </Link>
+              ) : null}
               {tab === "procurement" ? (
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <button

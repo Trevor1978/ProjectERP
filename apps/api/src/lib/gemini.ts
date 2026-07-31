@@ -188,11 +188,15 @@ function extractJsonText(raw: string): string {
   return trimmed;
 }
 
+export type GeminiPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
 async function callGemini(opts: {
   model: string;
   apiKey: string;
-  prompt: string;
-  useSchema: boolean;
+  parts: GeminiPart[];
+  responseSchema?: Record<string, unknown>;
 }): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model)}:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
   const generationConfig: Record<string, unknown> = {
@@ -200,15 +204,15 @@ async function callGemini(opts: {
     temperature: 0.2,
     maxOutputTokens: 8192,
   };
-  if (opts.useSchema) {
-    generationConfig.responseSchema = RESPONSE_SCHEMA;
+  if (opts.responseSchema) {
+    generationConfig.responseSchema = opts.responseSchema;
   }
 
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: opts.prompt }] }],
+      contents: [{ role: "user", parts: opts.parts }],
       generationConfig,
     }),
   });
@@ -237,6 +241,54 @@ async function callGemini(opts: {
     );
   }
   return text;
+}
+
+async function callGeminiWithModelFallback(opts: {
+  apiKey: string;
+  parts: GeminiPart[];
+  responseSchema: Record<string, unknown>;
+}): Promise<string> {
+  const models = resolveModelCandidates();
+  let lastError: unknown;
+  for (const model of models) {
+    try {
+      let text: string;
+      try {
+        text = await callGemini({
+          model,
+          apiKey: opts.apiKey,
+          parts: opts.parts,
+          responseSchema: opts.responseSchema,
+        });
+      } catch (first) {
+        if (isModelUnavailableError(first)) throw first;
+        console.warn(
+          `[gemini] ${model} structured call failed, retrying without schema:`,
+          first instanceof Error ? first.message : first,
+        );
+        text = await callGemini({
+          model,
+          apiKey: opts.apiKey,
+          parts: opts.parts,
+        });
+      }
+      console.info(`[gemini] using model ${model}`);
+      return text;
+    } catch (e) {
+      lastError = e;
+      if (isModelUnavailableError(e)) {
+        console.warn(
+          `[gemini] model unavailable, trying next:`,
+          e instanceof Error ? e.message : e,
+        );
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Gemini request failed for all candidate models");
 }
 
 function resolveModelCandidates(): string[] {
@@ -283,43 +335,11 @@ export async function parseWorkNotesWithGemini(opts: {
     throw new Error("GEMINI_API_KEY is not set");
   }
   const prompt = buildPrompt(opts);
-  const models = resolveModelCandidates();
-
-  let lastError: unknown;
-  let text: string | null = null;
-
-  for (const model of models) {
-    try {
-      try {
-        text = await callGemini({ model, apiKey, prompt, useSchema: true });
-      } catch (first) {
-        if (isModelUnavailableError(first)) throw first;
-        console.warn(
-          `[gemini] ${model} structured call failed, retrying without schema:`,
-          first instanceof Error ? first.message : first,
-        );
-        text = await callGemini({ model, apiKey, prompt, useSchema: false });
-      }
-      console.info(`[gemini] using model ${model}`);
-      break;
-    } catch (e) {
-      lastError = e;
-      if (isModelUnavailableError(e)) {
-        console.warn(
-          `[gemini] model unavailable, trying next:`,
-          e instanceof Error ? e.message : e,
-        );
-        continue;
-      }
-      throw e;
-    }
-  }
-
-  if (!text) {
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("Gemini request failed for all candidate models");
-  }
+  const text = await callGeminiWithModelFallback({
+    apiKey,
+    parts: [{ text: prompt }],
+    responseSchema: RESPONSE_SCHEMA,
+  });
 
   let parsed: unknown;
   try {
@@ -333,4 +353,189 @@ export async function parseWorkNotesWithGemini(opts: {
     throw new Error(`Gemini JSON failed validation: ${draft.error.message}`);
   }
   return normalizeDraftTimes(draft.data);
+}
+
+const procurementAiDraftSchema = z.object({
+  documentType: z.enum(["po", "tax_invoice", "other"]).optional().default("other"),
+  title: z.string().min(1),
+  suggestedSupplierId: z.string().nullable().optional(),
+  supplierNameRaw: z.string().nullable().optional(),
+  status: z
+    .enum([
+      "draft",
+      "rfq_sent",
+      "quoted",
+      "ordered",
+      "partially_received",
+      "closed",
+      "cancelled",
+    ])
+    .optional()
+    .default("draft"),
+  needBy: z.string().nullable().optional(),
+  sapPoNumber: z.string().nullable().optional(),
+  confidenceNotes: z.string().nullable().optional(),
+  lines: z
+    .array(
+      z.object({
+        partNumber: z.string().nullable().optional(),
+        description: z.string().min(1),
+        quantity: z.union([z.string(), z.number()]).optional().nullable(),
+        orderedQty: z.union([z.string(), z.number()]).optional().nullable(),
+        unit: z.string().nullable().optional(),
+        estUnitPrice: z.union([z.string(), z.number()]).optional().nullable(),
+        suggestedProjectId: z.string().nullable().optional(),
+      }),
+    )
+    .default([]),
+});
+
+export type GeminiProcurementDraft = z.infer<typeof procurementAiDraftSchema>;
+
+export type ProcurementAiCatalogs = {
+  suppliers: CatalogItem[];
+  projects: CatalogItem[];
+};
+
+const PROCUREMENT_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    documentType: { type: "string", enum: ["po", "tax_invoice", "other"] },
+    title: { type: "string" },
+    suggestedSupplierId: { type: "string", nullable: true },
+    supplierNameRaw: { type: "string", nullable: true },
+    status: {
+      type: "string",
+      enum: [
+        "draft",
+        "rfq_sent",
+        "quoted",
+        "ordered",
+        "partially_received",
+        "closed",
+        "cancelled",
+      ],
+    },
+    needBy: { type: "string", nullable: true },
+    sapPoNumber: { type: "string", nullable: true },
+    confidenceNotes: { type: "string", nullable: true },
+    lines: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          partNumber: { type: "string", nullable: true },
+          description: { type: "string" },
+          quantity: { type: "string", nullable: true },
+          orderedQty: { type: "string", nullable: true },
+          unit: { type: "string", nullable: true },
+          estUnitPrice: { type: "string", nullable: true },
+          suggestedProjectId: { type: "string", nullable: true },
+        },
+        required: [
+          "partNumber",
+          "description",
+          "quantity",
+          "orderedQty",
+          "unit",
+          "estUnitPrice",
+          "suggestedProjectId",
+        ],
+      },
+    },
+  },
+  required: [
+    "documentType",
+    "title",
+    "suggestedSupplierId",
+    "supplierNameRaw",
+    "status",
+    "needBy",
+    "sapPoNumber",
+    "confidenceNotes",
+    "lines",
+  ],
+};
+
+function buildProcurementPrompt(opts: {
+  notes: string;
+  hintProjectId?: string | null;
+  catalogs: ProcurementAiCatalogs;
+}): string {
+  return `You are a purchasing assistant for Spantec ERP. Analyse the attached purchase order or tax invoice and extract structured purchasing header + line items.
+
+Guidance notes from the user (use these to assign projects to lines):
+---
+${opts.notes.trim() || "(none)"}
+---
+
+Optional default / hint projectId: ${opts.hintProjectId ?? "(none)"}
+
+Suppliers (id: label) — match suggestedSupplierId only to these ids:
+${formatCatalog(opts.catalogs.suppliers)}
+
+Projects (id: label) — match suggestedProjectId only to these ids:
+${formatCatalog(opts.catalogs.projects)}
+
+Rules:
+1. Read the attached document carefully. Extract every distinct line item.
+2. title: short purchasing title (supplier + PO/invoice number when present).
+3. documentType: "po" for purchase orders, "tax_invoice" for tax invoices, otherwise "other".
+4. status: use "ordered" for clear POs/invoices; use "draft" if unclear.
+5. suggestedSupplierId: catalog id only, or null. Never invent UUIDs. Put the printed vendor name in supplierNameRaw.
+6. sapPoNumber: PO / order number from the document when present, else null.
+7. needBy: delivery / due date as ISO date YYYY-MM-DD when present, else null.
+8. For each line: description required; partNumber, quantity, orderedQty, unit, estUnitPrice when present.
+9. Project assignment: prefer the user's guidance notes; else use hint projectId for all lines; else match catalog by name/code mentioned in notes or document. Leave suggestedProjectId null if unsure. Never invent project ids.
+10. quantities and prices as strings of numbers (e.g. "10", "12.50").
+11. confidenceNotes: brief notes on uncertain matches.`;
+}
+
+function qtyToString(v: string | number | null | undefined): string | null {
+  if (v == null || v === "") return null;
+  return String(v);
+}
+
+export async function parseProcurementDocumentWithGemini(opts: {
+  notes: string;
+  hintProjectId?: string | null;
+  file: { mimeType: string; base64: string };
+  catalogs: ProcurementAiCatalogs;
+}): Promise<GeminiProcurementDraft> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not set");
+  }
+  const prompt = buildProcurementPrompt(opts);
+  const text = await callGeminiWithModelFallback({
+    apiKey,
+    parts: [
+      { text: prompt },
+      { inlineData: { mimeType: opts.file.mimeType, data: opts.file.base64 } },
+    ],
+    responseSchema: PROCUREMENT_RESPONSE_SCHEMA,
+  });
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJsonText(text));
+  } catch {
+    throw new Error("Gemini returned invalid JSON");
+  }
+
+  const draft = procurementAiDraftSchema.safeParse(parsed);
+  if (!draft.success) {
+    throw new Error(`Gemini JSON failed validation: ${draft.error.message}`);
+  }
+
+  const data = draft.data;
+  return {
+    ...data,
+    lines: data.lines.map((l) => ({
+      ...l,
+      quantity: qtyToString(l.quantity) ?? "1",
+      orderedQty: qtyToString(l.orderedQty),
+      estUnitPrice: qtyToString(l.estUnitPrice),
+    })),
+  };
 }

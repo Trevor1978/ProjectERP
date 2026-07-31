@@ -355,6 +355,58 @@ export const procurementMerge = z.object({
   ids: z.array(id).min(2),
 });
 
+export const procurementAiDocumentType = z.enum(["po", "tax_invoice", "other"]);
+
+/** AI parse result returned to the client for review (projectId may be null until confirm). */
+export const procurementAiDraftLine = z.object({
+  partNumber: z.string().max(256).optional().nullable(),
+  description: z.string().min(1).max(2000),
+  quantity: procurementQty.optional().default("1"),
+  orderedQty: procurementQty.optional().nullable(),
+  unit: z.string().max(32).optional().nullable(),
+  estUnitPrice: z
+    .union([z.string(), z.number().nonnegative()])
+    .optional()
+    .nullable(),
+  projectId: id.optional().nullable(),
+});
+
+export const procurementAiDraft = z.object({
+  documentType: procurementAiDocumentType.optional().default("other"),
+  title: z.string().min(1).max(500),
+  supplierId: id.optional().nullable(),
+  supplierNameRaw: z.string().max(500).optional().nullable(),
+  status: rfqStatus.optional().default("draft"),
+  needBy: z.coerce.date().optional().nullable(),
+  sapPoNumber: z.string().max(32).optional().nullable(),
+  confidenceNotes: z.string().max(4000).optional().nullable(),
+  lines: z.array(procurementAiDraftLine).min(0).max(500),
+});
+
+/** Confirm body: every line must have a projectId. */
+export const procurementAiConfirmLine = z.object({
+  partNumber: z.string().max(256).optional().nullable(),
+  description: z.string().min(1).max(2000),
+  quantity: procurementQty,
+  orderedQty: procurementQty.optional().nullable(),
+  unit: z.string().max(32).optional().nullable(),
+  estUnitPrice: z
+    .union([z.string(), z.number().nonnegative()])
+    .optional()
+    .nullable(),
+  projectId: id,
+});
+
+export const procurementAiConfirm = z.object({
+  title: z.string().min(1).max(500),
+  supplierId: id.optional().nullable(),
+  status: rfqStatus.optional().default("draft"),
+  needBy: z.coerce.date().optional().nullable(),
+  sapPoNumber: z.string().max(32).optional().nullable(),
+  lines: z.array(procurementAiConfirmLine).min(1).max(500),
+  createProjectItems: z.boolean().optional().default(true),
+});
+
 export const projectMemberAdd = z.object({
   userId: id,
   role: z.enum(["viewer", "member", "pm", "admin"]).default("member"),
