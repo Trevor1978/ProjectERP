@@ -4,6 +4,7 @@ import { api, apiFetchUrl, apiForm } from "../../lib/api";
 import { useMe } from "../../hooks/useMe";
 import { ORG_PROFILE_QUERY_KEY, useOrgProfile } from "../../hooks/useOrgProfile";
 import { useDebouncedPatch } from "../../hooks/useDebouncedPatch";
+import { FileDropZone } from "../../components/FileDropZone";
 import type { OrgProfile, OrgProfileResponse, OrgReportImage } from "../../workspace/orgProfileTypes";
 
 type ProfileFields = {
@@ -114,12 +115,12 @@ export function WorkspaceOrganizationPage() {
     save: saveProfile,
   });
 
-  const onUpload = async (fileList: FileList | null) => {
-    if (!fileList?.length || !isAdmin) return;
+  const onUpload = async (files: File[]) => {
+    if (!files.length || !isAdmin) return;
     setUploadErr(null);
     setUploading(true);
     try {
-      for (const file of Array.from(fileList)) {
+      for (const file of files) {
         const form = new FormData();
         form.append("file", file);
         await apiForm<{ image: OrgReportImage }>("/api/org/report-images", form);
@@ -488,21 +489,16 @@ export function WorkspaceOrganizationPage() {
           RFQ/PO reports.
         </p>
         {isAdmin && (
-          <label
-            htmlFor="org-report-upload"
-            className="mb-4 inline-flex cursor-pointer items-center gap-2 rounded-sm border border-tesla-border bg-tesla-muted/30 px-3 py-2 text-sm font-medium text-tesla-text hover:bg-tesla-muted/60"
-          >
-            <input
-              id="org-report-upload"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              multiple
-              className="sr-only"
-              disabled={uploading}
-              onChange={(e) => void onUpload(e.target.files)}
-            />
-            {uploading ? "Uploading…" : "Upload images"}
-          </label>
+          <FileDropZone
+            id="org-report-upload"
+            accept="image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif"
+            multiple
+            disabled={uploading}
+            className="mb-4"
+            prompt={uploading ? "Uploading…" : "Drop images here, or click to browse"}
+            hint="PNG, JPEG, WebP, GIF — max 2MB each, up to 10"
+            onFiles={(files) => void onUpload(files)}
+          />
         )}
         {uploadErr && <p className="mb-2 text-sm text-red-600">{uploadErr}</p>}
         {images.length === 0 ? (

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, apiForm } from "../../lib/api";
 import { QuickCreateSelect } from "../../components/QuickCreateSelect";
+import { FileDropZone } from "../../components/FileDropZone";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { PROC_STATUS, type Procurement } from "../../workspace/purchasingTypes";
 
@@ -201,23 +202,19 @@ export function WorkspacePurchasingAiImportPage() {
 
       {step === "entry" && (
         <div className="max-w-2xl space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div>
-            <label className={labelClass} htmlFor="po-file">
-              Document (PDF or image)
-            </label>
-            <input
-              id="po-file"
-              type="file"
-              accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
-              className="mt-1 block w-full text-sm"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-            {file && (
-              <p className="mt-1 text-xs text-slate-500">
-                {file.name} ({Math.round(file.size / 1024)} KB)
+          <FileDropZone
+            id="po-file"
+            label="Document (PDF or image)"
+            accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
+            hint="PDF, JPEG, PNG, or WebP — max 15MB"
+            onFiles={(files) => setFile(files[0] ?? null)}
+          >
+            {file ? (
+              <p className="mt-2 text-xs text-slate-600">
+                Selected: <strong>{file.name}</strong> ({Math.round(file.size / 1024)} KB)
               </p>
-            )}
-          </div>
+            ) : null}
+          </FileDropZone>
 
           <div>
             <label className={labelClass} htmlFor="po-notes">

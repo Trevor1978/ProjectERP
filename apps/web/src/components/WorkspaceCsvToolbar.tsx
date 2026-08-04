@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { csvRecordsFromFile, downloadCsv, rowsToCsv } from "../lib/csvTable";
+import { FileDropZone } from "./FileDropZone";
 
 export type CsvImportHandler = (records: Record<string, string>[]) => Promise<{ ok: number; failed: string[] }>;
 
@@ -14,7 +15,6 @@ export function WorkspaceCsvToolbar({
   exportDataRows?: string[][];
   onImport?: CsvImportHandler;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -34,10 +34,8 @@ export function WorkspaceCsvToolbar({
     setMsg(`Exported ${exportDataRows.length} row(s).`);
   }
 
-  async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !onImport) return;
+  async function importCsvFile(file: File) {
+    if (!onImport) return;
     setBusy(true);
     setMsg(null);
     try {
@@ -85,23 +83,16 @@ export function WorkspaceCsvToolbar({
         </button>
       )}
       {onImport && (
-        <>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={(e) => void onFileChange(e)}
-          />
-          <button
-            type="button"
-            disabled={busy}
-            className="rounded-sm border border-tesla-border bg-white px-2.5 py-1 text-xs font-medium text-tesla-text hover:bg-tesla-muted disabled:opacity-50"
-            onClick={() => inputRef.current?.click()}
-          >
-            {busy ? "Importing…" : "Import CSV"}
-          </button>
-        </>
+        <FileDropZone
+          variant="compact"
+          accept=".csv,text/csv"
+          disabled={busy}
+          prompt={busy ? "Importing…" : "Drop CSV or click"}
+          onFiles={(files) => {
+            const f = files[0];
+            if (f) void importCsvFile(f);
+          }}
+        />
       )}
       {msg && <span className="text-xs text-tesla-text-secondary">{msg}</span>}
     </div>
