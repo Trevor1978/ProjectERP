@@ -52,6 +52,8 @@ type Props = {
   assets: ProjectNoteAsset[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Bumped by parent when a two-finger gesture starts — cancels in-progress ink. */
+  cancelInkSignal?: number;
   readOnly?: boolean;
   className?: string;
 };
@@ -116,12 +118,14 @@ export function A4PageCanvas({
   assets,
   selectedId,
   onSelect,
+  cancelInkSignal = 0,
   readOnly,
   className,
 }: Props) {
   const inkRef = useRef<HTMLCanvasElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const drawingRef = useRef<Stroke | null>(null);
+  const inkPointerIdRef = useRef<number | null>(null);
   const dragRef = useRef<DragState>(null);
   /** Set when an object handles pointerdown so page click does not clear selection. */
   const suppressDeselectRef = useRef(false);
@@ -134,15 +138,29 @@ export function A4PageCanvas({
     [assets],
   );
 
-  useEffect(() => {
+  const redrawInk = useCallback(() => {
     const canvas = inkRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    // Don't wipe live stroke being drawn.
-    if (drawingRef.current) return;
     drawStrokes(ctx, content.strokes, pageWidth, pageHeight);
   }, [content.strokes, pageWidth, pageHeight]);
+
+  useEffect(() => {
+    // Don't wipe live stroke being drawn.
+    if (drawingRef.current) return;
+    redrawInk();
+  }, [redrawInk]);
+
+  // Parent signals multi-touch gesture → drop any in-progress pen stroke.
+  useEffect(() => {
+    if (!cancelInkSignal) return;
+    if (drawingRef.current || inkPointerIdRef.current !== null) {
+      drawingRef.current = null;
+      inkPointerIdRef.current = null;
+      redrawInk();
+    }
+  }, [cancelInkSignal, redrawInk]);
 
   const toPagePoint = useCallback((clientX: number, clientY: number): StrokePoint | null => {
     const el = pageRef.current;
@@ -167,12 +185,24 @@ export function A4PageCanvas({
     });
   };
 
+  const cancelInk = () => {
+    drawingRef.current = null;
+    inkPointerIdRef.current = null;
+    redrawInk();
+  };
+
   const onInkPointerDown = (e: ReactPointerEvent) => {
     if (readOnly) return;
     if (tool !== "pen" && tool !== "eraser") return;
+    // Second finger / extra pointer: cancel drawing so pinch can take over.
+    if (inkPointerIdRef.current !== null && e.pointerId !== inkPointerIdRef.current) {
+      cancelInk();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    inkPointerIdRef.current = e.pointerId;
     const pt = toPagePoint(e.clientX, e.clientY);
     if (!pt) return;
     if (tool === "eraser") {
@@ -199,7 +229,10 @@ export function A4PageCanvas({
 
   const onInkPointerMove = (e: ReactPointerEvent) => {
     if (readOnly) return;
-    if (tool === "eraser" && e.buttons === 1) {
+    if (inkPointerIdRef.current !== null && e.pointerId !== inkPointerIdRef.current) {
+      return;
+    }
+    if (tool === "eraser" && e.buttons === 1 && e.pointerId === inkPointerIdRef.current) {
       const pt = toPagePoint(e.clientX, e.clientY);
       if (pt) eraseAt(pt);
       return;
@@ -220,13 +253,15 @@ export function A4PageCanvas({
     }
   };
 
-  const onInkPointerUp = () => {
+  const onInkPointerUp = (e: ReactPointerEvent) => {
+    if (inkPointerIdRef.current !== null && e.pointerId !== inkPointerIdRef.current) {
+      return;
+    }
     const stroke = drawingRef.current;
     drawingRef.current = null;
+    inkPointerIdRef.current = null;
     if (!stroke || stroke.points.length < 2) {
-      // Redraw without incomplete stroke.
-      const ctx = inkRef.current?.getContext("2d");
-      if (ctx) drawStrokes(ctx, content.strokes, pageWidth, pageHeight);
+      redrawInk();
       return;
     }
     onChange((prev) => ({

@@ -70,3 +70,15 @@
     margin: 0 !important;
   }
 }
+
+/* Note editor — keep pinch/scroll on the canvas, not the browser page */
+.note-canvas-viewport {
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.project-note-editor {
+  overscroll-behavior: none;
+}

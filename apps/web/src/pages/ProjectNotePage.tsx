@@ -20,6 +20,12 @@ import {
   type PageContentUpdater,
 } from "../components/projectNotes/A4PageCanvas";
 import {
+  NoteCanvasViewport,
+  centerPan,
+  zoomAroundPoint,
+  type ViewPan,
+} from "../components/projectNotes/NoteCanvasViewport";
+import {
   emptyPageContent,
   newId,
   normalizeOrientation,
@@ -85,7 +91,14 @@ export function ProjectNotePage() {
   const [fitScale, setFitScale] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [zoomMode, setZoomMode] = useState<"fit" | "manual">("fit");
+  const [pan, setPan] = useState<ViewPan>({ x: 0, y: 0 });
+  const [cancelInkSignal, setCancelInkSignal] = useState(0);
   const [printing, setPrinting] = useState(false);
+  const viewportSizeRef = useRef({ w: 0, h: 0 });
+  const viewportElRef = useRef<HTMLDivElement | null>(null);
+  const scaleRef = useRef(1);
+  const panRef = useRef<ViewPan>({ x: 0, y: 0 });
+  const zoomModeRef = useRef<"fit" | "manual">("fit");
   const dirtyRef = useRef(false);
   const [dirty, setDirty] = useState(false);
   const contentRef = useRef(content);
@@ -98,6 +111,22 @@ export function ProjectNotePage() {
     zoomMode === "fit"
       ? fitScale
       : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+  scaleRef.current = scale;
+  panRef.current = pan;
+  zoomModeRef.current = zoomMode;
+
+  const refitToViewport = useCallback(() => {
+    const el = viewportElRef.current;
+    const vw = el?.clientWidth || Math.max(260, window.innerWidth - 32);
+    const vh = el?.clientHeight || Math.max(320, window.innerHeight - 240);
+    viewportSizeRef.current = { w: vw, h: vh };
+    const next = Math.min(1, vw / pageWidth, vh / pageHeight);
+    setFitScale(next);
+    if (zoomModeRef.current === "fit") {
+      setPan(centerPan(vw, vh, pageWidth, pageHeight, next));
+    }
+    return next;
+  }, [pageWidth, pageHeight]);
 
   useEffect(() => {
     if (!note) return;
@@ -145,22 +174,30 @@ export function ProjectNotePage() {
   }, [pages, pageIndex]);
 
   useEffect(() => {
-    const fit = () => {
-      const chrome = 240;
-      const availW = Math.max(260, window.innerWidth - 32);
-      const availH = Math.max(320, window.innerHeight - chrome);
-      const next = Math.min(1, availW / pageWidth, availH / pageHeight);
-      setFitScale(next);
+    const measure = () => {
+      refitToViewport();
     };
-    fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, [pageWidth, pageHeight]);
+    measure();
+    window.addEventListener("resize", measure);
+    const el = viewportElRef.current;
+    const ro =
+      typeof ResizeObserver !== "undefined" && el
+        ? new ResizeObserver(() => measure())
+        : null;
+    if (el && ro) ro.observe(el);
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
+  }, [refitToViewport]);
 
   // Re-fit when paper size changes (orientation).
   useEffect(() => {
     setZoomMode("fit");
-  }, [orientation]);
+    zoomModeRef.current = "fit";
+    // After orientation changes layout, wait a frame for viewport size.
+    requestAnimationFrame(() => refitToViewport());
+  }, [orientation, refitToViewport]);
 
   useEffect(() => {
     const before = () => setPrinting(true);
@@ -409,16 +446,43 @@ export function ProjectNotePage() {
   }
 
   function zoomBy(delta: number) {
+    const el = viewportElRef.current;
+    const rect = el?.getBoundingClientRect();
+    const base = zoomMode === "fit" ? fitScale : zoom;
+    const nextScale = Math.min(
+      ZOOM_MAX,
+      Math.max(ZOOM_MIN, Math.round((base + delta) * 100) / 100),
+    );
     setZoomMode("manual");
-    setZoom((prev) => {
-      const base = zoomMode === "fit" ? fitScale : prev;
-      return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((base + delta) * 100) / 100));
-    });
+    setZoom(nextScale);
+    if (rect) {
+      setPan(
+        zoomAroundPoint({
+          viewport: rect,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+          pan: panRef.current,
+          scale: base,
+          nextScale,
+        }),
+      );
+    }
   }
 
   function zoomFit() {
     setZoomMode("fit");
-    setZoom(fitScale);
+    zoomModeRef.current = "fit";
+    refitToViewport();
+  }
+
+  function onViewportTransform(next: { scale: number; pan: ViewPan }) {
+    setZoomMode("manual");
+    setZoom(next.scale);
+    setPan(next.pan);
+  }
+
+  function onViewportGestureStart() {
+    setCancelInkSignal((n) => n + 1);
   }
 
   function deleteSelected() {
@@ -722,19 +786,19 @@ export function ProjectNotePage() {
         ) : null}
       </div>
 
-      <div className="flex flex-1 justify-center overflow-auto p-4 print:p-0 print:overflow-visible">
-        <div
-          className="print:hidden"
-          style={{
-            width: pageWidth * scale,
-            height: pageHeight * scale,
-          }}
-        >
-          <div
-            style={{
-              transform: `scale(${scale})`,
-              transformOrigin: "top left",
-            }}
+      <div className="flex min-h-0 flex-1 flex-col print:overflow-visible">
+        <div className="print:hidden flex min-h-0 flex-1 flex-col">
+          <NoteCanvasViewport
+            viewportRef={viewportElRef}
+            pageWidth={pageWidth}
+            pageHeight={pageHeight}
+            scale={scale}
+            pan={pan}
+            zoomMin={ZOOM_MIN}
+            zoomMax={ZOOM_MAX}
+            onTransform={onViewportTransform}
+            onGestureStart={onViewportGestureStart}
+            className="min-h-[50vh]"
           >
             <A4PageCanvas
               content={content}
@@ -748,8 +812,9 @@ export function ProjectNotePage() {
               assets={assets}
               selectedId={selectedId}
               onSelect={setSelectedId}
+              cancelInkSignal={cancelInkSignal}
             />
-          </div>
+          </NoteCanvasViewport>
         </div>
 
         {printing ? (
