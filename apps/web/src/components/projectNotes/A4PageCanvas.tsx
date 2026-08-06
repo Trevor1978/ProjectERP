@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -19,6 +18,10 @@ import {
   type Stroke,
   type StrokePoint,
 } from "../../lib/projectNoteTypes";
+
+export type PageContentUpdater =
+  | PageContent
+  | ((prev: PageContent) => PageContent);
 
 type DragState =
   | {
@@ -41,7 +44,7 @@ type DragState =
 
 type Props = {
   content: PageContent;
-  onChange: (next: PageContent) => void;
+  onChange: (next: PageContentUpdater) => void;
   background: NoteBackground;
   tool: EditorTool;
   penColor: string;
@@ -49,7 +52,6 @@ type Props = {
   assets: ProjectNoteAsset[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  /** When true, ignore pointer edits (e.g. while printing). */
   readOnly?: boolean;
   className?: string;
 };
@@ -93,9 +95,7 @@ function drawStrokes(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
 }
 
 function dist(a: StrokePoint, b: StrokePoint) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return Math.hypot(dx, dy);
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 export function A4PageCanvas({
@@ -114,17 +114,25 @@ export function A4PageCanvas({
   const inkRef = useRef<HTMLCanvasElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const drawingRef = useRef<Stroke | null>(null);
-  const [drag, setDrag] = useState<DragState>(null);
-  const assetUrl = useCallback((assetId: string) => {
-    const a = assets.find((x) => x.id === assetId);
-    return a ? apiFetchUrl(a.url) : "";
-  }, [assets]);
+  const dragRef = useRef<DragState>(null);
+  /** Set when an object handles pointerdown so page click does not clear selection. */
+  const suppressDeselectRef = useRef(false);
+
+  const assetUrl = useCallback(
+    (assetId: string) => {
+      const a = assets.find((x) => x.id === assetId);
+      return a ? apiFetchUrl(a.url) : "";
+    },
+    [assets],
+  );
 
   useEffect(() => {
     const canvas = inkRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    // Don't wipe live stroke being drawn.
+    if (drawingRef.current) return;
     drawStrokes(ctx, content.strokes);
   }, [content.strokes]);
 
@@ -132,6 +140,7 @@ export function A4PageCanvas({
     const el = pageRef.current;
     if (!el) return null;
     const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return null;
     const x = ((clientX - r.left) / r.width) * A4_WIDTH;
     const y = ((clientY - r.top) / r.height) * A4_HEIGHT;
     return {
@@ -140,23 +149,26 @@ export function A4PageCanvas({
     };
   }, []);
 
+  const eraseAt = (pt: StrokePoint) => {
+    onChange((prev) => {
+      const hit = prev.strokes.find((s) =>
+        s.points.some((p) => dist(p, pt) < Math.max(14, s.width * 2.5)),
+      );
+      if (!hit) return prev;
+      return { ...prev, strokes: prev.strokes.filter((s) => s.id !== hit.id) };
+    });
+  };
+
   const onInkPointerDown = (e: ReactPointerEvent) => {
     if (readOnly) return;
     if (tool !== "pen" && tool !== "eraser") return;
     e.preventDefault();
+    e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const pt = toPagePoint(e.clientX, e.clientY);
     if (!pt) return;
     if (tool === "eraser") {
-      const hit = content.strokes.find((s) =>
-        s.points.some((p) => dist(p, pt) < Math.max(12, s.width * 2)),
-      );
-      if (hit) {
-        onChange({
-          ...content,
-          strokes: content.strokes.filter((s) => s.id !== hit.id),
-        });
-      }
+      eraseAt(pt);
       return;
     }
     const stroke: Stroke = {
@@ -166,8 +178,7 @@ export function A4PageCanvas({
       points: [pt],
     };
     drawingRef.current = stroke;
-    const canvas = inkRef.current;
-    const ctx = canvas?.getContext("2d");
+    const ctx = inkRef.current?.getContext("2d");
     if (ctx) {
       ctx.strokeStyle = penColor;
       ctx.lineWidth = penWidth;
@@ -182,16 +193,7 @@ export function A4PageCanvas({
     if (readOnly) return;
     if (tool === "eraser" && e.buttons === 1) {
       const pt = toPagePoint(e.clientX, e.clientY);
-      if (!pt) return;
-      const hit = content.strokes.find((s) =>
-        s.points.some((p) => dist(p, pt) < Math.max(12, s.width * 2)),
-      );
-      if (hit) {
-        onChange({
-          ...content,
-          strokes: content.strokes.filter((s) => s.id !== hit.id),
-        });
-      }
+      if (pt) eraseAt(pt);
       return;
     }
     const stroke = drawingRef.current;
@@ -199,10 +201,9 @@ export function A4PageCanvas({
     const pt = toPagePoint(e.clientX, e.clientY);
     if (!pt) return;
     const last = stroke.points[stroke.points.length - 1]!;
-    if (dist(last, pt) < 1.5) return;
+    if (dist(last, pt) < 1.2) return;
     stroke.points.push(pt);
-    const canvas = inkRef.current;
-    const ctx = canvas?.getContext("2d");
+    const ctx = inkRef.current?.getContext("2d");
     if (ctx) {
       ctx.lineTo(pt.x, pt.y);
       ctx.stroke();
@@ -214,11 +215,16 @@ export function A4PageCanvas({
   const onInkPointerUp = () => {
     const stroke = drawingRef.current;
     drawingRef.current = null;
-    if (!stroke || stroke.points.length < 2) return;
-    onChange({
-      ...content,
-      strokes: [...content.strokes, stroke],
-    });
+    if (!stroke || stroke.points.length < 2) {
+      // Redraw without incomplete stroke.
+      const ctx = inkRef.current?.getContext("2d");
+      if (ctx) drawStrokes(ctx, content.strokes);
+      return;
+    }
+    onChange((prev) => ({
+      ...prev,
+      strokes: [...prev.strokes, stroke],
+    }));
   };
 
   const onObjectPointerDown = (
@@ -229,55 +235,74 @@ export function A4PageCanvas({
     if (readOnly || tool !== "select") return;
     e.stopPropagation();
     e.preventDefault();
+    suppressDeselectRef.current = true;
     onSelect(obj.id);
     const pt = toPagePoint(e.clientX, e.clientY);
     if (!pt) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    if (kind === "move") {
-      setDrag({
-        kind: "move",
-        objectId: obj.id,
-        startX: pt.x,
-        startY: pt.y,
-        origX: obj.x,
-        origY: obj.y,
-      });
-    } else {
-      setDrag({
-        kind: "resize",
-        objectId: obj.id,
-        startX: pt.x,
-        startY: pt.y,
-        origW: obj.w,
-        origH: obj.h,
-      });
-    }
+    const next: DragState =
+      kind === "move"
+        ? {
+            kind: "move",
+            objectId: obj.id,
+            startX: pt.x,
+            startY: pt.y,
+            origX: obj.x,
+            origY: obj.y,
+          }
+        : {
+            kind: "resize",
+            objectId: obj.id,
+            startX: pt.x,
+            startY: pt.y,
+            origW: obj.w,
+            origH: obj.h,
+          };
+    dragRef.current = next;
   };
 
   const onPagePointerMove = (e: ReactPointerEvent) => {
-    if (!drag) return;
+    const d = dragRef.current;
+    if (!d) return;
     const pt = toPagePoint(e.clientX, e.clientY);
     if (!pt) return;
-    onChange({
-      ...content,
-      objects: content.objects.map((o) => {
-        if (o.id !== drag.objectId) return o;
-        if (drag.kind === "move") {
-          const nx = Math.max(0, Math.min(A4_WIDTH - o.w, drag.origX + (pt.x - drag.startX)));
-          const ny = Math.max(0, Math.min(A4_HEIGHT - o.h, drag.origY + (pt.y - drag.startY)));
+    onChange((prev) => ({
+      ...prev,
+      objects: prev.objects.map((o) => {
+        if (o.id !== d.objectId) return o;
+        if (d.kind === "move") {
+          const nx = Math.max(0, Math.min(A4_WIDTH - o.w, d.origX + (pt.x - d.startX)));
+          const ny = Math.max(0, Math.min(A4_HEIGHT - o.h, d.origY + (pt.y - d.startY)));
           return { ...o, x: nx, y: ny };
         }
-        const nw = Math.max(40, Math.min(A4_WIDTH - o.x, drag.origW + (pt.x - drag.startX)));
-        const nh = Math.max(24, Math.min(A4_HEIGHT - o.y, drag.origH + (pt.y - drag.startY)));
+        const nw = Math.max(40, Math.min(A4_WIDTH - o.x, d.origW + (pt.x - d.startX)));
+        const nh = Math.max(24, Math.min(A4_HEIGHT - o.y, d.origH + (pt.y - d.startY)));
         return { ...o, w: nw, h: nh };
       }),
-    });
+    }));
   };
 
-  const onPagePointerUp = () => setDrag(null);
+  const endDrag = () => {
+    dragRef.current = null;
+  };
 
-  const onPageClick = () => {
-    if (tool === "select") onSelect(null);
+  const onPagePointerDown = (e: ReactPointerEvent) => {
+    if (readOnly || tool !== "select") return;
+    // Only deselect when pressing the page chrome itself (not a child object).
+    if (e.target === pageRef.current) {
+      onSelect(null);
+    }
+  };
+
+  const onPageClick = (e: React.MouseEvent) => {
+    if (readOnly || tool !== "select") return;
+    if (suppressDeselectRef.current) {
+      suppressDeselectRef.current = false;
+      return;
+    }
+    if (e.target === pageRef.current) {
+      onSelect(null);
+    }
   };
 
   const inkActive = !readOnly && (tool === "pen" || tool === "eraser");
@@ -291,9 +316,10 @@ export function A4PageCanvas({
         height: A4_HEIGHT,
         ...backgroundStyle(background),
       }}
+      onPointerDown={onPagePointerDown}
       onPointerMove={onPagePointerMove}
-      onPointerUp={onPagePointerUp}
-      onPointerLeave={onPagePointerUp}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
       onClick={onPageClick}
     >
       {content.objects.map((obj) => {
@@ -313,6 +339,7 @@ export function A4PageCanvas({
                 pointerEvents: inkActive ? "none" : "auto",
               }}
               onPointerDown={(e) => onObjectPointerDown(e, obj, "move")}
+              onClick={(e) => e.stopPropagation()}
             >
               <img
                 src={assetUrl(obj.assetId)}
@@ -332,7 +359,7 @@ export function A4PageCanvas({
         return (
           <div
             key={obj.id}
-            className={`absolute touch-none ${selected ? "ring-2 ring-blue-500" : ""}`}
+            className={`absolute touch-none ${selected ? "ring-2 ring-blue-500 bg-white/40" : ""}`}
             style={{
               left: obj.x,
               top: obj.y,
@@ -345,6 +372,7 @@ export function A4PageCanvas({
             onPointerDown={(e) => {
               if (tool === "select") onObjectPointerDown(e, obj, "move");
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             {tool === "select" && selected ? (
               <textarea
@@ -352,16 +380,20 @@ export function A4PageCanvas({
                 style={{ fontSize: obj.fontSize, color: obj.color ?? "#0f172a" }}
                 value={obj.text}
                 onChange={(e) => {
-                  onChange({
-                    ...content,
-                    objects: content.objects.map((o) =>
-                      o.id === obj.id && o.type === "text"
-                        ? { ...o, text: e.target.value }
-                        : o,
+                  const text = e.target.value;
+                  onChange((prev) => ({
+                    ...prev,
+                    objects: prev.objects.map((o) =>
+                      o.id === obj.id && o.type === "text" ? { ...o, text } : o,
                     ),
-                  });
+                  }));
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
+                onFocus={(e) => {
+                  if (obj.text === "Type here…") {
+                    e.target.select();
+                  }
+                }}
               />
             ) : (
               <div
