@@ -57,11 +57,12 @@ type Props = {
 };
 
 function backgroundStyle(bg: NoteBackground): CSSProperties {
+  // Use ~2px line weight so patterns stay visible when the page is CSS-scaled down.
   if (bg === "ruled") {
     return {
       backgroundColor: "#fff",
       backgroundImage:
-        "repeating-linear-gradient(to bottom, transparent 0, transparent calc(8mm - 1px), #b8c4d6 calc(8mm - 1px), #b8c4d6 8mm)",
+        "repeating-linear-gradient(to bottom, transparent 0, transparent calc(8mm - 2px), #9aabc4 calc(8mm - 2px), #9aabc4 8mm)",
       backgroundSize: "100% 8mm",
       backgroundPosition: "0 12mm",
     };
@@ -70,7 +71,7 @@ function backgroundStyle(bg: NoteBackground): CSSProperties {
     return {
       backgroundColor: "#fff",
       backgroundImage:
-        "linear-gradient(to right, #c5cedd 1px, transparent 1px), linear-gradient(to bottom, #c5cedd 1px, transparent 1px)",
+        "linear-gradient(to right, #9aabc4 2px, transparent 2px), linear-gradient(to bottom, #9aabc4 2px, transparent 2px)",
       backgroundSize: "10mm 10mm",
     };
   }
