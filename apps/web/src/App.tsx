@@ -26,6 +26,7 @@ import { WorkspaceServiceHistoryPage } from "./pages/workspace/WorkspaceServiceH
 import { WorkspaceServiceHistoryDetailPage } from "./pages/workspace/WorkspaceServiceHistoryDetailPage";
 import { WorkspaceWorkCompletePage } from "./pages/workspace/WorkspaceWorkCompletePage";
 import { WorkspaceOrganizationPage } from "./pages/workspace/WorkspaceOrganizationPage";
+import { ProjectNotePage } from "./pages/ProjectNotePage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { QuickCreateProvider } from "./components/QuickCreateProvider";
 import { House } from "lucide-react";
@@ -37,6 +38,9 @@ function Layout({ children }: { children: React.ReactNode }) {
   const { data } = useMe();
   const user = data?.user;
   const isWorkspace = user ? location.pathname.startsWith("/workspace") : false;
+  const isProjectNote = user
+    ? /^\/p\/[^/]+\/notes\/[^/]+/.test(location.pathname)
+    : false;
 
   const logout = async () => {
     await api("/api/auth/logout", { method: "POST", body: "{}" });
@@ -50,7 +54,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   return (
     <QuickCreateProvider>
       <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-tesla-border bg-tesla-header px-4 py-3 text-white">
+      <header className="no-print flex items-center justify-between border-b border-tesla-border bg-tesla-header px-4 py-3 text-white">
         <div className="flex items-center gap-6">
           <Link to="/" className="text-sm font-medium uppercase tracking-[0.2em]">
             Project ERP
@@ -103,7 +107,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </header>
-      {isWorkspace ? (
+      {isWorkspace || isProjectNote ? (
         <div className="flex min-h-0 flex-1">{children}</div>
       ) : (
         <main className="mx-auto w-full max-w-[1600px] flex-1 p-4">{children}</main>
@@ -184,6 +188,16 @@ export default function App() {
         <Route path="organization" element={<WorkspaceOrganizationPage />} />
         <Route path=":table" element={<HomePage />} />
       </Route>
+      <Route
+        path="/p/:projectId/notes/:noteId"
+        element={
+          <Layout>
+            <AuthGate>
+              <ProjectNotePage />
+            </AuthGate>
+          </Layout>
+        }
+      />
       <Route
         path="/p/:id"
         element={

@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 
 type Doc = {
@@ -27,8 +28,16 @@ type Handover = {
   version: number;
 };
 
+type NoteSummary = {
+  id: string;
+  title: string;
+  background: string;
+  updatedAt: string;
+};
+
 export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
+  const nav = useNavigate();
   const { data: budget, isLoading: bLoad } = useQuery({
     queryKey: ["budget", projectId],
     queryFn: () =>
@@ -48,6 +57,11 @@ export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
     queryFn: () =>
       api<{ documents: Doc[] }>("/api/projects/" + projectId + "/documents"),
   });
+  const { data: notes, isLoading: nLoad } = useQuery({
+    queryKey: ["project-notes", projectId],
+    queryFn: () =>
+      api<{ notes: NoteSummary[] }>("/api/projects/" + projectId + "/notes"),
+  });
 
   const [lab, setLab] = useState("");
   const [mat, setMat] = useState("");
@@ -63,6 +77,8 @@ export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
     "other",
   );
   const [docErr, setDocErr] = useState("");
+  const [noteErr, setNoteErr] = useState("");
+  const [noteBusy, setNoteBusy] = useState(false);
 
   useEffect(() => {
     if (budget?.budget) {
@@ -130,7 +146,27 @@ export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
     await qc.invalidateQueries({ queryKey: ["documents", projectId] });
   }
 
-  if (bLoad || hLoad || dLoad) {
+  async function createNote() {
+    setNoteErr("");
+    setNoteBusy(true);
+    try {
+      const res = await api<{ note: { id: string } }>(
+        "/api/projects/" + projectId + "/notes",
+        {
+          method: "POST",
+          body: JSON.stringify({ title: "Untitled note", background: "none" }),
+        },
+      );
+      await qc.invalidateQueries({ queryKey: ["project-notes", projectId] });
+      nav(`/p/${projectId}/notes/${res.note.id}`);
+    } catch (e) {
+      setNoteErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setNoteBusy(false);
+    }
+  }
+
+  if (bLoad || hLoad || dLoad || nLoad) {
     return <p className="text-slate-500">Loading…</p>;
   }
 
@@ -212,6 +248,59 @@ export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
             Save handover
           </button>
         </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold mb-2">A4 page notes</h2>
+        <p className="text-sm text-slate-500 mb-2">
+          Scratchpad pages for handwriting, photos, and markup. Ruled or 10mm grid
+          backgrounds can be toggled in the editor. Print from the note screen.
+        </p>
+        {noteErr ? <p className="mb-2 text-sm text-red-600">{noteErr}</p> : null}
+        <button
+          type="button"
+          disabled={noteBusy}
+          onClick={() => void createNote()}
+          className="mb-3 px-3 py-1.5 bg-slate-800 text-white rounded text-sm disabled:opacity-50"
+        >
+          {noteBusy ? "Creating…" : "New A4 note"}
+        </button>
+        <ul className="space-y-1 text-sm">
+          {(notes?.notes ?? []).map((n) => (
+            <li key={n.id} className="flex flex-wrap items-center gap-2">
+              <Link
+                to={`/p/${projectId}/notes/${n.id}`}
+                className="text-blue-700 hover:underline font-medium"
+              >
+                {n.title}
+              </Link>
+              <span className="text-slate-400">
+                ({n.background === "none" ? "blank" : n.background})
+              </span>
+              <span className="text-slate-400 text-xs">
+                {new Date(n.updatedAt).toLocaleString()}
+              </span>
+              <button
+                type="button"
+                className="text-xs text-red-700 underline"
+                onClick={() => {
+                  if (!confirm(`Delete note “${n.title}”?`)) return;
+                  setNoteErr("");
+                  void api("/api/project-notes/" + n.id, { method: "DELETE" })
+                    .then(() =>
+                      qc.invalidateQueries({ queryKey: ["project-notes", projectId] }),
+                    )
+                    .catch((e: Error) => setNoteErr(e.message));
+                }}
+              >
+                Delete
+              </button>
+            </li>
+          ))}
+          {(notes?.notes ?? []).length === 0 ? (
+            <li className="text-slate-400">No page notes yet.</li>
+          ) : null}
+        </ul>
       </section>
 
       <section>

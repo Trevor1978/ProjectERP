@@ -13,3 +13,42 @@
 .gantt-container {
   font-family: inherit;
 }
+
+/* A4 project notes — print */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  header {
+    display: none !important;
+  }
+
+  .project-note-editor {
+    display: block !important;
+    background: white !important;
+  }
+
+  .a4-print-sheet {
+    break-after: page;
+    box-shadow: none !important;
+  }
+
+  .a4-print-sheet:last-child {
+    break-after: auto;
+  }
+
+  .a4-page {
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+}

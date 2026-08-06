@@ -569,6 +569,79 @@ export const documentLink = pgTable("document_link", {
     .defaultNow(),
 });
 
+/** A4 multi-page scratchpad notes attached to a project. */
+export const projectNote = pgTable(
+  "project_note",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default("Untitled note"),
+    /** Page paper: none | ruled (writing lines) | grid (10mm). */
+    background: text("background", {
+      enum: ["none", "ruled", "grid"],
+    })
+      .notNull()
+      .default("none"),
+    version: integer("version").notNull().default(0),
+    createdById: text("created_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("project_note_project_idx").on(t.projectId)],
+);
+
+export const projectNotePage = pgTable(
+  "project_note_page",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    noteId: text("note_id")
+      .notNull()
+      .references(() => projectNote.id, { onDelete: "cascade" }),
+    pageIndex: integer("page_index").notNull().default(0),
+    /** JSON: { objects: [...], strokes: [...] } in A4 pixel coords (794×1123). */
+    contentJson: text("content_json").notNull().default('{"objects":[],"strokes":[]}'),
+    version: integer("version").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("project_note_page_note_idx").on(t.noteId),
+    uniqueIndex("project_note_page_note_index").on(t.noteId, t.pageIndex),
+  ],
+);
+
+export const projectNoteAsset = pgTable(
+  "project_note_asset",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    noteId: text("note_id")
+      .notNull()
+      .references(() => projectNote.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    storageName: text("storage_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("project_note_asset_note_idx").on(t.noteId)],
+);
+
 export const handover = pgTable(
   "handover",
   {

@@ -18,7 +18,7 @@ function isInProjectTab(s: string | null): s is InProjectTab {
 const TAB_LABEL: Record<InProjectTab, string> = {
   gantt: "Gantt (tasks)",
   team: "Team",
-  workspace: "Budget & docs",
+  workspace: "Budget, docs & notes",
 };
 
 function workspaceLinks(projectId: string) {

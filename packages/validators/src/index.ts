@@ -503,3 +503,30 @@ export const orgUserInvite = z.object({
     .enum(["member", "org_admin"])
     .default("member"),
 });
+
+export const projectNoteBackground = z.enum(["none", "ruled", "grid"]);
+
+export const projectNoteCreate = z.object({
+  title: z.string().trim().min(1).max(255).optional(),
+  background: projectNoteBackground.optional(),
+});
+
+export const projectNotePatch = z
+  .object({
+    title: z.string().trim().min(1).max(255).optional(),
+    background: projectNoteBackground.optional(),
+    version,
+  })
+  .strict();
+
+export const projectNotePagePatch = z
+  .object({
+    contentJson: z.string().min(2).max(5_000_000),
+    version,
+  })
+  .strict();
+
+export const projectNotePageCreate = z.object({
+  /** Insert after this index; omit to append. */
+  afterIndex: z.number().int().nonnegative().optional(),
+});
