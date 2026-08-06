@@ -7,8 +7,6 @@ import {
 } from "react";
 import { apiFetchUrl } from "../../lib/api";
 import {
-  A4_HEIGHT,
-  A4_WIDTH,
   newId,
   type EditorTool,
   type NoteBackground,
@@ -46,6 +44,8 @@ type Props = {
   content: PageContent;
   onChange: (next: PageContentUpdater) => void;
   background: NoteBackground;
+  pageWidth: number;
+  pageHeight: number;
   tool: EditorTool;
   penColor: string;
   penWidth: number;
@@ -78,8 +78,13 @@ function backgroundStyle(bg: NoteBackground): CSSProperties {
   return { backgroundColor: "#fff" };
 }
 
-function drawStrokes(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
-  ctx.clearRect(0, 0, A4_WIDTH, A4_HEIGHT);
+function drawStrokes(
+  ctx: CanvasRenderingContext2D,
+  strokes: Stroke[],
+  pageWidth: number,
+  pageHeight: number,
+) {
+  ctx.clearRect(0, 0, pageWidth, pageHeight);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   for (const s of strokes) {
@@ -103,6 +108,8 @@ export function A4PageCanvas({
   content,
   onChange,
   background,
+  pageWidth,
+  pageHeight,
   tool,
   penColor,
   penWidth,
@@ -134,21 +141,21 @@ export function A4PageCanvas({
     if (!ctx) return;
     // Don't wipe live stroke being drawn.
     if (drawingRef.current) return;
-    drawStrokes(ctx, content.strokes);
-  }, [content.strokes]);
+    drawStrokes(ctx, content.strokes, pageWidth, pageHeight);
+  }, [content.strokes, pageWidth, pageHeight]);
 
   const toPagePoint = useCallback((clientX: number, clientY: number): StrokePoint | null => {
     const el = pageRef.current;
     if (!el) return null;
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return null;
-    const x = ((clientX - r.left) / r.width) * A4_WIDTH;
-    const y = ((clientY - r.top) / r.height) * A4_HEIGHT;
+    const x = ((clientX - r.left) / r.width) * pageWidth;
+    const y = ((clientY - r.top) / r.height) * pageHeight;
     return {
-      x: Math.max(0, Math.min(A4_WIDTH, x)),
-      y: Math.max(0, Math.min(A4_HEIGHT, y)),
+      x: Math.max(0, Math.min(pageWidth, x)),
+      y: Math.max(0, Math.min(pageHeight, y)),
     };
-  }, []);
+  }, [pageWidth, pageHeight]);
 
   const eraseAt = (pt: StrokePoint) => {
     onChange((prev) => {
@@ -219,7 +226,7 @@ export function A4PageCanvas({
     if (!stroke || stroke.points.length < 2) {
       // Redraw without incomplete stroke.
       const ctx = inkRef.current?.getContext("2d");
-      if (ctx) drawStrokes(ctx, content.strokes);
+      if (ctx) drawStrokes(ctx, content.strokes, pageWidth, pageHeight);
       return;
     }
     onChange((prev) => ({
@@ -272,12 +279,12 @@ export function A4PageCanvas({
       objects: prev.objects.map((o) => {
         if (o.id !== d.objectId) return o;
         if (d.kind === "move") {
-          const nx = Math.max(0, Math.min(A4_WIDTH - o.w, d.origX + (pt.x - d.startX)));
-          const ny = Math.max(0, Math.min(A4_HEIGHT - o.h, d.origY + (pt.y - d.startY)));
+          const nx = Math.max(0, Math.min(pageWidth - o.w, d.origX + (pt.x - d.startX)));
+          const ny = Math.max(0, Math.min(pageHeight - o.h, d.origY + (pt.y - d.startY)));
           return { ...o, x: nx, y: ny };
         }
-        const nw = Math.max(40, Math.min(A4_WIDTH - o.x, d.origW + (pt.x - d.startX)));
-        const nh = Math.max(24, Math.min(A4_HEIGHT - o.y, d.origH + (pt.y - d.startY)));
+        const nw = Math.max(40, Math.min(pageWidth - o.x, d.origW + (pt.x - d.startX)));
+        const nh = Math.max(24, Math.min(pageHeight - o.y, d.origH + (pt.y - d.startY)));
         return { ...o, w: nw, h: nh };
       }),
     }));
@@ -313,8 +320,8 @@ export function A4PageCanvas({
       ref={pageRef}
       className={`a4-page relative shadow-md ${className ?? ""}`}
       style={{
-        width: A4_WIDTH,
-        height: A4_HEIGHT,
+        width: pageWidth,
+        height: pageHeight,
         ...backgroundStyle(background),
       }}
       onPointerDown={onPagePointerDown}
@@ -416,8 +423,8 @@ export function A4PageCanvas({
 
       <canvas
         ref={inkRef}
-        width={A4_WIDTH}
-        height={A4_HEIGHT}
+        width={pageWidth}
+        height={pageHeight}
         className="absolute inset-0"
         style={{
           zIndex: 3,

@@ -11,6 +11,8 @@ import {
   Printer,
   Trash2,
   Type,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { api, apiForm } from "../lib/api";
 import {
@@ -18,20 +20,25 @@ import {
   type PageContentUpdater,
 } from "../components/projectNotes/A4PageCanvas";
 import {
-  A4_HEIGHT,
-  A4_WIDTH,
   emptyPageContent,
   newId,
+  normalizeOrientation,
+  pageSize,
   parsePageContent,
   serializePageContent,
   type EditorTool,
   type NoteBackground,
+  type NoteOrientation,
   type PageContent,
   type ProjectNote,
   type ProjectNoteAsset,
 } from "../lib/projectNoteTypes";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
+
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 2.5;
+const ZOOM_STEP = 0.1;
 
 export function ProjectNotePage() {
   const { projectId, noteId } = useParams<{ projectId: string; noteId: string }>();
@@ -71,9 +78,13 @@ export function ProjectNotePage() {
   const [pageVersion, setPageVersion] = useState(0);
   const pageVersionRef = useRef(0);
   const [pageId, setPageId] = useState<string | null>(null);
+  const [orientation, setOrientation] = useState<NoteOrientation>("portrait");
+  const orientationRef = useRef<NoteOrientation>("portrait");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [err, setErr] = useState("");
-  const [scale, setScale] = useState(1);
+  const [fitScale, setFitScale] = useState(1);
+  const [zoom, setZoom] = useState(1);
+  const [zoomMode, setZoomMode] = useState<"fit" | "manual">("fit");
   const [printing, setPrinting] = useState(false);
   const dirtyRef = useRef(false);
   const [dirty, setDirty] = useState(false);
@@ -81,6 +92,12 @@ export function ProjectNotePage() {
   contentRef.current = content;
   const savingRef = useRef(false);
   const loadedPageIdRef = useRef<string | null>(null);
+
+  const { width: pageWidth, height: pageHeight } = pageSize(orientation);
+  const scale =
+    zoomMode === "fit"
+      ? fitScale
+      : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
 
   useEffect(() => {
     if (!note) return;
@@ -105,6 +122,9 @@ export function ProjectNotePage() {
       if (!dirtyRef.current) {
         pageVersionRef.current = page.version;
         setPageVersion(page.version);
+        const nextOrientation = normalizeOrientation(page.orientation);
+        setOrientation(nextOrientation);
+        orientationRef.current = nextOrientation;
       }
       return;
     }
@@ -113,6 +133,9 @@ export function ProjectNotePage() {
     setPageId(page.id);
     pageVersionRef.current = page.version;
     setPageVersion(page.version);
+    const nextOrientation = normalizeOrientation(page.orientation);
+    setOrientation(nextOrientation);
+    orientationRef.current = nextOrientation;
     const parsed = parsePageContent(page.contentJson);
     setContent(parsed);
     contentRef.current = parsed;
@@ -123,15 +146,21 @@ export function ProjectNotePage() {
 
   useEffect(() => {
     const fit = () => {
-      const chrome = 220;
+      const chrome = 240;
       const availW = Math.max(260, window.innerWidth - 32);
       const availH = Math.max(320, window.innerHeight - chrome);
-      setScale(Math.min(1, availW / A4_WIDTH, availH / A4_HEIGHT));
+      const next = Math.min(1, availW / pageWidth, availH / pageHeight);
+      setFitScale(next);
     };
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-  }, []);
+  }, [pageWidth, pageHeight]);
+
+  // Re-fit when paper size changes (orientation).
+  useEffect(() => {
+    setZoomMode("fit");
+  }, [orientation]);
 
   useEffect(() => {
     const before = () => setPrinting(true);
@@ -161,23 +190,31 @@ export function ProjectNotePage() {
     setSaveState("saving");
     setErr("");
     const snapshot = serializePageContent(contentRef.current);
+    const orientationSnapshot = orientationRef.current;
     const versionAtStart = pageVersionRef.current;
     try {
-      const res = await api<{ page: { version: number; contentJson: string } }>(
-        `/api/project-notes/pages/${pageId}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            contentJson: snapshot,
-            version: versionAtStart,
-          }),
-        },
-      );
+      const res = await api<{
+        page: {
+          version: number;
+          contentJson: string;
+          orientation: NoteOrientation;
+        };
+      }>(`/api/project-notes/pages/${pageId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          contentJson: snapshot,
+          orientation: orientationSnapshot,
+          version: versionAtStart,
+        }),
+      });
       pageVersionRef.current = res.page.version;
       setPageVersion(res.page.version);
 
       // Keep dirty if the user edited while the request was in flight.
-      if (serializePageContent(contentRef.current) === snapshot) {
+      if (
+        serializePageContent(contentRef.current) === snapshot &&
+        orientationRef.current === orientationSnapshot
+      ) {
         dirtyRef.current = false;
         setDirty(false);
         setSaveState("saved");
@@ -196,6 +233,7 @@ export function ProjectNotePage() {
                 ? {
                     ...p,
                     contentJson: snapshot,
+                    orientation: orientationSnapshot,
                     version: res.page.version,
                   }
                 : p,
@@ -224,7 +262,7 @@ export function ProjectNotePage() {
       });
     }, 700);
     return () => window.clearTimeout(t);
-  }, [content, dirty, savePage]);
+  }, [content, dirty, orientation, savePage]);
 
   async function saveMeta(patch: { title?: string; background?: NoteBackground }) {
     if (!noteId) return;
@@ -270,7 +308,7 @@ export function ProjectNotePage() {
     try {
       await api(`/api/project-notes/${noteId}/pages`, {
         method: "POST",
-        body: JSON.stringify({ afterIndex: pageIndex }),
+        body: JSON.stringify({ afterIndex: pageIndex, orientation }),
       });
       loadedPageIdRef.current = null;
       await qc.invalidateQueries({ queryKey: ["project-note", noteId] });
@@ -312,7 +350,7 @@ export function ProjectNotePage() {
       type: "text" as const,
       x: 60 + (offset % 5) * 24,
       y: 80 + (offset % 8) * 28,
-      w: 280,
+      w: Math.min(280, pageWidth - 80),
       h: 80,
       text: "Type here…",
       fontSize: 16,
@@ -339,8 +377,8 @@ export function ProjectNotePage() {
       setLocalAssets((prev) =>
         prev.some((a) => a.id === asset.id) ? prev : [...prev, asset],
       );
-      const w = Math.min(360, A4_WIDTH - 80);
-      const h = Math.min(280, A4_HEIGHT - 80);
+      const w = Math.min(360, pageWidth - 80);
+      const h = Math.min(280, pageHeight - 80);
       const obj = {
         id: newId(),
         type: "image" as const,
@@ -359,6 +397,28 @@ export function ProjectNotePage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  function setPageOrientation(next: NoteOrientation) {
+    if (next === orientation) return;
+    setOrientation(next);
+    orientationRef.current = next;
+    dirtyRef.current = true;
+    setDirty(true);
+    setSaveState("idle");
+  }
+
+  function zoomBy(delta: number) {
+    setZoomMode("manual");
+    setZoom((prev) => {
+      const base = zoomMode === "fit" ? fitScale : prev;
+      return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((base + delta) * 100) / 100));
+    });
+  }
+
+  function zoomFit() {
+    setZoomMode("fit");
+    setZoom(fitScale);
   }
 
   function deleteSelected() {
@@ -549,8 +609,61 @@ export function ProjectNotePage() {
             </button>
           ) : null}
 
-          <div className="ml-auto flex items-center gap-1 text-xs">
-            <span className="text-slate-500">Background:</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-500">Zoom:</span>
+            <button
+              type="button"
+              title="Zoom out"
+              onClick={() => zoomBy(-ZOOM_STEP)}
+              className="inline-flex items-center rounded border border-slate-200 px-1.5 py-1 text-slate-600 hover:bg-slate-50"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="Fit to window"
+              onClick={zoomFit}
+              className={
+                "min-w-[3.25rem] rounded border px-1.5 py-1 tabular-nums " +
+                (zoomMode === "fit"
+                  ? "border-slate-800 bg-slate-800 text-white"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50")
+              }
+            >
+              {Math.round(scale * 100)}%
+            </button>
+            <button
+              type="button"
+              title="Zoom in"
+              onClick={() => zoomBy(ZOOM_STEP)}
+              className="inline-flex items-center rounded border border-slate-200 px-1.5 py-1 text-slate-600 hover:bg-slate-50"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </button>
+
+            <span className="ml-1 text-slate-500">Page:</span>
+            {(
+              [
+                ["portrait", "Portrait"],
+                ["landscape", "Landscape"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPageOrientation(id)}
+                className={
+                  "rounded px-2 py-1 " +
+                  (orientation === id
+                    ? "bg-slate-800 text-white"
+                    : "border border-slate-200 text-slate-600 hover:bg-slate-50")
+                }
+              >
+                {label}
+              </button>
+            ))}
+
+            <span className="ml-1 text-slate-500">Background:</span>
             {bgButtons.map((b) => (
               <button
                 key={b.id}
@@ -613,8 +726,8 @@ export function ProjectNotePage() {
         <div
           className="print:hidden"
           style={{
-            width: A4_WIDTH * scale,
-            height: A4_HEIGHT * scale,
+            width: pageWidth * scale,
+            height: pageHeight * scale,
           }}
         >
           <div
@@ -627,6 +740,8 @@ export function ProjectNotePage() {
               content={content}
               onChange={updateContent}
               background={background}
+              pageWidth={pageWidth}
+              pageHeight={pageHeight}
               tool={tool}
               penColor={penColor}
               penWidth={penWidth}
@@ -639,24 +754,37 @@ export function ProjectNotePage() {
 
         {printing ? (
           <div className="hidden print:block">
-            {pages.map((p) => (
-              <div key={p.id} className="a4-print-sheet break-after-page mb-0">
-                <A4PageCanvas
-                  content={
-                    p.id === pageId ? content : parsePageContent(p.contentJson)
-                  }
-                  onChange={() => {}}
-                  background={background}
-                  tool="select"
-                  penColor={penColor}
-                  penWidth={penWidth}
-                  assets={assets}
-                  selectedId={null}
-                  onSelect={() => {}}
-                  readOnly
-                />
-              </div>
-            ))}
+            {pages.map((p) => {
+              const o = normalizeOrientation(p.orientation);
+              const size = pageSize(o);
+              return (
+                <div
+                  key={p.id}
+                  className={`a4-print-sheet break-after-page mb-0 a4-print-${o}`}
+                >
+                  <A4PageCanvas
+                    content={
+                      p.id === pageId ? content : parsePageContent(p.contentJson)
+                    }
+                    onChange={() => {}}
+                    background={background}
+                    pageWidth={
+                      p.id === pageId ? pageWidth : size.width
+                    }
+                    pageHeight={
+                      p.id === pageId ? pageHeight : size.height
+                    }
+                    tool="select"
+                    penColor={penColor}
+                    penWidth={penWidth}
+                    assets={assets}
+                    selectedId={null}
+                    onSelect={() => {}}
+                    readOnly
+                  />
+                </div>
+              );
+            })}
           </div>
         ) : null}
       </div>

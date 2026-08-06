@@ -253,8 +253,8 @@ export function ProjectWorkspacePanel({ projectId }: { projectId: string }) {
       <section>
         <h2 className="text-lg font-semibold mb-2">A4 page notes</h2>
         <p className="text-sm text-slate-500 mb-2">
-          Scratchpad pages for handwriting, photos, and markup. Ruled or 10mm grid
-          backgrounds can be toggled in the editor. Print from the note screen.
+            Scratchpad pages for handwriting, photos, and markup. Ruled or 10mm grid
+            backgrounds, portrait/landscape per page, and zoom. Print from the note screen.
         </p>
         {noteErr ? <p className="mb-2 text-sm text-red-600">{noteErr}</p> : null}
         <button

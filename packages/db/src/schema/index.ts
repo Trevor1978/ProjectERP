@@ -610,7 +610,13 @@ export const projectNotePage = pgTable(
       .notNull()
       .references(() => projectNote.id, { onDelete: "cascade" }),
     pageIndex: integer("page_index").notNull().default(0),
-    /** JSON: { objects: [...], strokes: [...] } in A4 pixel coords (794×1123). */
+    /** A4 portrait (210×297mm) or landscape (297×210mm). */
+    orientation: text("orientation", {
+      enum: ["portrait", "landscape"],
+    })
+      .notNull()
+      .default("portrait"),
+    /** JSON: { objects: [...], strokes: [...] } in page pixel coords. */
     contentJson: text("content_json").notNull().default('{"objects":[],"strokes":[]}'),
     version: integer("version").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true })

@@ -55,6 +55,7 @@ function pageDto(p: typeof projectNotePage.$inferSelect) {
     id: p.id,
     noteId: p.noteId,
     pageIndex: p.pageIndex,
+    orientation: (p.orientation as "portrait" | "landscape") ?? "portrait",
     contentJson: p.contentJson,
     version: p.version,
     updatedAt: p.updatedAt,
@@ -239,6 +240,7 @@ app.post("/project-notes/:noteId/pages", async (c) => {
     .values({
       noteId: loaded.note.id,
       pageIndex: insertAt,
+      orientation: body.data.orientation ?? "portrait",
       contentJson: EMPTY_PAGE,
     })
     .returning();
@@ -275,16 +277,23 @@ app.patch("/project-notes/pages/:pageId", async (c) => {
     );
   }
 
-  try {
-    JSON.parse(body.data.contentJson);
-  } catch {
-    return c.json({ error: "contentJson must be valid JSON" }, 400);
+  if (body.data.contentJson !== undefined) {
+    try {
+      JSON.parse(body.data.contentJson);
+    } catch {
+      return c.json({ error: "contentJson must be valid JSON" }, 400);
+    }
   }
 
   const [updated] = await db
     .update(projectNotePage)
     .set({
-      contentJson: body.data.contentJson,
+      ...(body.data.contentJson !== undefined
+        ? { contentJson: body.data.contentJson }
+        : {}),
+      ...(body.data.orientation !== undefined
+        ? { orientation: body.data.orientation }
+        : {}),
       version: page.version + 1,
       updatedAt: new Date(),
     })

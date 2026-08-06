@@ -21,6 +21,16 @@
     margin: 0;
   }
 
+  @page a4-portrait {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  @page a4-landscape {
+    size: A4 landscape;
+    margin: 0;
+  }
+
   body {
     background: white !important;
   }
@@ -45,6 +55,14 @@
 
   .a4-print-sheet:last-child {
     break-after: auto;
+  }
+
+  .a4-print-portrait {
+    page: a4-portrait;
+  }
+
+  .a4-print-landscape {
+    page: a4-landscape;
   }
 
   .a4-page {

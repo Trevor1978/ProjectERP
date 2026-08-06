@@ -505,6 +505,7 @@ export const orgUserInvite = z.object({
 });
 
 export const projectNoteBackground = z.enum(["none", "ruled", "grid"]);
+export const projectNoteOrientation = z.enum(["portrait", "landscape"]);
 
 export const projectNoteCreate = z.object({
   title: z.string().trim().min(1).max(255).optional(),
@@ -521,12 +522,18 @@ export const projectNotePatch = z
 
 export const projectNotePagePatch = z
   .object({
-    contentJson: z.string().min(2).max(5_000_000),
+    contentJson: z.string().min(2).max(5_000_000).optional(),
+    orientation: projectNoteOrientation.optional(),
     version,
   })
-  .strict();
+  .strict()
+  .refine(
+    (d) => d.contentJson !== undefined || d.orientation !== undefined,
+    { message: "Provide contentJson and/or orientation" },
+  );
 
 export const projectNotePageCreate = z.object({
   /** Insert after this index; omit to append. */
   afterIndex: z.number().int().nonnegative().optional(),
+  orientation: projectNoteOrientation.optional(),
 });
