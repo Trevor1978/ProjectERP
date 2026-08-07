@@ -809,6 +809,7 @@ export function ProjectNotePage() {
               tool={tool}
               penColor={penColor}
               penWidth={penWidth}
+              viewScale={scale}
               assets={assets}
               selectedId={selectedId}
               onSelect={setSelectedId}

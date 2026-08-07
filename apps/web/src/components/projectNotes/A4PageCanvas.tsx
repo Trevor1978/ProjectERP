@@ -49,6 +49,8 @@ type Props = {
   tool: EditorTool;
   penColor: string;
   penWidth: number;
+  /** Current view scale — strokes are stored in page space so width is penWidth / scale. */
+  viewScale?: number;
   assets: ProjectNoteAsset[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -115,6 +117,7 @@ export function A4PageCanvas({
   tool,
   penColor,
   penWidth,
+  viewScale = 1,
   assets,
   selectedId,
   onSelect,
@@ -129,6 +132,8 @@ export function A4PageCanvas({
   const dragRef = useRef<DragState>(null);
   /** Set when an object handles pointerdown so page click does not clear selection. */
   const suppressDeselectRef = useRef(false);
+  const pagePenWidth = Math.max(0.5, penWidth / Math.max(0.05, viewScale));
+  const eraseRadius = Math.max(14, pagePenWidth * 2.5);
 
   const assetUrl = useCallback(
     (assetId: string) => {
@@ -178,7 +183,7 @@ export function A4PageCanvas({
   const eraseAt = (pt: StrokePoint) => {
     onChange((prev) => {
       const hit = prev.strokes.find((s) =>
-        s.points.some((p) => dist(p, pt) < Math.max(14, s.width * 2.5)),
+        s.points.some((p) => dist(p, pt) < Math.max(eraseRadius, s.width * 2.5)),
       );
       if (!hit) return prev;
       return { ...prev, strokes: prev.strokes.filter((s) => s.id !== hit.id) };
@@ -212,14 +217,14 @@ export function A4PageCanvas({
     const stroke: Stroke = {
       id: newId(),
       color: penColor,
-      width: penWidth,
+      width: pagePenWidth,
       points: [pt],
     };
     drawingRef.current = stroke;
     const ctx = inkRef.current?.getContext("2d");
     if (ctx) {
       ctx.strokeStyle = penColor;
-      ctx.lineWidth = penWidth;
+      ctx.lineWidth = pagePenWidth;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.beginPath();
