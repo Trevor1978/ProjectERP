@@ -10,7 +10,7 @@ export const A4_HEIGHT = A4_LONG;
 export type NoteBackground = "none" | "ruled" | "grid";
 export type NoteOrientation = "portrait" | "landscape";
 
-export type StrokePoint = { x: number; y: number };
+export type StrokePoint = { x: number; y: number; /** 0–1 stylus pressure when present */ p?: number };
 
 export type Stroke = {
   id: string;

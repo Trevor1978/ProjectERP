@@ -16,6 +16,12 @@ import {
   type Stroke,
   type StrokePoint,
 } from "../../lib/projectNoteTypes";
+import {
+  effectivePressure,
+  paintStroke,
+  paintStrokes,
+  thinStrokePoints,
+} from "../../lib/strokeUtils";
 
 export type PageContentUpdater =
   | PageContent
@@ -56,6 +62,12 @@ type Props = {
   onSelect: (id: string | null) => void;
   /** Bumped by parent when a two-finger gesture starts — cancels in-progress ink. */
   cancelInkSignal?: number;
+  /** When true and a stylus has been used, ignore finger ink (palm rejection). */
+  palmRejection?: boolean;
+  /** Use stylus pressure to vary stroke width (pen only). */
+  pressureEnabled?: boolean;
+  /** Parent: true while a stroke/erase gesture is in progress (defer autosave). */
+  onInkActivityChange?: (active: boolean) => void;
   readOnly?: boolean;
   className?: string;
 };
@@ -82,28 +94,6 @@ function backgroundStyle(bg: NoteBackground): CSSProperties {
   return { backgroundColor: "#fff" };
 }
 
-function drawStrokes(
-  ctx: CanvasRenderingContext2D,
-  strokes: Stroke[],
-  pageWidth: number,
-  pageHeight: number,
-) {
-  ctx.clearRect(0, 0, pageWidth, pageHeight);
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  for (const s of strokes) {
-    if (s.points.length < 2) continue;
-    ctx.strokeStyle = s.color;
-    ctx.lineWidth = s.width;
-    ctx.beginPath();
-    ctx.moveTo(s.points[0]!.x, s.points[0]!.y);
-    for (let i = 1; i < s.points.length; i++) {
-      ctx.lineTo(s.points[i]!.x, s.points[i]!.y);
-    }
-    ctx.stroke();
-  }
-}
-
 function dist(a: StrokePoint, b: StrokePoint) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -122,6 +112,9 @@ export function A4PageCanvas({
   selectedId,
   onSelect,
   cancelInkSignal = 0,
+  palmRejection = true,
+  pressureEnabled = true,
+  onInkActivityChange,
   readOnly,
   className,
 }: Props) {
@@ -129,11 +122,19 @@ export function A4PageCanvas({
   const pageRef = useRef<HTMLDivElement>(null);
   const drawingRef = useRef<Stroke | null>(null);
   const inkPointerIdRef = useRef<number | null>(null);
+  const inkPointerTypeRef = useRef<string>("");
   const dragRef = useRef<DragState>(null);
   /** Set when an object handles pointerdown so page click does not clear selection. */
   const suppressDeselectRef = useRef(false);
+  const drawnCountRef = useRef(0);
+  const stylusSeenRef = useRef(false);
+  const pendingPtRef = useRef<StrokePoint | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const erasePendingRef = useRef<StrokePoint | null>(null);
   const pagePenWidth = Math.max(0.5, penWidth / Math.max(0.05, viewScale));
   const eraseRadius = Math.max(14, pagePenWidth * 2.5);
+  const onInkActivityChangeRef = useRef(onInkActivityChange);
+  onInkActivityChangeRef.current = onInkActivityChange;
 
   const assetUrl = useCallback(
     (assetId: string) => {
@@ -143,19 +144,40 @@ export function A4PageCanvas({
     [assets],
   );
 
-  const redrawInk = useCallback(() => {
+  const setInkActive = useCallback((active: boolean) => {
+    onInkActivityChangeRef.current?.(active);
+  }, []);
+
+  const redrawInkFull = useCallback(() => {
     const canvas = inkRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    drawStrokes(ctx, content.strokes, pageWidth, pageHeight);
+    paintStrokes(ctx, content.strokes, pageWidth, pageHeight);
+    drawnCountRef.current = content.strokes.length;
   }, [content.strokes, pageWidth, pageHeight]);
 
   useEffect(() => {
     // Don't wipe live stroke being drawn.
     if (drawingRef.current) return;
-    redrawInk();
-  }, [redrawInk]);
+    const canvas = inkRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!ctx) return;
+
+    const strokes = content.strokes;
+    // Incremental: only paint the newly appended stroke when possible.
+    if (
+      strokes.length === drawnCountRef.current + 1 &&
+      drawnCountRef.current >= 0 &&
+      strokes.length > 0
+    ) {
+      paintStroke(ctx, strokes[strokes.length - 1]!);
+      drawnCountRef.current = strokes.length;
+      return;
+    }
+    paintStrokes(ctx, strokes, pageWidth, pageHeight);
+    drawnCountRef.current = strokes.length;
+  }, [content.strokes, pageWidth, pageHeight]);
 
   // Parent signals multi-touch gesture → drop any in-progress pen stroke.
   useEffect(() => {
@@ -163,22 +185,46 @@ export function A4PageCanvas({
     if (drawingRef.current || inkPointerIdRef.current !== null) {
       drawingRef.current = null;
       inkPointerIdRef.current = null;
-      redrawInk();
+      pendingPtRef.current = null;
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      setInkActive(false);
+      redrawInkFull();
     }
-  }, [cancelInkSignal, redrawInk]);
+  }, [cancelInkSignal, redrawInkFull, setInkActive]);
 
-  const toPagePoint = useCallback((clientX: number, clientY: number): StrokePoint | null => {
-    const el = pageRef.current;
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    if (r.width < 1 || r.height < 1) return null;
-    const x = ((clientX - r.left) / r.width) * pageWidth;
-    const y = ((clientY - r.top) / r.height) * pageHeight;
-    return {
-      x: Math.max(0, Math.min(pageWidth, x)),
-      y: Math.max(0, Math.min(pageHeight, y)),
+  useEffect(() => {
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [pageWidth, pageHeight]);
+  }, []);
+
+  const toPagePoint = useCallback(
+    (
+      clientX: number,
+      clientY: number,
+      pressure?: number,
+      pointerType?: string,
+    ): StrokePoint | null => {
+      const el = pageRef.current;
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return null;
+      const x = ((clientX - r.left) / r.width) * pageWidth;
+      const y = ((clientY - r.top) / r.height) * pageHeight;
+      const pt: StrokePoint = {
+        x: Math.max(0, Math.min(pageWidth, x)),
+        y: Math.max(0, Math.min(pageHeight, y)),
+      };
+      if (pressureEnabled && pointerType === "pen") {
+        pt.p = effectivePressure(pressure, pointerType);
+      }
+      return pt;
+    },
+    [pageWidth, pageHeight, pressureEnabled],
+  );
 
   const eraseAt = (pt: StrokePoint) => {
     onChange((prev) => {
@@ -193,12 +239,64 @@ export function A4PageCanvas({
   const cancelInk = () => {
     drawingRef.current = null;
     inkPointerIdRef.current = null;
-    redrawInk();
+    pendingPtRef.current = null;
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setInkActive(false);
+    redrawInkFull();
+  };
+
+  const flushPendingPoint = () => {
+    rafRef.current = null;
+    const stroke = drawingRef.current;
+    const pt = pendingPtRef.current;
+    pendingPtRef.current = null;
+    if (!stroke || !pt) return;
+    const last = stroke.points[stroke.points.length - 1]!;
+    if (dist(last, pt) < 0.8) return;
+    stroke.points.push(pt);
+    const ctx = inkRef.current?.getContext("2d");
+    if (!ctx) return;
+    const variable = typeof pt.p === "number" || typeof last.p === "number";
+    if (variable) {
+      const w0 = Math.max(0.4, stroke.width * (0.35 + 0.65 * (last.p ?? 1)));
+      const w1 = Math.max(0.4, stroke.width * (0.35 + 0.65 * (pt.p ?? 1)));
+      ctx.strokeStyle = stroke.color;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = (w0 + w1) / 2;
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(pt.x, pt.y);
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = stroke.color;
+      ctx.lineWidth = stroke.width;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(pt.x, pt.y);
+      ctx.stroke();
+    }
   };
 
   const onInkPointerDown = (e: ReactPointerEvent) => {
     if (readOnly) return;
     if (tool !== "pen" && tool !== "eraser") return;
+
+    if (e.pointerType === "pen") stylusSeenRef.current = true;
+    if (
+      palmRejection &&
+      stylusSeenRef.current &&
+      e.pointerType === "touch"
+    ) {
+      // Palm / finger while Pencil is in use — ignore for ink.
+      return;
+    }
+
     // Second finger / extra pointer: cancel drawing so pinch can take over.
     if (inkPointerIdRef.current !== null && e.pointerId !== inkPointerIdRef.current) {
       cancelInk();
@@ -208,7 +306,9 @@ export function A4PageCanvas({
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     inkPointerIdRef.current = e.pointerId;
-    const pt = toPagePoint(e.clientX, e.clientY);
+    inkPointerTypeRef.current = e.pointerType;
+    setInkActive(true);
+    const pt = toPagePoint(e.clientX, e.clientY, e.pressure, e.pointerType);
     if (!pt) return;
     if (tool === "eraser") {
       eraseAt(pt);
@@ -238,23 +338,26 @@ export function A4PageCanvas({
       return;
     }
     if (tool === "eraser" && e.buttons === 1 && e.pointerId === inkPointerIdRef.current) {
-      const pt = toPagePoint(e.clientX, e.clientY);
-      if (pt) eraseAt(pt);
+      const pt = toPagePoint(e.clientX, e.clientY, e.pressure, e.pointerType);
+      if (!pt) return;
+      erasePendingRef.current = pt;
+      if (rafRef.current == null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          const p = erasePendingRef.current;
+          erasePendingRef.current = null;
+          if (p) eraseAt(p);
+        });
+      }
       return;
     }
     const stroke = drawingRef.current;
     if (!stroke) return;
-    const pt = toPagePoint(e.clientX, e.clientY);
+    const pt = toPagePoint(e.clientX, e.clientY, e.pressure, e.pointerType);
     if (!pt) return;
-    const last = stroke.points[stroke.points.length - 1]!;
-    if (dist(last, pt) < 1.2) return;
-    stroke.points.push(pt);
-    const ctx = inkRef.current?.getContext("2d");
-    if (ctx) {
-      ctx.lineTo(pt.x, pt.y);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(pt.x, pt.y);
+    pendingPtRef.current = pt;
+    if (rafRef.current == null) {
+      rafRef.current = requestAnimationFrame(flushPendingPoint);
     }
   };
 
@@ -262,13 +365,20 @@ export function A4PageCanvas({
     if (inkPointerIdRef.current !== null && e.pointerId !== inkPointerIdRef.current) {
       return;
     }
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    flushPendingPoint();
     const stroke = drawingRef.current;
     drawingRef.current = null;
     inkPointerIdRef.current = null;
+    setInkActive(false);
     if (!stroke || stroke.points.length < 2) {
-      redrawInk();
+      redrawInkFull();
       return;
     }
+    stroke.points = thinStrokePoints(stroke.points);
     onChange((prev) => ({
       ...prev,
       strokes: [...prev.strokes, stroke],

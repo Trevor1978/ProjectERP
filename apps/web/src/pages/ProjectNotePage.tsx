@@ -10,6 +10,7 @@ import {
   PenLine,
   Plus,
   Printer,
+  Redo2,
   Trash2,
   Type,
   Undo2,
@@ -28,6 +29,7 @@ import {
   zoomAroundPoint,
   type ViewPan,
 } from "../components/projectNotes/NoteCanvasViewport";
+import { compressNoteImage } from "../lib/imageCompress";
 import {
   emptyPageContent,
   newId,
@@ -42,6 +44,10 @@ import {
   type ProjectNote,
   type ProjectNoteAsset,
 } from "../lib/projectNoteTypes";
+import {
+  PAGE_JSON_SOFT_LIMIT,
+  pageContentByteLength,
+} from "../lib/strokeUtils";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -99,7 +105,15 @@ export function ProjectNotePage() {
   const [printing, setPrinting] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [palmRejection, setPalmRejection] = useState(true);
+  const [pressureEnabled, setPressureEnabled] = useState(true);
+  const [sizeWarnBytes, setSizeWarnBytes] = useState(0);
+  const [chromeCollapsed, setChromeCollapsed] = useState(false);
+  const [inkActive, setInkActive] = useState(false);
   const undoStackRef = useRef<PageContent[]>([]);
+  const redoStackRef = useRef<PageContent[]>([]);
+  const inkActiveRef = useRef(false);
   const viewportSizeRef = useRef({ w: 0, h: 0 });
   const viewportElRef = useRef<HTMLDivElement | null>(null);
   const scaleRef = useRef(1);
@@ -175,7 +189,9 @@ export function ProjectNotePage() {
     setContent(parsed);
     contentRef.current = parsed;
     undoStackRef.current = [];
+    redoStackRef.current = [];
     setCanUndo(false);
+    setCanRedo(false);
     dirtyRef.current = false;
     setDirty(false);
     setSelectedId(null);
@@ -218,12 +234,24 @@ export function ProjectNotePage() {
     };
   }, []);
 
+  useEffect(() => {
+    const mq = window.matchMedia(
+      "(orientation: landscape) and (max-height: 520px)",
+    );
+    const sync = () => setChromeCollapsed(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   const pushUndoSnapshot = useCallback((prev: PageContent) => {
     undoStackRef.current.push(structuredClone(prev));
     if (undoStackRef.current.length > 40) {
       undoStackRef.current.shift();
     }
+    redoStackRef.current = [];
     setCanUndo(true);
+    setCanRedo(false);
   }, []);
 
   const updateContent = useCallback(
@@ -237,6 +265,8 @@ export function ProjectNotePage() {
           pushUndoSnapshot(prev);
         }
         contentRef.current = resolved;
+        const bytes = pageContentByteLength(serializePageContent(resolved));
+        setSizeWarnBytes(bytes >= PAGE_JSON_SOFT_LIMIT ? bytes : 0);
         return resolved;
       });
       dirtyRef.current = true;
@@ -252,6 +282,7 @@ export function ProjectNotePage() {
       setCanUndo(false);
       return;
     }
+    redoStackRef.current.push(structuredClone(contentRef.current));
     setContent(prev);
     contentRef.current = prev;
     dirtyRef.current = true;
@@ -259,6 +290,29 @@ export function ProjectNotePage() {
     setSaveState("idle");
     setSelectedId(null);
     setCanUndo(undoStackRef.current.length > 0);
+    setCanRedo(true);
+  }, []);
+
+  const redo = useCallback(() => {
+    const next = redoStackRef.current.pop();
+    if (!next) {
+      setCanRedo(false);
+      return;
+    }
+    undoStackRef.current.push(structuredClone(contentRef.current));
+    setContent(next);
+    contentRef.current = next;
+    dirtyRef.current = true;
+    setDirty(true);
+    setSaveState("idle");
+    setSelectedId(null);
+    setCanRedo(redoStackRef.current.length > 0);
+    setCanUndo(true);
+  }, []);
+
+  const onInkActivityChange = useCallback((active: boolean) => {
+    inkActiveRef.current = active;
+    setInkActive(active);
   }, []);
 
   const savePage = useCallback(async (): Promise<boolean> => {
@@ -330,16 +384,32 @@ export function ProjectNotePage() {
 
   useEffect(() => {
     if (!dirty) return;
+    // Defer while pen is down so we don't PATCH mid-stroke.
+    if (inkActive) return;
     const t = window.setTimeout(() => {
       void savePage().then((ok) => {
-        // If edits landed during save, schedule again.
-        if (ok && dirtyRef.current) {
+        if (ok && dirtyRef.current && !inkActiveRef.current) {
           void savePage();
         }
       });
-    }, 700);
+    }, 1600);
     return () => window.clearTimeout(t);
-  }, [content, dirty, orientation, savePage]);
+  }, [content, dirty, orientation, savePage, inkActive]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (dirtyRef.current && !inkActiveRef.current) void savePage();
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [savePage]);
 
   async function saveMeta(patch: { title?: string; background?: NoteBackground }) {
     if (!noteId) return;
@@ -444,8 +514,9 @@ export function ProjectNotePage() {
     if (!noteId) return;
     setErr("");
     try {
+      const compressed = await compressNoteImage(file);
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", compressed);
       const res = await apiForm<{ asset: ProjectNoteAsset }>(
         `/api/project-notes/${noteId}/assets`,
         form,
@@ -667,7 +738,12 @@ export function ProjectNotePage() {
   return (
     <div className="project-note-editor flex min-h-0 flex-1 flex-col bg-slate-100">
       {/* Compact focus-mode chrome */}
-      <div className="no-print shrink-0 border-b border-slate-200 bg-white px-2 py-1.5 shadow-sm">
+      <div
+        className={
+          "no-print shrink-0 border-b border-slate-200 bg-white px-2 shadow-sm " +
+          (chromeCollapsed ? "py-0.5" : "py-1.5")
+        }
+      >
         <div className="flex items-center gap-2">
           <Link
             to={`/p/${projectId}?tab=workspace`}
@@ -723,8 +799,21 @@ export function ProjectNotePage() {
           </button>
         </div>
 
+        {sizeWarnBytes > 0 ? (
+          <p className="mt-1 text-xs text-amber-700">
+            This page is large (~{Math.round(sizeWarnBytes / 1024)} KB). Zoomed
+            detail and long handwriting may slow save — clear unused ink if it
+            feels laggy.
+          </p>
+        ) : null}
+
         {/* Desktop secondary tools */}
-        <div className="mt-1 hidden flex-wrap items-center gap-2 md:flex">
+        <div
+          className={
+            "mt-1 flex-wrap items-center gap-2 " +
+            (chromeCollapsed ? "hidden" : "hidden md:flex")
+          }
+        >
           <div className="flex rounded-lg border border-slate-200 p-0.5">
             {(
               [
@@ -775,6 +864,16 @@ export function ProjectNotePage() {
               <Undo2 className="h-4 w-4" />
               Undo
             </button>
+            <button
+              type="button"
+              title="Redo"
+              disabled={!canRedo}
+              onClick={redo}
+              className="inline-flex min-h-10 items-center gap-1 rounded-md px-3 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+            >
+              <Redo2 className="h-4 w-4" />
+              Redo
+            </button>
           </div>
 
           {tool === "pen" ? (
@@ -822,7 +921,12 @@ export function ProjectNotePage() {
         {err ? <p className="mt-1 text-sm text-red-600">{err}</p> : null}
       </div>
 
-      <div className="no-print flex shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-2 py-1">
+      <div
+        className={
+          "no-print shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-2 py-1 " +
+          (chromeCollapsed ? "hidden" : "flex")
+        }
+      >
         {pages.map((p, i) => (
           <button
             key={p.id}
@@ -885,6 +989,9 @@ export function ProjectNotePage() {
               selectedId={selectedId}
               onSelect={setSelectedId}
               cancelInkSignal={cancelInkSignal}
+              palmRejection={palmRejection}
+              pressureEnabled={pressureEnabled}
+              onInkActivityChange={onInkActivityChange}
             />
           </NoteCanvasViewport>
         </div>
@@ -923,7 +1030,12 @@ export function ProjectNotePage() {
       </div>
 
       {/* Mobile / tablet bottom tool dock */}
-      <div className="note-tool-dock no-print shrink-0 border-t border-slate-200 bg-white px-1 pt-1 shadow-[0_-4px_12px_rgba(15,23,42,0.06)] md:hidden">
+      <div
+        className={
+          "note-tool-dock no-print shrink-0 border-t border-slate-200 bg-white px-1 pt-1 shadow-[0_-4px_12px_rgba(15,23,42,0.06)] " +
+          (chromeCollapsed ? "flex" : "flex md:hidden")
+        }
+      >
         <div className="flex items-stretch justify-around gap-0.5">
           <button
             type="button"
@@ -975,7 +1087,7 @@ export function ProjectNotePage() {
             More
           </button>
         </div>
-        {tool === "pen" ? (
+        {tool === "pen" && !chromeCollapsed ? (
           <div className="flex items-center gap-3 px-2 pb-1 pt-1 text-xs text-slate-600">
             <label className="flex items-center gap-1">
               Color
@@ -1037,7 +1149,39 @@ export function ProjectNotePage() {
             </div>
             <div className="flex flex-col gap-4">
               {zoomOrientBgControls}
+              <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                <label className="flex min-h-11 items-center justify-between gap-3">
+                  <span>Palm rejection (stylus)</span>
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5"
+                    checked={palmRejection}
+                    onChange={(e) => setPalmRejection(e.target.checked)}
+                  />
+                </label>
+                <label className="flex min-h-11 items-center justify-between gap-3">
+                  <span>Pressure-sensitive width</span>
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5"
+                    checked={pressureEnabled}
+                    onChange={(e) => setPressureEnabled(e.target.checked)}
+                  />
+                </label>
+              </div>
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!canRedo}
+                  onClick={() => {
+                    redo();
+                    setMoreOpen(false);
+                  }}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm disabled:opacity-40"
+                >
+                  <Redo2 className="h-4 w-4" />
+                  Redo
+                </button>
                 <button
                   type="button"
                   onClick={() => {

@@ -27,6 +27,7 @@ import { WorkspaceServiceHistoryDetailPage } from "./pages/workspace/WorkspaceSe
 import { WorkspaceWorkCompletePage } from "./pages/workspace/WorkspaceWorkCompletePage";
 import { WorkspaceOrganizationPage } from "./pages/workspace/WorkspaceOrganizationPage";
 import { ProjectNotePage } from "./pages/ProjectNotePage";
+import { NotesHomePage } from "./pages/NotesHomePage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { QuickCreateProvider } from "./components/QuickCreateProvider";
 import { House } from "lucide-react";
@@ -193,6 +194,16 @@ export default function App() {
         <Route path="organization" element={<WorkspaceOrganizationPage />} />
         <Route path=":table" element={<HomePage />} />
       </Route>
+      <Route
+        path="/notes"
+        element={
+          <Layout>
+            <AuthGate>
+              <NotesHomePage />
+            </AuthGate>
+          </Layout>
+        }
+      />
       <Route
         path="/p/:projectId/notes/:noteId"
         element={

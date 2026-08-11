@@ -1,7 +1,9 @@
 import { Hono } from "hono";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import {
   db,
+  project,
+  projectMember,
   projectNote,
   projectNotePage,
   projectNoteAsset,
@@ -27,6 +29,60 @@ const EMPTY_PAGE = '{"objects":[],"strokes":[]}';
 
 const app = new Hono();
 app.use("/*", requireAuth);
+
+async function visibleProjectIds(a: AuthUser): Promise<string[]> {
+  if (a.globalRole === "org_admin") {
+    const prows = await db
+      .select({ id: project.id })
+      .from(project)
+      .where(eq(project.organizationId, a.organizationId));
+    return prows.map((p) => p.id);
+  }
+  const mem = await db
+    .select({ projectId: projectMember.projectId })
+    .from(projectMember)
+    .where(eq(projectMember.userId, a.id));
+  return mem.map((m) => m.projectId);
+}
+
+/** Recent A4 notes across projects the user can access (field launcher). */
+app.get("/project-notes/recent", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const ids = await visibleProjectIds(a);
+  if (ids.length === 0) return c.json({ notes: [] });
+
+  const limit = Math.min(40, Math.max(1, Number(c.req.query("limit") ?? 24) || 24));
+  const rows = await db
+    .select({
+      id: projectNote.id,
+      projectId: projectNote.projectId,
+      title: projectNote.title,
+      background: projectNote.background,
+      updatedAt: projectNote.updatedAt,
+      projectName: project.name,
+    })
+    .from(projectNote)
+    .innerJoin(project, eq(project.id, projectNote.projectId))
+    .where(
+      and(
+        inArray(projectNote.projectId, ids),
+        eq(project.organizationId, a.organizationId),
+      ),
+    )
+    .orderBy(desc(projectNote.updatedAt))
+    .limit(limit);
+
+  return c.json({
+    notes: rows.map((n) => ({
+      id: n.id,
+      projectId: n.projectId,
+      projectName: n.projectName,
+      title: n.title,
+      background: n.background as "none" | "ruled" | "grid",
+      updatedAt: n.updatedAt,
+    })),
+  });
+});
 
 async function loadNoteForAuth(auth: AuthUser, noteId: string) {
   const [row] = await db

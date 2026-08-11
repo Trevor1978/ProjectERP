@@ -85,10 +85,13 @@
   overscroll-behavior: none;
   height: 100dvh;
   max-height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .note-tool-dock {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 .note-tool-btn {

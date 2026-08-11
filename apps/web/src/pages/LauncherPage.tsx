@@ -8,6 +8,7 @@ import {
   History,
   ListChecks,
   ListTree,
+  NotebookPen,
   ShoppingCart,
   Truck,
   Users,
@@ -65,6 +66,23 @@ export function LauncherPage() {
       </p>
 
       <ul className="mx-auto grid w-full max-w-lg grid-cols-3 gap-x-4 gap-y-8 sm:max-w-2xl sm:grid-cols-4 md:grid-cols-5 md:gap-x-6 md:gap-y-10">
+        <li className="flex justify-center">
+          <Link
+            to="/notes"
+            className="flex w-[5.5rem] flex-col items-center gap-2 rounded-xl p-1 outline-none ring-slate-900/10 transition-transform hover:scale-[1.03] focus-visible:ring-2 sm:w-24"
+          >
+            <span className="flex h-16 w-16 items-center justify-center rounded-[1.35rem] bg-gradient-to-br from-sky-600 to-slate-800 shadow-lg shadow-sky-600/25 sm:h-[4.5rem] sm:w-[4.5rem]">
+              <NotebookPen
+                className="h-8 w-8 text-white drop-shadow-sm sm:h-9 sm:w-9"
+                strokeWidth={1.75}
+                aria-hidden
+              />
+            </span>
+            <span className="max-w-[5.5rem] text-center text-[11px] font-medium leading-tight text-slate-800 sm:text-xs">
+              A4 notes
+            </span>
+          </Link>
+        </li>
         {WORKSPACE_NAV_ITEMS.map(({ slug, label }) => {
           const Icon = ICON_BY_SLUG[slug];
           const tile = TILE_STYLE[slug];
