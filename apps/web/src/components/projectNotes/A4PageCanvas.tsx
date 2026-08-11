@@ -376,6 +376,7 @@ export function A4PageCanvas({
           return (
             <div
               key={obj.id}
+              data-note-object={obj.id}
               className={`absolute touch-none ${selected ? "ring-2 ring-blue-500" : ""}`}
               style={{
                 left: obj.x,
@@ -407,6 +408,7 @@ export function A4PageCanvas({
         return (
           <div
             key={obj.id}
+            data-note-object={obj.id}
             className={`absolute touch-none ${selected ? "ring-2 ring-blue-500 bg-white/40" : ""}`}
             style={{
               left: obj.x,

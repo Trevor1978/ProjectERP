@@ -46,6 +46,8 @@
   .project-note-editor {
     display: block !important;
     background: white !important;
+    height: auto !important;
+    max-height: none !important;
   }
 
   .a4-print-sheet {
@@ -81,4 +83,15 @@
 
 .project-note-editor {
   overscroll-behavior: none;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+.note-tool-dock {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+.note-tool-btn {
+  min-width: 44px;
+  min-height: 44px;
 }

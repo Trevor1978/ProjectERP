@@ -54,7 +54,12 @@ function Layout({ children }: { children: React.ReactNode }) {
   return (
     <QuickCreateProvider>
       <div className="flex min-h-screen flex-col">
-      <header className="no-print flex items-center justify-between border-b border-tesla-border bg-tesla-header px-4 py-3 text-white">
+      <header
+        className={
+          "no-print items-center justify-between border-b border-tesla-border bg-tesla-header px-4 py-3 text-white " +
+          (isProjectNote ? "hidden" : "flex")
+        }
+      >
         <div className="flex items-center gap-6">
           <Link to="/" className="text-sm font-medium uppercase tracking-[0.2em]">
             Project ERP

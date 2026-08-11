@@ -22,6 +22,8 @@ type Props = {
   pan: ViewPan;
   zoomMin: number;
   zoomMax: number;
+  /** When true, a single finger/pointer drag pans the canvas (e.g. Select tool). */
+  oneFingerPan?: boolean;
   onTransform: (next: { scale: number; pan: ViewPan }) => void;
   onGestureStart?: () => void;
   viewportRef?: RefObject<HTMLDivElement | null>;
@@ -76,8 +78,8 @@ export function centerPan(
 }
 
 /**
- * Canvas-only viewport: pinch zoom + two-finger pan + ctrl/trackpad wheel zoom.
- * Blocks browser page zoom/scroll while interacting here.
+ * Canvas-only viewport: pinch zoom + two-finger pan + optional one-finger pan +
+ * ctrl/trackpad wheel zoom. Blocks browser page zoom/scroll while interacting here.
  */
 export function NoteCanvasViewport({
   pageWidth,
@@ -86,6 +88,7 @@ export function NoteCanvasViewport({
   pan,
   zoomMin,
   zoomMax,
+  oneFingerPan = false,
   onTransform,
   onGestureStart,
   viewportRef: viewportRefProp,
@@ -95,10 +98,17 @@ export function NoteCanvasViewport({
   const localRef = useRef<HTMLDivElement>(null);
   const viewportRef = viewportRefProp ?? localRef;
   const gestureRef = useRef<GestureStart | null>(null);
+  const oneFingerRef = useRef<{
+    pointerId: number;
+    lastX: number;
+    lastY: number;
+  } | null>(null);
   const scaleRef = useRef(scale);
   const panRef = useRef(pan);
+  const oneFingerPanRef = useRef(oneFingerPan);
   scaleRef.current = scale;
   panRef.current = pan;
+  oneFingerPanRef.current = oneFingerPan;
   const onTransformRef = useRef(onTransform);
   onTransformRef.current = onTransform;
   const onGestureStartRef = useRef(onGestureStart);
@@ -138,6 +148,7 @@ export function NoteCanvasViewport({
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length >= 2) {
         e.preventDefault();
+        oneFingerRef.current = null;
         onGestureStartRef.current?.();
         const a = e.touches.item(0);
         const b = e.touches.item(1);
@@ -195,17 +206,72 @@ export function NoteCanvasViewport({
       onTransformRef.current({ scale: nextScale, pan: nextPan });
     };
 
+    const targetIsObject = (t: EventTarget | null) =>
+      t instanceof Element && !!t.closest("[data-note-object]");
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (!oneFingerPanRef.current) return;
+      if (e.button !== 0) return;
+      if (gestureRef.current) return;
+      if (targetIsObject(e.target)) return;
+      oneFingerRef.current = {
+        pointerId: e.pointerId,
+        lastX: e.clientX,
+        lastY: e.clientY,
+      };
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      const panState = oneFingerRef.current;
+      if (!panState || panState.pointerId !== e.pointerId) return;
+      if (gestureRef.current) {
+        oneFingerRef.current = null;
+        return;
+      }
+      e.preventDefault();
+      const dx = e.clientX - panState.lastX;
+      const dy = e.clientY - panState.lastY;
+      panState.lastX = e.clientX;
+      panState.lastY = e.clientY;
+      onTransformRef.current({
+        scale: scaleRef.current,
+        pan: {
+          x: panRef.current.x + dx,
+          y: panRef.current.y + dy,
+        },
+      });
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (oneFingerRef.current?.pointerId === e.pointerId) {
+        oneFingerRef.current = null;
+      }
+    };
+
     el.addEventListener("touchstart", onTouchStart, { passive: false });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd);
     el.addEventListener("touchcancel", onTouchEnd);
     el.addEventListener("wheel", onWheelNative, { passive: false });
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("pointermove", onPointerMove, { passive: false });
+    el.addEventListener("pointerup", onPointerUp);
+    el.addEventListener("pointercancel", onPointerUp);
     return () => {
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
       el.removeEventListener("wheel", onWheelNative);
+      el.removeEventListener("pointerdown", onPointerDown);
+      el.removeEventListener("pointermove", onPointerMove);
+      el.removeEventListener("pointerup", onPointerUp);
+      el.removeEventListener("pointercancel", onPointerUp);
     };
   }, [applyPinch, viewportRef, zoomMin, zoomMax]);
 

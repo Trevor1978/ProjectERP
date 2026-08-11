@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  Ellipsis,
   Eraser,
   ImagePlus,
   MousePointer2,
@@ -11,8 +12,10 @@ import {
   Printer,
   Trash2,
   Type,
+  Undo2,
   ZoomIn,
   ZoomOut,
+  X,
 } from "lucide-react";
 import { api, apiForm } from "../lib/api";
 import {
@@ -94,6 +97,9 @@ export function ProjectNotePage() {
   const [pan, setPan] = useState<ViewPan>({ x: 0, y: 0 });
   const [cancelInkSignal, setCancelInkSignal] = useState(0);
   const [printing, setPrinting] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const undoStackRef = useRef<PageContent[]>([]);
   const viewportSizeRef = useRef({ w: 0, h: 0 });
   const viewportElRef = useRef<HTMLDivElement | null>(null);
   const scaleRef = useRef(1);
@@ -168,6 +174,8 @@ export function ProjectNotePage() {
     const parsed = parsePageContent(page.contentJson);
     setContent(parsed);
     contentRef.current = parsed;
+    undoStackRef.current = [];
+    setCanUndo(false);
     dirtyRef.current = false;
     setDirty(false);
     setSelectedId(null);
@@ -210,15 +218,47 @@ export function ProjectNotePage() {
     };
   }, []);
 
-  const updateContent = useCallback((next: PageContentUpdater) => {
-    setContent((prev) => {
-      const resolved = typeof next === "function" ? next(prev) : next;
-      contentRef.current = resolved;
-      return resolved;
-    });
+  const pushUndoSnapshot = useCallback((prev: PageContent) => {
+    undoStackRef.current.push(structuredClone(prev));
+    if (undoStackRef.current.length > 40) {
+      undoStackRef.current.shift();
+    }
+    setCanUndo(true);
+  }, []);
+
+  const updateContent = useCallback(
+    (next: PageContentUpdater) => {
+      setContent((prev) => {
+        const resolved = typeof next === "function" ? next(prev) : next;
+        if (
+          resolved.strokes.length !== prev.strokes.length ||
+          resolved.objects.length !== prev.objects.length
+        ) {
+          pushUndoSnapshot(prev);
+        }
+        contentRef.current = resolved;
+        return resolved;
+      });
+      dirtyRef.current = true;
+      setDirty(true);
+      setSaveState("idle");
+    },
+    [pushUndoSnapshot],
+  );
+
+  const undo = useCallback(() => {
+    const prev = undoStackRef.current.pop();
+    if (!prev) {
+      setCanUndo(false);
+      return;
+    }
+    setContent(prev);
+    contentRef.current = prev;
     dirtyRef.current = true;
     setDirty(true);
     setSaveState("idle");
+    setSelectedId(null);
+    setCanUndo(undoStackRef.current.length > 0);
   }, []);
 
   const savePage = useCallback(async (): Promise<boolean> => {
@@ -530,19 +570,114 @@ export function ProjectNotePage() {
     { id: "grid", label: "10mm grid" },
   ];
 
+  const oneFingerPan =
+    tool === "select" || (zoomMode === "manual" && scale > fitScale * 1.02);
+
+  const dockBtn = (
+    active: boolean,
+    extra = "",
+  ) =>
+    "note-tool-btn inline-flex flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-[10px] font-medium " +
+    (active ? "bg-slate-800 text-white " : "text-slate-600 hover:bg-slate-100 ") +
+    extra;
+
+  const zoomOrientBgControls = (
+    <>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-500">Zoom</span>
+        <button
+          type="button"
+          title="Zoom out"
+          onClick={() => zoomBy(-ZOOM_STEP)}
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          title="Fit to window"
+          onClick={zoomFit}
+          className={
+            "min-h-11 min-w-[3.5rem] rounded-lg border px-2 tabular-nums " +
+            (zoomMode === "fit"
+              ? "border-slate-800 bg-slate-800 text-white"
+              : "border-slate-200 text-slate-600 hover:bg-slate-50")
+          }
+        >
+          {Math.round(scale * 100)}%
+        </button>
+        <button
+          type="button"
+          title="Zoom in"
+          onClick={() => zoomBy(ZOOM_STEP)}
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+        >
+          <ZoomIn className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-500">Page</span>
+        {(
+          [
+            ["portrait", "Portrait"],
+            ["landscape", "Landscape"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setPageOrientation(id)}
+            className={
+              "min-h-11 rounded-lg px-3 " +
+              (orientation === id
+                ? "bg-slate-800 text-white"
+                : "border border-slate-200 text-slate-600 hover:bg-slate-50")
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-slate-500">Background</span>
+        {bgButtons.map((b) => (
+          <button
+            key={b.id}
+            type="button"
+            onClick={() => {
+              setBackground(b.id);
+              void saveMeta({ background: b.id });
+            }}
+            className={
+              "min-h-11 rounded-lg px-3 " +
+              (background === b.id
+                ? "bg-slate-800 text-white"
+                : "border border-slate-200 text-slate-600 hover:bg-slate-50")
+            }
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
   return (
     <div className="project-note-editor flex min-h-0 flex-1 flex-col bg-slate-100">
-      <div className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white px-3 py-2 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
+      {/* Compact focus-mode chrome */}
+      <div className="no-print shrink-0 border-b border-slate-200 bg-white px-2 py-1.5 shadow-sm">
+        <div className="flex items-center gap-2">
           <Link
             to={`/p/${projectId}?tab=workspace`}
-            className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
+            className="note-tool-btn inline-flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+            title="Back to project"
           >
-            <ArrowLeft className="h-4 w-4" />
-            Project
+            <ArrowLeft className="h-5 w-5" />
           </Link>
           <input
-            className="min-w-[160px] flex-1 rounded border border-slate-200 px-2 py-1 text-sm font-medium"
+            className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-2 text-sm font-medium focus:border-slate-200 focus:bg-white"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={() => {
@@ -551,7 +686,7 @@ export function ProjectNotePage() {
               }
             }}
           />
-          <span className="text-xs text-slate-400">
+          <span className="hidden shrink-0 text-xs text-slate-400 sm:inline">
             {saveState === "saving"
               ? "Saving…"
               : saveState === "saved"
@@ -565,23 +700,32 @@ export function ProjectNotePage() {
           <button
             type="button"
             onClick={() => void handlePrint()}
-            className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-sm hover:bg-slate-50"
+            className="note-tool-btn hidden items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 sm:inline-flex"
+            title="Print"
           >
-            <Printer className="h-4 w-4" />
-            Print
+            <Printer className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            className="note-tool-btn inline-flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+            title="More"
+          >
+            <Ellipsis className="h-5 w-5" />
           </button>
           <button
             type="button"
             onClick={() => void deleteNote()}
-            className="inline-flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-sm text-red-700 hover:bg-red-50"
+            className="note-tool-btn hidden items-center justify-center rounded-lg text-red-600 hover:bg-red-50 md:inline-flex"
+            title="Delete note"
           >
-            <Trash2 className="h-4 w-4" />
-            Delete
+            <Trash2 className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <div className="flex rounded border border-slate-200 p-0.5">
+        {/* Desktop secondary tools */}
+        <div className="mt-1 hidden flex-wrap items-center gap-2 md:flex">
+          <div className="flex rounded-lg border border-slate-200 p-0.5">
             {(
               [
                 ["pen", PenLine, "Pen"],
@@ -602,13 +746,13 @@ export function ProjectNotePage() {
                   setTool(id);
                 }}
                 className={
-                  "inline-flex items-center gap-1 rounded px-2 py-1 text-xs " +
+                  "inline-flex min-h-10 items-center gap-1 rounded-md px-3 text-xs " +
                   (tool === id
                     ? "bg-slate-800 text-white"
                     : "text-slate-600 hover:bg-slate-100")
                 }
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className="h-4 w-4" />
                 {label}
               </button>
             ))}
@@ -616,23 +760,21 @@ export function ProjectNotePage() {
               type="button"
               title="Insert photo"
               onClick={() => fileRef.current?.click()}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+              className="inline-flex min-h-10 items-center gap-1 rounded-md px-3 text-xs text-slate-600 hover:bg-slate-100"
             >
-              <ImagePlus className="h-3.5 w-3.5" />
+              <ImagePlus className="h-4 w-4" />
               Photo
             </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (f) void onPhotoSelected(f);
-              }}
-            />
+            <button
+              type="button"
+              title="Undo"
+              disabled={!canUndo}
+              onClick={undo}
+              className="inline-flex min-h-10 items-center gap-1 rounded-md px-3 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+            >
+              <Undo2 className="h-4 w-4" />
+              Undo
+            </button>
           </div>
 
           {tool === "pen" ? (
@@ -643,7 +785,7 @@ export function ProjectNotePage() {
                   type="color"
                   value={penColor}
                   onChange={(e) => setPenColor(e.target.value)}
-                  className="h-7 w-8 cursor-pointer"
+                  className="h-9 w-10 cursor-pointer"
                 />
               </label>
               <label className="flex items-center gap-1">
@@ -673,104 +815,33 @@ export function ProjectNotePage() {
             </button>
           ) : null}
 
-          <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-slate-500">Zoom:</span>
-            <button
-              type="button"
-              title="Zoom out"
-              onClick={() => zoomBy(-ZOOM_STEP)}
-              className="inline-flex items-center rounded border border-slate-200 px-1.5 py-1 text-slate-600 hover:bg-slate-50"
-            >
-              <ZoomOut className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              title="Fit to window"
-              onClick={zoomFit}
-              className={
-                "min-w-[3.25rem] rounded border px-1.5 py-1 tabular-nums " +
-                (zoomMode === "fit"
-                  ? "border-slate-800 bg-slate-800 text-white"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50")
-              }
-            >
-              {Math.round(scale * 100)}%
-            </button>
-            <button
-              type="button"
-              title="Zoom in"
-              onClick={() => zoomBy(ZOOM_STEP)}
-              className="inline-flex items-center rounded border border-slate-200 px-1.5 py-1 text-slate-600 hover:bg-slate-50"
-            >
-              <ZoomIn className="h-3.5 w-3.5" />
-            </button>
-
-            <span className="ml-1 text-slate-500">Page:</span>
-            {(
-              [
-                ["portrait", "Portrait"],
-                ["landscape", "Landscape"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setPageOrientation(id)}
-                className={
-                  "rounded px-2 py-1 " +
-                  (orientation === id
-                    ? "bg-slate-800 text-white"
-                    : "border border-slate-200 text-slate-600 hover:bg-slate-50")
-                }
-              >
-                {label}
-              </button>
-            ))}
-
-            <span className="ml-1 text-slate-500">Background:</span>
-            {bgButtons.map((b) => (
-              <button
-                key={b.id}
-                type="button"
-                onClick={() => {
-                  setBackground(b.id);
-                  void saveMeta({ background: b.id });
-                }}
-                className={
-                  "rounded px-2 py-1 " +
-                  (background === b.id
-                    ? "bg-slate-800 text-white"
-                    : "border border-slate-200 text-slate-600 hover:bg-slate-50")
-                }
-              >
-                {b.label}
-              </button>
-            ))}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {zoomOrientBgControls}
           </div>
         </div>
         {err ? <p className="mt-1 text-sm text-red-600">{err}</p> : null}
       </div>
 
-      <div className="no-print flex items-center justify-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+      <div className="no-print flex shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-2 py-1">
         {pages.map((p, i) => (
           <button
             key={p.id}
             type="button"
             onClick={() => void switchPage(i)}
             className={
-              "rounded px-3 py-1 text-sm " +
+              "shrink-0 rounded-lg px-3 py-2 text-sm " +
               (i === pageIndex
                 ? "bg-slate-800 text-white"
                 : "border border-slate-200 hover:bg-slate-50")
             }
           >
-            Page {i + 1}
+            {i + 1}
           </button>
         ))}
         <button
           type="button"
           onClick={() => void addPage()}
-          className="inline-flex items-center gap-1 rounded border border-dashed border-slate-300 px-2 py-1 text-sm text-slate-600 hover:bg-slate-50"
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-slate-300 px-2 py-2 text-sm text-slate-600 hover:bg-slate-50"
         >
           <Plus className="h-4 w-4" />
           Page
@@ -779,7 +850,7 @@ export function ProjectNotePage() {
           <button
             type="button"
             onClick={() => void deletePage()}
-            className="text-xs text-red-700 underline"
+            className="shrink-0 px-2 text-xs text-red-700 underline"
           >
             Delete page
           </button>
@@ -796,9 +867,9 @@ export function ProjectNotePage() {
             pan={pan}
             zoomMin={ZOOM_MIN}
             zoomMax={ZOOM_MAX}
+            oneFingerPan={oneFingerPan}
             onTransform={onViewportTransform}
             onGestureStart={onViewportGestureStart}
-            className="min-h-[50vh]"
           >
             <A4PageCanvas
               content={content}
@@ -834,12 +905,8 @@ export function ProjectNotePage() {
                     }
                     onChange={() => {}}
                     background={background}
-                    pageWidth={
-                      p.id === pageId ? pageWidth : size.width
-                    }
-                    pageHeight={
-                      p.id === pageId ? pageHeight : size.height
-                    }
+                    pageWidth={p.id === pageId ? pageWidth : size.width}
+                    pageHeight={p.id === pageId ? pageHeight : size.height}
                     tool="select"
                     penColor={penColor}
                     penWidth={penWidth}
@@ -854,6 +921,183 @@ export function ProjectNotePage() {
           </div>
         ) : null}
       </div>
+
+      {/* Mobile / tablet bottom tool dock */}
+      <div className="note-tool-dock no-print shrink-0 border-t border-slate-200 bg-white px-1 pt-1 shadow-[0_-4px_12px_rgba(15,23,42,0.06)] md:hidden">
+        <div className="flex items-stretch justify-around gap-0.5">
+          <button
+            type="button"
+            className={dockBtn(tool === "pen")}
+            onClick={() => setTool("pen")}
+          >
+            <PenLine className="h-5 w-5" />
+            Pen
+          </button>
+          <button
+            type="button"
+            className={dockBtn(tool === "eraser")}
+            onClick={() => setTool("eraser")}
+          >
+            <Eraser className="h-5 w-5" />
+            Eraser
+          </button>
+          <button
+            type="button"
+            className={dockBtn(tool === "select")}
+            onClick={() => setTool("select")}
+          >
+            <MousePointer2 className="h-5 w-5" />
+            Select
+          </button>
+          <button
+            type="button"
+            className={dockBtn(false)}
+            onClick={() => fileRef.current?.click()}
+          >
+            <ImagePlus className="h-5 w-5" />
+            Photo
+          </button>
+          <button
+            type="button"
+            className={dockBtn(false, canUndo ? "" : "opacity-40")}
+            disabled={!canUndo}
+            onClick={undo}
+          >
+            <Undo2 className="h-5 w-5" />
+            Undo
+          </button>
+          <button
+            type="button"
+            className={dockBtn(moreOpen)}
+            onClick={() => setMoreOpen(true)}
+          >
+            <Ellipsis className="h-5 w-5" />
+            More
+          </button>
+        </div>
+        {tool === "pen" ? (
+          <div className="flex items-center gap-3 px-2 pb-1 pt-1 text-xs text-slate-600">
+            <label className="flex items-center gap-1">
+              Color
+              <input
+                type="color"
+                value={penColor}
+                onChange={(e) => setPenColor(e.target.value)}
+                className="h-9 w-10 cursor-pointer"
+              />
+            </label>
+            <label className="flex flex-1 items-center gap-2">
+              Size
+              <input
+                type="range"
+                min={1}
+                max={12}
+                step={0.5}
+                value={penWidth}
+                onChange={(e) => setPenWidth(Number(e.target.value))}
+                className="w-full"
+              />
+            </label>
+          </div>
+        ) : null}
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void onPhotoSelected(f);
+        }}
+      />
+
+      {/* More sheet */}
+      {moreOpen ? (
+        <div className="no-print fixed inset-0 z-40 flex flex-col justify-end md:items-center md:justify-center">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40"
+            aria-label="Close"
+            onClick={() => setMoreOpen(false)}
+          />
+          <div className="relative z-10 max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl md:max-w-md md:rounded-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-900">More</h2>
+              <button
+                type="button"
+                className="note-tool-btn inline-flex items-center justify-center rounded-lg hover:bg-slate-100"
+                onClick={() => setMoreOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex flex-col gap-4">
+              {zoomOrientBgControls}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    addTextBox();
+                    setMoreOpen(false);
+                  }}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm"
+                >
+                  <Type className="h-4 w-4" />
+                  Add text
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearInk();
+                    setMoreOpen(false);
+                  }}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm"
+                >
+                  Clear ink
+                </button>
+                {selectedId ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deleteSelected();
+                      setMoreOpen(false);
+                    }}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-200 px-3 text-sm text-red-700"
+                  >
+                    Delete selected
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    void handlePrint();
+                  }}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm"
+                >
+                  <Printer className="h-4 w-4" />
+                  Print
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    void deleteNote();
+                  }}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-200 px-3 text-sm text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete note
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
