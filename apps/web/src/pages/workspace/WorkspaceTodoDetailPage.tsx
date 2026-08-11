@@ -11,7 +11,7 @@ type Todo = {
   taskId: string;
   title: string;
   description: string | null;
-  status: "backlog" | "in_progress" | "blocked" | "testing" | "done";
+  status: "backlog" | "in_progress" | "blocked" | "testing" | "done" | "cancelled";
   dueAt: string | null;
   priority: "low" | "normal" | "high" | "urgent";
   orderIndex: number;
@@ -20,7 +20,7 @@ type Todo = {
 };
 type OrgUser = { id: string; name: string };
 
-const TODO_STATUS = ["backlog", "in_progress", "blocked", "testing", "done"] as const;
+const TODO_STATUS = ["backlog", "in_progress", "blocked", "testing", "done", "cancelled"] as const;
 const TODO_PRIORITY = ["low", "normal", "high", "urgent"] as const;
 
 export function WorkspaceTodoDetailPage() {

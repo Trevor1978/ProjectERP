@@ -291,7 +291,7 @@ export const todo = pgTable(
     title: text("title").notNull(),
     description: text("description"),
     status: text("status", {
-      enum: ["backlog", "in_progress", "blocked", "testing", "done"],
+      enum: ["backlog", "in_progress", "blocked", "testing", "done", "cancelled"],
     })
       .notNull()
       .default("backlog"),

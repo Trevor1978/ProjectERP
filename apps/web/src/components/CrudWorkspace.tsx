@@ -67,7 +67,7 @@ type Todo = {
   taskId: string;
   title: string;
   description: string | null;
-  status: "backlog" | "in_progress" | "blocked" | "testing" | "done";
+  status: "backlog" | "in_progress" | "blocked" | "testing" | "done" | "cancelled";
   dueAt: string | null;
   priority: "low" | "normal" | "high" | "urgent";
   orderIndex: number;
@@ -142,7 +142,7 @@ const LABEL: Record<Tab, string> = {
 };
 
 const STATUS_OPTS = ["draft", "active", "on_hold", "closed"] as const;
-const TODO_STATUS = ["backlog", "in_progress", "blocked", "testing", "done"] as const;
+const TODO_STATUS = ["backlog", "in_progress", "blocked", "testing", "done", "cancelled"] as const;
 const TODO_PRIORITY = ["low", "normal", "high", "urgent"] as const;
 const PROC_STATUS = [
   "draft",
@@ -333,7 +333,10 @@ function attachTableRowMeta(
         isCompleted = (entities.tasks.find((t) => t.id === r.key)?.percentComplete ?? 0) >= 100;
         break;
       case "todos":
-        isCompleted = entities.todos.find((t) => t.id === r.key)?.status === "done";
+        isCompleted = (() => {
+          const st = entities.todos.find((t) => t.id === r.key)?.status;
+          return st === "done" || st === "cancelled";
+        })();
         break;
       case "procurement": {
         const st = entities.procurement.find((p) => p.id === r.key)?.status;
@@ -621,7 +624,7 @@ export function CrudWorkspace({
       if (kanbanTaskId !== "all" && td.taskId !== kanbanTaskId) return false;
       if (kanbanAssigneeId !== "all" && (td.assigneeId ?? "") !== kanbanAssigneeId) return false;
       if (kanbanStatus !== "all" && td.status !== kanbanStatus) return false;
-      if (!showCompleted && td.status === "done") return false;
+      if (!showCompleted && (td.status === "done" || td.status === "cancelled")) return false;
       if (!needle) return true;
       const projectLabel = projectName.get(task.projectId) ?? "";
       const assigneeLabel = userName.get(td.assigneeId ?? "") ?? "";

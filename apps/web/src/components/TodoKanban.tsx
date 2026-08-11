@@ -17,6 +17,7 @@ const cols = [
   { id: "blocked", label: "Blocked" },
   { id: "testing", label: "Testing" },
   { id: "done", label: "Done" },
+  { id: "cancelled", label: "Cancelled" },
 ] as const;
 
 type ColId = (typeof cols)[number]["id"];

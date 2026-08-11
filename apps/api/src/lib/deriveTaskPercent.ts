@@ -14,7 +14,9 @@ export async function syncTaskPercentFromTodos(taskId: string) {
       .where(eq(task.id, taskId));
     return;
   }
-  const done = list.filter((r) => r.status === "done").length;
+  const done = list.filter(
+    (r) => r.status === "done" || r.status === "cancelled",
+  ).length;
   const pct = Math.round((done / list.length) * 100);
   await db
     .update(task)

@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNotNull, lt, ne } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, notInArray } from "drizzle-orm";
 import {
   db,
   notification,
@@ -71,7 +71,7 @@ async function loadTodosInRange(
     .innerJoin(user, eq(todo.assigneeId, user.id))
     .where(
       and(
-        ne(todo.status, "done"),
+        notInArray(todo.status, ["done", "cancelled"]),
         isNotNull(todo.dueAt),
         isNotNull(todo.assigneeId),
         gte(todo.dueAt, rangeStart),

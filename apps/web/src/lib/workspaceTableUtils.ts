@@ -33,7 +33,7 @@ export function isCompletedStatus(tab: CompletedTab, status: string): boolean {
     case "tasks":
       return false;
     case "todos":
-      return status === "done";
+      return status === "done" || status === "cancelled";
     case "procurement":
       return status === "closed" || status === "cancelled";
     default:

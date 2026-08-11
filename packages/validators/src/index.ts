@@ -126,7 +126,7 @@ export const todoCreate = z.object({
   title: z.string().min(1).max(500),
   description: z.string().max(10000).optional().nullable(),
   status: z
-    .enum(["backlog", "in_progress", "blocked", "testing", "done"])
+    .enum(["backlog", "in_progress", "blocked", "testing", "done", "cancelled"])
     .default("backlog"),
   dueAt: z.coerce.date().optional().nullable(),
   priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
@@ -139,7 +139,7 @@ export const todoPatch = z
     title: z.string().min(1).max(500).optional(),
     description: z.string().max(10000).optional().nullable(),
     status: z
-      .enum(["backlog", "in_progress", "blocked", "testing", "done"])
+      .enum(["backlog", "in_progress", "blocked", "testing", "done", "cancelled"])
       .optional(),
     dueAt: z.coerce.date().optional().nullable(),
     priority: z
