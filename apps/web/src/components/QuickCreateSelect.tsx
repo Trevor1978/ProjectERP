@@ -11,6 +11,7 @@ import type {
   QuickCreateFilter,
 } from "../lib/quickCreate/types";
 import { QUICK_CREATE_VALUE } from "../lib/quickCreate/types";
+import { needsPlaceholderOption } from "../lib/quickCreate/selectHelpers";
 
 type BaseProps = {
   entity: QuickCreateEntity;
@@ -59,16 +60,18 @@ export function QuickCreateSelect(props: QuickCreateSelectProps) {
   const catalogOptions = ctx?.getOptions(entity, filter) ?? manualOptions ?? [];
   const options = useMemo(() => {
     const list = [...catalogOptions];
-    if (value && !list.some((o) => o.value === value)) {
+    if (value && !list.some((o) => o.value === value) && !prependOptions?.some((o) => o.value === value)) {
       list.unshift({ value, label: `${value.slice(0, 8)}…` });
     }
     return list;
-  }, [catalogOptions, value]);
+  }, [catalogOptions, value, prependOptions]);
 
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /** Bumps select remount so "+ Create new" can be chosen again after cancel. */
+  const [selectEpoch, setSelectEpoch] = useState(0);
 
   const fields = useMemo(() => fieldsForEntity(entity, filter, defaults), [entity, filter, defaults]);
 
@@ -90,6 +93,8 @@ export function QuickCreateSelect(props: QuickCreateSelectProps) {
   const onSelectChange = (next: string) => {
     if (next === QUICK_CREATE_VALUE) {
       setCreating(true);
+      // Remount select at the real value so Create remains selectable later.
+      setSelectEpoch((n) => n + 1);
       return;
     }
     applyValue(next);
@@ -122,22 +127,29 @@ export function QuickCreateSelect(props: QuickCreateSelectProps) {
   };
 
   const canCreate = enableCreate && ctx != null;
+  const showPlaceholder = needsPlaceholderOption(value, allowEmpty);
+  const placeholderLabel = allowEmpty
+    ? emptyLabel
+    : `Select ${entityLabel(entity)}…`;
 
   return (
     <div className="min-w-0">
       <select
+        key={selectEpoch}
         className={className}
-        value={creating ? QUICK_CREATE_VALUE : value}
+        // Keep the real selection while the create panel is open so "+ Create new"
+        // is never stuck as the selected option (which blocks re-opening).
+        value={value}
         disabled={disabled || busy}
         onChange={(e) => onSelectChange(e.target.value)}
       >
-        {allowEmpty && <option value="">{emptyLabel}</option>}
+        {showPlaceholder && <option value="">{placeholderLabel}</option>}
         {prependOptions?.map((o) => (
           <option key={`prepend-${o.value}`} value={o.value}>
             {o.label}
           </option>
         ))}
-        {options.length === 0 && !allowEmpty && !canCreate && !prependOptions?.length && (
+        {options.length === 0 && !showPlaceholder && !canCreate && !prependOptions?.length && (
           <option value="">Nothing available</option>
         )}
         {options.map((o) => (
@@ -211,6 +223,7 @@ export function QuickCreateSelect(props: QuickCreateSelectProps) {
               onClick={() => {
                 setCreating(false);
                 setErr(null);
+                setSelectEpoch((n) => n + 1);
               }}
             >
               Cancel
