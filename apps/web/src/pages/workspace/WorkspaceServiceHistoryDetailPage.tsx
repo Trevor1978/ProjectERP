@@ -44,6 +44,7 @@ export function WorkspaceServiceHistoryDetailPage() {
   const [originalMarkdown, setOriginalMarkdown] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [dlErr, setDlErr] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -104,6 +105,9 @@ export function WorkspaceServiceHistoryDetailPage() {
       </p>
 
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
+      {saveNotice && (
+        <p className="mb-2 text-sm text-amber-700">{saveNotice}</p>
+      )}
       {dlErr && <p className="mb-2 text-sm text-red-600">{dlErr}</p>}
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -113,22 +117,22 @@ export function WorkspaceServiceHistoryDetailPage() {
             className="rounded-sm border border-tesla-border bg-white px-3 py-1.5 text-sm"
             onClick={() => {
               setDlErr(null);
-              void downloadServiceReport(log.id, "md").catch((e: Error) =>
-                setDlErr(e.message),
+              void downloadServiceReport(log.id, "md", log.version).catch(
+                (e: Error) => setDlErr(e.message),
               );
             }}
           >
             Download MD
           </button>
         ) : null}
-        {log.reportPdfStorage ? (
+        {log.reportMarkdownStorage ? (
           <button
             type="button"
             className="rounded-sm border border-tesla-border bg-white px-3 py-1.5 text-sm"
             onClick={() => {
               setDlErr(null);
-              void downloadServiceReport(log.id, "pdf").catch((e: Error) =>
-                setDlErr(e.message),
+              void downloadServiceReport(log.id, "pdf", log.version).catch(
+                (e: Error) => setDlErr(e.message),
               );
             }}
           >
@@ -175,7 +179,8 @@ export function WorkspaceServiceHistoryDetailPage() {
         <div>
           <label className={labelClass}>Service report (markdown)</label>
           <p className="mt-1 text-xs text-tesla-text-secondary">
-            Edit the Spantec report here. Saving regenerates the PDF from this
+            Edit the Spantec report here. Saving updates the markdown and
+            regenerates the PDF. Download PDF always reflects the saved
             markdown.
           </p>
           {markdownLoading ? (
@@ -199,29 +204,43 @@ export function WorkspaceServiceHistoryDetailPage() {
             className="rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
             onClick={() => {
               setErr(null);
+              setSaveNotice(null);
               const markdownChanged = reportMarkdown !== originalMarkdown;
               if (markdownChanged && !reportMarkdown.trim()) {
                 setErr("Report markdown cannot be empty");
                 return;
               }
               setSaving(true);
-              void api(`/api/asset-service-logs/${log.id}`, {
-                method: "PATCH",
-                body: JSON.stringify({
-                  title: title.trim(),
-                  description: description.trim() || null,
-                  performedAt: localToIso(performedAt) ?? undefined,
-                  technicianName: technicianName.trim() || null,
-                  version: log.version,
-                  ...(markdownChanged
-                    ? { reportMarkdown: reportMarkdown }
-                    : {}),
-                }),
-              })
-                .then(async () => {
+              void api<{ log: ServiceLog; reportPdfGenerated?: boolean }>(
+                `/api/asset-service-logs/${log.id}`,
+                {
+                  method: "PATCH",
+                  body: JSON.stringify({
+                    title: title.trim(),
+                    description: description.trim() || null,
+                    performedAt: localToIso(performedAt) ?? undefined,
+                    technicianName: technicianName.trim() || null,
+                    version: log.version,
+                    ...(markdownChanged
+                      ? { reportMarkdown: reportMarkdown }
+                      : {}),
+                  }),
+                },
+              )
+                .then(async (res) => {
                   if (markdownChanged) {
                     setOriginalMarkdown(reportMarkdown);
                   }
+                  if (res.reportPdfGenerated === false) {
+                    setSaveNotice(
+                      "Saved, but PDF generation failed. Try Download PDF again or check server Chromium setup.",
+                    );
+                  } else if (markdownChanged) {
+                    setSaveNotice("Saved. Markdown and PDF are updated.");
+                  }
+                  qc.setQueryData(["asset-service-log", logId], {
+                    log: res.log,
+                  });
                   await qc.invalidateQueries({
                     queryKey: ["asset-service-log", logId],
                   });

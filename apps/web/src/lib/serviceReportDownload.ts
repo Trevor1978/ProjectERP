@@ -4,12 +4,18 @@ import { apiFetchUrl } from "./api";
 export async function downloadServiceReport(
   logId: string,
   kind: "md" | "pdf",
+  cacheBust?: number | string,
 ): Promise<void> {
-  const path =
+  const basePath =
     kind === "md"
       ? `/api/asset-service-logs/${logId}/report.md`
       : `/api/asset-service-logs/${logId}/report.pdf`;
-  const r = await fetch(apiFetchUrl(path), { credentials: "include" });
+  const bust = cacheBust ?? Date.now();
+  const path = `${basePath}?v=${encodeURIComponent(String(bust))}`;
+  const r = await fetch(apiFetchUrl(path), {
+    credentials: "include",
+    cache: "no-store",
+  });
   if (!r.ok) {
     throw new Error(`Download failed (${r.status})`);
   }

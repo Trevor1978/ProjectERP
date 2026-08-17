@@ -25,7 +25,9 @@ import {
 } from "../lib/gemini.js";
 import {
   readServiceReportFile,
+  regenerateServiceReportPdf,
   saveServiceReportFiles,
+  SERVICE_REPORT_DOWNLOAD_HEADERS,
 } from "../lib/serviceReport/buildPdf.js";
 
 const app = new Hono();
@@ -280,6 +282,11 @@ app.post("/work-complete/confirm", async (c) => {
   );
   const markdownStorage = saved.markdownStorage;
   const pdfStorage = saved.pdfStorage;
+  if (!saved.pdfGenerated) {
+    console.warn(
+      `[work-complete] PDF not generated for service log on asset ${data.assetId}`,
+    );
+  }
 
   let taskId = data.taskId ?? null;
   if (!taskId && data.newTask?.title) {
@@ -427,6 +434,7 @@ app.get("/asset-service-logs/:id/report.md", async (c) => {
     const buf = await readServiceReportFile(a.organizationId, storage);
     return new Response(new Uint8Array(buf), {
       headers: {
+        ...SERVICE_REPORT_DOWNLOAD_HEADERS,
         "Content-Type": "text/markdown; charset=utf-8",
         "Content-Disposition": `attachment; filename="${storage}"`,
       },
@@ -441,14 +449,33 @@ app.get("/asset-service-logs/:id/report.pdf", async (c) => {
   const id = c.req.param("id");
   const row = await loadLogForOrg(a, id);
   if (!row) return c.json({ error: "Not found" }, 404);
-  const storage = row.log.reportPdfStorage;
-  if (!storage) return c.json({ error: "No PDF report" }, 404);
+  const markdownStorage = row.log.reportMarkdownStorage;
+  if (!markdownStorage) {
+    return c.json({ error: "No markdown report" }, 404);
+  }
   try {
-    const buf = await readServiceReportFile(a.organizationId, storage);
-    return new Response(new Uint8Array(buf), {
+    const regenerated = await regenerateServiceReportPdf(
+      a.organizationId,
+      markdownStorage,
+      row.log.reportPdfStorage,
+    );
+    if (!regenerated) {
+      return c.json({ error: "PDF generation failed" }, 503);
+    }
+    if (regenerated.pdfStorage !== row.log.reportPdfStorage) {
+      await db
+        .update(assetServiceLog)
+        .set({
+          reportPdfStorage: regenerated.pdfStorage,
+          updatedAt: new Date(),
+        })
+        .where(eq(assetServiceLog.id, id));
+    }
+    return new Response(new Uint8Array(regenerated.buffer), {
       headers: {
+        ...SERVICE_REPORT_DOWNLOAD_HEADERS,
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${storage}"`,
+        "Content-Disposition": `attachment; filename="${regenerated.pdfStorage}"`,
       },
     });
   } catch {
