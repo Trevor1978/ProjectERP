@@ -268,29 +268,29 @@ export function WorkspaceMachineDetailPage() {
                           className="text-blue-700 underline"
                           onClick={() => {
                             setDlErr(null);
-                            void downloadServiceReport(l.id, "md").catch((e: Error) =>
-                              setDlErr(e.message),
+                            void downloadServiceReport(l.id, "md", l.version).catch(
+                              (e: Error) => setDlErr(e.message),
                             );
                           }}
                         >
                           MD
                         </button>
                       ) : null}
-                      {l.reportPdfStorage ? (
+                      {l.reportMarkdownStorage ? (
                         <button
                           type="button"
                           className="text-blue-700 underline"
                           onClick={() => {
                             setDlErr(null);
-                            void downloadServiceReport(l.id, "pdf").catch((e: Error) =>
-                              setDlErr(e.message),
+                            void downloadServiceReport(l.id, "pdf", l.version).catch(
+                              (e: Error) => setDlErr(e.message),
                             );
                           }}
                         >
                           PDF
                         </button>
                       ) : null}
-                      {!l.reportMarkdownStorage && !l.reportPdfStorage ? (
+                      {!l.reportMarkdownStorage ? (
                         <span className="text-tesla-text-secondary">—</span>
                       ) : null}
                     </div>
