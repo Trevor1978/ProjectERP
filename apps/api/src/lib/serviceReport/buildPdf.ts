@@ -1,4 +1,10 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  unlinkSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -187,15 +193,32 @@ export async function saveServiceReportFiles(
   }
 }
 
-export async function readServiceReportFile(
+function resolvedReportPath(
   organizationId: string,
   storageName: string,
-): Promise<Buffer> {
+): string {
   const full = serviceReportPath(organizationId, storageName);
   const resolved = path.resolve(full);
   const root = path.resolve(serviceReportDir(organizationId));
   if (!resolved.startsWith(root + path.sep) && resolved !== root) {
     throw new Error("Invalid path");
   }
-  return readFileSync(resolved);
+  return resolved;
+}
+
+export async function readServiceReportFile(
+  organizationId: string,
+  storageName: string,
+): Promise<Buffer> {
+  return readFileSync(resolvedReportPath(organizationId, storageName));
+}
+
+export function deleteServiceReportFile(
+  organizationId: string,
+  storageName: string,
+): void {
+  const resolved = resolvedReportPath(organizationId, storageName);
+  if (existsSync(resolved)) {
+    unlinkSync(resolved);
+  }
 }

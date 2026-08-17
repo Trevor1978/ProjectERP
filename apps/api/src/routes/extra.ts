@@ -37,6 +37,10 @@ import {
   previewDeleteServiceLog,
 } from "../lib/deleteResource.js";
 import { writeAudit } from "../lib/audit.js";
+import {
+  deleteServiceReportFile,
+  saveServiceReportFiles,
+} from "../lib/serviceReport/buildPdf.js";
 
 const app = new Hono();
 app.use("/*", requireAuth);
@@ -745,6 +749,26 @@ app.patch("/asset-service-logs/:id", async (c) => {
   if (p.data.version !== undefined && p.data.version !== log.version) {
     return c.json({ error: "Version conflict" }, 409);
   }
+
+  let reportMarkdownStorage = log.reportMarkdownStorage;
+  let reportPdfStorage = log.reportPdfStorage;
+  if (p.data.reportMarkdown !== undefined) {
+    const saved = await saveServiceReportFiles(
+      a.organizationId,
+      p.data.reportMarkdown,
+    );
+    for (const oldName of [log.reportMarkdownStorage, log.reportPdfStorage]) {
+      if (!oldName) continue;
+      try {
+        deleteServiceReportFile(a.organizationId, oldName);
+      } catch {
+        /* leftover file is unused once storage pointers update */
+      }
+    }
+    reportMarkdownStorage = saved.markdownStorage;
+    reportPdfStorage = saved.pdfStorage;
+  }
+
   const [row] = await db
     .update(assetServiceLog)
     .set({
@@ -756,6 +780,8 @@ app.patch("/asset-service-logs/:id", async (c) => {
         p.data.technicianName === undefined
           ? log.technicianName
           : p.data.technicianName,
+      reportMarkdownStorage,
+      reportPdfStorage,
       version: log.version + 1,
       updatedAt: new Date(),
     })

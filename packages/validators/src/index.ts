@@ -309,6 +309,7 @@ export const assetServiceLogPatch = z
     description: z.string().max(10000).optional().nullable(),
     performedAt: z.coerce.date().optional(),
     technicianName: z.string().max(200).optional().nullable(),
+    reportMarkdown: z.string().min(1).max(200000).optional(),
     version,
   })
   .strict();
