@@ -401,6 +401,21 @@ async function loadLogForOrg(a: AuthUser, logId: string) {
   return rows[0]!;
 }
 
+app.get("/asset-service-logs/:id/report-markdown", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const id = c.req.param("id");
+  const row = await loadLogForOrg(a, id);
+  if (!row) return c.json({ error: "Not found" }, 404);
+  const storage = row.log.reportMarkdownStorage;
+  if (!storage) return c.json({ markdown: null });
+  try {
+    const buf = await readServiceReportFile(a.organizationId, storage);
+    return c.json({ markdown: buf.toString("utf8") });
+  } catch {
+    return c.json({ markdown: null });
+  }
+});
+
 app.get("/asset-service-logs/:id/report.md", async (c) => {
   const a = c.get("auth") as AuthUser;
   const id = c.req.param("id");

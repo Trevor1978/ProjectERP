@@ -7,6 +7,10 @@ import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { DeleteConfirmModal } from "../../components/DeleteConfirmModal";
 
+const inputClass =
+  "mt-1 w-full rounded-sm border border-tesla-border px-2 py-1.5 text-sm";
+const labelClass = "block text-xs font-medium text-tesla-text-secondary";
+
 type ServiceLog = {
   id: string;
   assetId: string;
@@ -36,10 +40,23 @@ export function WorkspaceServiceHistoryDetailPage() {
   const [description, setDescription] = useState("");
   const [performedAt, setPerformedAt] = useState("");
   const [technicianName, setTechnicianName] = useState("");
+  const [reportMarkdown, setReportMarkdown] = useState("");
+  const [originalMarkdown, setOriginalMarkdown] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [dlErr, setDlErr] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const { data: markdownData, isLoading: markdownLoading } = useQuery({
+    queryKey: ["asset-service-log-markdown", logId],
+    queryFn: () =>
+      api<{ markdown: string | null }>(
+        `/api/asset-service-logs/${logId}/report-markdown`,
+      ),
+    enabled: Boolean(logId),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
     if (!log) return;
@@ -48,6 +65,13 @@ export function WorkspaceServiceHistoryDetailPage() {
     setPerformedAt(isoToLocal(log.performedAt));
     setTechnicianName(log.technicianName ?? "");
   }, [log]);
+
+  useEffect(() => {
+    if (markdownData === undefined) return;
+    const md = markdownData.markdown ?? "";
+    setReportMarkdown(md);
+    setOriginalMarkdown(md);
+  }, [markdownData]);
 
   if (!logId) return null;
   if (isLoading) return <p className="text-tesla-text-secondary">Loading…</p>;
@@ -113,56 +137,73 @@ export function WorkspaceServiceHistoryDetailPage() {
         ) : null}
       </div>
 
-      <div className="grid max-w-xl gap-3 rounded-sm border border-tesla-border bg-white p-4">
+      <div className="grid max-w-3xl gap-3 rounded-sm border border-tesla-border bg-white p-4">
         <div>
-          <label className="block text-xs font-medium text-tesla-text-secondary">
-            Title
-          </label>
+          <label className={labelClass}>Title</label>
           <input
-            className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1.5 text-sm"
+            className={inputClass}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-tesla-text-secondary">
-            Work performed
-          </label>
+          <label className={labelClass}>Work performed</label>
           <textarea
-            className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1.5 text-sm"
+            className={inputClass}
             rows={5}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-tesla-text-secondary">
-            Performed at
-          </label>
+          <label className={labelClass}>Performed at</label>
           <input
             type="datetime-local"
-            className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1.5 text-sm"
+            className={inputClass}
             value={performedAt}
             onChange={(e) => setPerformedAt(e.target.value)}
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-tesla-text-secondary">
-            Technician
-          </label>
+          <label className={labelClass}>Technician</label>
           <input
-            className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1.5 text-sm"
+            className={inputClass}
             value={technicianName}
             onChange={(e) => setTechnicianName(e.target.value)}
           />
         </div>
+        <div>
+          <label className={labelClass}>Service report (markdown)</label>
+          <p className="mt-1 text-xs text-tesla-text-secondary">
+            Edit the Spantec report here. Saving regenerates the PDF from this
+            markdown.
+          </p>
+          {markdownLoading ? (
+            <p className="mt-2 text-sm text-tesla-text-secondary">
+              Loading report…
+            </p>
+          ) : (
+            <textarea
+              className={inputClass + " font-mono text-xs"}
+              rows={18}
+              disabled={saving}
+              value={reportMarkdown}
+              onChange={(e) => setReportMarkdown(e.target.value)}
+            />
+          )}
+        </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={saving || !title.trim()}
+            disabled={saving || !title.trim() || markdownLoading}
             className="rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
             onClick={() => {
               setErr(null);
+              const markdownChanged = reportMarkdown !== originalMarkdown;
+              if (markdownChanged && !reportMarkdown.trim()) {
+                setErr("Report markdown cannot be empty");
+                return;
+              }
               setSaving(true);
               void api(`/api/asset-service-logs/${log.id}`, {
                 method: "PATCH",
@@ -172,11 +213,20 @@ export function WorkspaceServiceHistoryDetailPage() {
                   performedAt: localToIso(performedAt) ?? undefined,
                   technicianName: technicianName.trim() || null,
                   version: log.version,
+                  ...(markdownChanged
+                    ? { reportMarkdown: reportMarkdown }
+                    : {}),
                 }),
               })
                 .then(async () => {
+                  if (markdownChanged) {
+                    setOriginalMarkdown(reportMarkdown);
+                  }
                   await qc.invalidateQueries({
                     queryKey: ["asset-service-log", logId],
+                  });
+                  await qc.invalidateQueries({
+                    queryKey: ["asset-service-log-markdown", logId],
                   });
                   await qc.invalidateQueries({ queryKey: ["asset-service-logs"] });
                   await qc.invalidateQueries({
@@ -187,7 +237,7 @@ export function WorkspaceServiceHistoryDetailPage() {
                 .finally(() => setSaving(false));
             }}
           >
-            Save
+            {saving ? "Saving…" : "Save"}
           </button>
           <button
             type="button"

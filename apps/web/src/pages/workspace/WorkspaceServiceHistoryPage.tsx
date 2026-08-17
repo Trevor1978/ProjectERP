@@ -48,8 +48,9 @@ export function WorkspaceServiceHistoryPage() {
   return (
     <WorkspaceDetailChrome backTo="/" backLabel="← Home" title="Service history">
       <p className="mb-4 text-sm text-tesla-text-secondary">
-        All machine service entries across the organisation. Open a row to edit,
-        or use Log work for AI-assisted reports.
+        All machine service entries across the organisation. Open a row to edit
+        the entry and its service report markdown, or use Log work for
+        AI-assisted reports.
       </p>
 
       <div className="mb-6 max-w-xl rounded-sm border border-dashed border-tesla-border bg-tesla-muted/30 p-3">
