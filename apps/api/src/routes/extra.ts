@@ -38,8 +38,8 @@ import {
 } from "../lib/deleteResource.js";
 import { writeAudit } from "../lib/audit.js";
 import {
-  deleteServiceReportFile,
   saveServiceReportFiles,
+  updateServiceReportFiles,
 } from "../lib/serviceReport/buildPdf.js";
 
 const app = new Hono();
@@ -752,21 +752,17 @@ app.patch("/asset-service-logs/:id", async (c) => {
 
   let reportMarkdownStorage = log.reportMarkdownStorage;
   let reportPdfStorage = log.reportPdfStorage;
+  let reportPdfGenerated: boolean | undefined;
   if (p.data.reportMarkdown !== undefined) {
-    const saved = await saveServiceReportFiles(
-      a.organizationId,
-      p.data.reportMarkdown,
-    );
-    for (const oldName of [log.reportMarkdownStorage, log.reportPdfStorage]) {
-      if (!oldName) continue;
-      try {
-        deleteServiceReportFile(a.organizationId, oldName);
-      } catch {
-        /* leftover file is unused once storage pointers update */
-      }
-    }
+    const saved = log.reportMarkdownStorage
+      ? await updateServiceReportFiles(a.organizationId, p.data.reportMarkdown, {
+          markdownStorage: log.reportMarkdownStorage,
+          pdfStorage: log.reportPdfStorage,
+        })
+      : await saveServiceReportFiles(a.organizationId, p.data.reportMarkdown);
     reportMarkdownStorage = saved.markdownStorage;
     reportPdfStorage = saved.pdfStorage;
+    reportPdfGenerated = saved.pdfGenerated;
   }
 
   const [row] = await db
@@ -787,7 +783,12 @@ app.patch("/asset-service-logs/:id", async (c) => {
     })
     .where(eq(assetServiceLog.id, id))
     .returning();
-  return c.json({ log: row });
+  return c.json({
+    log: row,
+    ...(reportPdfGenerated === undefined
+      ? {}
+      : { reportPdfGenerated }),
+  });
 });
 
 app.delete("/asset-service-logs/:id", async (c) => {

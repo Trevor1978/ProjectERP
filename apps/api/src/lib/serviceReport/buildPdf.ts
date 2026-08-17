@@ -14,6 +14,11 @@ import { SERVICE_REPORT_CSS } from "./css.js";
 
 const UPLOAD_ROOT = process.env.UPLOAD_DIR ?? path.join(process.cwd(), "data", "uploads");
 
+export const SERVICE_REPORT_DOWNLOAD_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+} as const;
+
 function logoCandidates(): string[] {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return [
@@ -72,6 +77,10 @@ export function serviceReportPath(
   storageName: string,
 ): string {
   return path.join(serviceReportDir(organizationId), storageName);
+}
+
+export function pairedPdfStorageName(markdownStorage: string): string {
+  return markdownStorage.replace(/\.md$/i, ".pdf");
 }
 
 async function resolveChromeLaunch(): Promise<{
@@ -136,23 +145,17 @@ ${body}
 </html>`;
 }
 
-export async function saveServiceReportFiles(
+async function renderServiceReportPdf(
   organizationId: string,
   markdown: string,
-): Promise<{ markdownStorage: string; pdfStorage: string | null }> {
+  pdfStorageName: string,
+): Promise<boolean> {
   const dir = serviceReportDir(organizationId);
   mkdirSync(dir, { recursive: true });
-  const id = randomUUID();
-  const markdownStorage = `${id}.md`;
-  const pdfStorageName = `${id}.pdf`;
-  const mdPath = path.join(dir, markdownStorage);
   const pdfPath = path.join(dir, pdfStorageName);
 
-  const withLogo = ensureLogoInMarkdown(markdown);
-  writeFileSync(mdPath, withLogo, "utf8");
-
   try {
-    const embedded = embedLocalImages(withLogo, dir);
+    const embedded = embedLocalImages(markdown, dir);
     const html = markdownToHtmlDocument(embedded);
     const launch = await resolveChromeLaunch();
 
@@ -179,18 +182,100 @@ export async function saveServiceReportFiles(
       await browser.close();
     }
 
-    if (!existsSync(pdfPath)) {
-      throw new Error("PDF generation did not produce an output file");
-    }
-
-    return { markdownStorage, pdfStorage: pdfStorageName };
+    return existsSync(pdfPath);
   } catch (e) {
     console.error(
-      "[service-report] PDF failed (markdown still saved):",
+      "[service-report] PDF failed:",
       e instanceof Error ? e.message : e,
     );
-    return { markdownStorage, pdfStorage: null };
+    return false;
   }
+}
+
+function writeServiceReportMarkdown(
+  organizationId: string,
+  markdown: string,
+  markdownStorage: string,
+): string {
+  const dir = serviceReportDir(organizationId);
+  mkdirSync(dir, { recursive: true });
+  const withLogo = ensureLogoInMarkdown(markdown);
+  writeFileSync(path.join(dir, markdownStorage), withLogo, "utf8");
+  return withLogo;
+}
+
+/** Create a new markdown + PDF pair (first save / Log work confirm). */
+export async function saveServiceReportFiles(
+  organizationId: string,
+  markdown: string,
+): Promise<{ markdownStorage: string; pdfStorage: string | null; pdfGenerated: boolean }> {
+  const id = randomUUID();
+  const markdownStorage = `${id}.md`;
+  const pdfStorageName = `${id}.pdf`;
+  const withLogo = writeServiceReportMarkdown(
+    organizationId,
+    markdown,
+    markdownStorage,
+  );
+  const pdfGenerated = await renderServiceReportPdf(
+    organizationId,
+    withLogo,
+    pdfStorageName,
+  );
+  return {
+    markdownStorage,
+    pdfStorage: pdfGenerated ? pdfStorageName : null,
+    pdfGenerated,
+  };
+}
+
+/** Overwrite an existing markdown file and regenerate its paired PDF. */
+export async function updateServiceReportFiles(
+  organizationId: string,
+  markdown: string,
+  existing: { markdownStorage: string; pdfStorage: string | null },
+): Promise<{ markdownStorage: string; pdfStorage: string | null; pdfGenerated: boolean }> {
+  const withLogo = writeServiceReportMarkdown(
+    organizationId,
+    markdown,
+    existing.markdownStorage,
+  );
+  const pdfStorageName =
+    existing.pdfStorage ?? pairedPdfStorageName(existing.markdownStorage);
+  const pdfGenerated = await renderServiceReportPdf(
+    organizationId,
+    withLogo,
+    pdfStorageName,
+  );
+  return {
+    markdownStorage: existing.markdownStorage,
+    pdfStorage: pdfGenerated ? pdfStorageName : null,
+    pdfGenerated,
+  };
+}
+
+/** Build or rebuild the PDF from the stored markdown file. */
+export async function regenerateServiceReportPdf(
+  organizationId: string,
+  markdownStorage: string,
+  pdfStorage: string | null,
+): Promise<{ pdfStorage: string; buffer: Buffer } | null> {
+  const markdown = readServiceReportFileSync(organizationId, markdownStorage).toString(
+    "utf8",
+  );
+  const pdfStorageName = pdfStorage ?? pairedPdfStorageName(markdownStorage);
+  const pdfGenerated = await renderServiceReportPdf(
+    organizationId,
+    markdown,
+    pdfStorageName,
+  );
+  if (!pdfGenerated) {
+    return null;
+  }
+  return {
+    pdfStorage: pdfStorageName,
+    buffer: readServiceReportFileSync(organizationId, pdfStorageName),
+  };
 }
 
 function resolvedReportPath(
@@ -206,11 +291,18 @@ function resolvedReportPath(
   return resolved;
 }
 
+function readServiceReportFileSync(
+  organizationId: string,
+  storageName: string,
+): Buffer {
+  return readFileSync(resolvedReportPath(organizationId, storageName));
+}
+
 export async function readServiceReportFile(
   organizationId: string,
   storageName: string,
 ): Promise<Buffer> {
-  return readFileSync(resolvedReportPath(organizationId, storageName));
+  return readServiceReportFileSync(organizationId, storageName);
 }
 
 export function deleteServiceReportFile(
