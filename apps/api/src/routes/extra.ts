@@ -7,6 +7,7 @@ import {
   todo,
   savedFilter,
   notification,
+  pushSubscription,
   documentLink,
   handover,
   comment,
@@ -41,8 +42,10 @@ import {
   saveServiceReportFiles,
   updateServiceReportFiles,
 } from "../lib/serviceReport/buildPdf.js";
+import { isWebPushConfigured } from "../lib/webPush.js";
 
 const app = new Hono();
+
 app.use("/*", requireAuth);
 
 /* --- Project budget (light financials) --- */
@@ -274,10 +277,87 @@ app.post("/notifications/read-all", async (c) => {
   return c.json({ ok: true });
 });
 
-/* Web Push subscription stub (store in JSON file or new table in v2) */
+/* Web Push subscriptions for PWA notifications */
+app.get("/push/status", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const rows = await db
+    .select({ id: pushSubscription.id })
+    .from(pushSubscription)
+    .where(eq(pushSubscription.userId, a.id));
+  return c.json({
+    configured: isWebPushConfigured(),
+    subscriptionCount: rows.length,
+  });
+});
+
 app.post("/push/subscribe", async (c) => {
-  void (await c.req.text());
-  return c.json({ ok: true, note: "Persist subscription in production" });
+  const a = c.get("auth") as AuthUser;
+  if (!isWebPushConfigured()) {
+    return c.json({ error: "Web Push is not configured on the server" }, 503);
+  }
+  const body = (await c.req.json().catch(() => null)) as {
+    endpoint?: string;
+    keys?: { p256dh?: string; auth?: string };
+  } | null;
+  const endpoint = body?.endpoint?.trim();
+  const p256dh = body?.keys?.p256dh?.trim();
+  const authKey = body?.keys?.auth?.trim();
+  if (!endpoint || !p256dh || !authKey) {
+    return c.json({ error: "Invalid push subscription payload" }, 400);
+  }
+
+  const userAgent = c.req.header("user-agent") ?? null;
+  const existing = await db
+    .select({ id: pushSubscription.id })
+    .from(pushSubscription)
+    .where(eq(pushSubscription.endpoint, endpoint))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db
+      .update(pushSubscription)
+      .set({
+        userId: a.id,
+        p256dh,
+        auth: authKey,
+        userAgent,
+        updatedAt: new Date(),
+      })
+      .where(eq(pushSubscription.endpoint, endpoint));
+  } else {
+    await db.insert(pushSubscription).values({
+      userId: a.id,
+      endpoint,
+      p256dh,
+      auth: authKey,
+      userAgent,
+    });
+  }
+
+  return c.json({ ok: true });
+});
+
+app.delete("/push/unsubscribe", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const body = (await c.req.json().catch(() => ({}))) as {
+    endpoint?: string;
+  };
+  const endpoint = body.endpoint?.trim();
+  if (endpoint) {
+    await db
+      .delete(pushSubscription)
+      .where(
+        and(
+          eq(pushSubscription.userId, a.id),
+          eq(pushSubscription.endpoint, endpoint),
+        ),
+      );
+  } else {
+    await db
+      .delete(pushSubscription)
+      .where(eq(pushSubscription.userId, a.id));
+  }
+  return c.json({ ok: true });
 });
 
 /* --- Document links --- */

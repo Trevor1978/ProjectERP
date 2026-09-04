@@ -7,7 +7,7 @@ import "./index.css";
 
 const qc = new QueryClient();
 
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
+if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     void navigator.serviceWorker.register("/sw.js");
   });

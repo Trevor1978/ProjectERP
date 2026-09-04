@@ -16,6 +16,7 @@ import {
   type AuthUser,
 } from "../lib/session.js";
 import { sendTestDailyDigest } from "../lib/runDigests.js";
+import { sendTestPush } from "../lib/webPush.js";
 
 function slugify(s: string) {
   return (
@@ -219,6 +220,17 @@ export const authApp = new Hono()
         400,
       );
     }
+  })
+  .post("/profile/test-push", async (c) => {
+    const a = c.get("auth") as AuthUser | null;
+    if (!a) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const result = await sendTestPush(a.id);
+    if (!result.ok) {
+      return c.json({ error: result.error, sent: result.sent ?? 0 }, 400);
+    }
+    return c.json({ ok: true, sent: result.sent });
   })
   .get("/me", (c) => {
     const a = c.get("auth");
