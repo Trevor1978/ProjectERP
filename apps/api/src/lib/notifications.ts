@@ -1,4 +1,5 @@
 import { db, notification } from "@project-erp/db";
+import { notificationHref, sendPushToUser } from "./webPush.js";
 
 export type NotificationKind =
   | "task_assigned"
@@ -30,5 +31,20 @@ export async function createNotification(opts: {
       dataJson: opts.data ? JSON.stringify(opts.data) : null,
     })
     .returning();
-  return row!;
+  if (!row) {
+    throw new Error("Failed to create notification");
+  }
+  const data =
+    opts.data && typeof opts.data === "object"
+      ? (opts.data as Record<string, unknown>)
+      : null;
+  void sendPushToUser(opts.userId, {
+    title: opts.title,
+    body: opts.body,
+    url: notificationHref(data),
+    tag: row.id,
+  }).catch((e) => {
+    console.warn("[push] after createNotification:", e);
+  });
+  return row;
 }

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authMiddleware } from "./lib/session.js";
 import { startDigestScheduler } from "./lib/runDigests.js";
+import { getVapidPublicKey, isWebPushConfigured } from "./lib/webPush.js";
 import { authApp } from "./routes/auth.js";
 import { workApp } from "./routes/work.js";
 import { timeApp } from "./routes/time.js";
@@ -30,6 +31,12 @@ app.use(
   }),
 );
 app.use("/*", authMiddleware);
+app.get("/api/push/config", (c) =>
+  c.json({
+    enabled: isWebPushConfigured(),
+    publicKey: getVapidPublicKey(),
+  }),
+);
 app.get("/api/health", (c) => c.json({ ok: true, service: "project-erp-api" }));
 app.route("/api/auth", authApp);
 /** Same handler as POST /api/procurement/import-dbf — root path avoids 404 with some nginx / nested-route setups. */

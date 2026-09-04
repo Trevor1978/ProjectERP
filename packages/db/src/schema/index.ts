@@ -777,6 +777,33 @@ export const auditLog = pgTable("audit_log", {
     .defaultNow(),
 });
 
+/** Web Push subscription for PWA notifications (one row per browser/device). */
+export const pushSubscription = pgTable(
+  "push_subscription",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("push_subscription_endpoint").on(t.endpoint),
+    index("push_subscription_user_idx").on(t.userId),
+  ],
+);
+
 /** Idempotency log for 07:00 digest jobs (date is calendar day in DIGEST_TZ). */
 export const digestRun = pgTable(
   "digest_run",

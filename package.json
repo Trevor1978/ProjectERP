@@ -6,6 +6,7 @@
     "test": "pnpm run build",
     "test:e2e": "playwright test",
     "test:smoke": "bash scripts/e2e-smoke.sh",
+    "test:push": "bash scripts/test-web-push-api.sh",
     "test:full": "pnpm run build && pnpm run test:smoke && pnpm run test:e2e",
     "build": "pnpm --filter @project-erp/validators build && pnpm --filter @project-erp/db build && pnpm --filter @project-erp/api build && pnpm --filter @project-erp/web build",
     "seed:large": "pnpm --filter @project-erp/api seed:large",
