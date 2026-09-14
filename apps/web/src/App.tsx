@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate, Link, useNavigate, useLocation } from "react-router-dom";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./lib/api";
 import { useMe } from "./hooks/useMe";
@@ -30,12 +31,13 @@ import { ProjectNotePage } from "./pages/ProjectNotePage";
 import { NotesHomePage } from "./pages/NotesHomePage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { QuickCreateProvider } from "./components/QuickCreateProvider";
-import { House } from "lucide-react";
+import { House, Menu, X } from "lucide-react";
 
 function Layout({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { data } = useMe();
   const user = data?.user;
   const isWorkspace = user ? location.pathname.startsWith("/workspace") : false;
@@ -52,71 +54,147 @@ function Layout({ children }: { children: React.ReactNode }) {
   if (!user) {
     return <>{children}</>;
   }
+
+  const navLinkClass =
+    "block rounded-sm px-3 py-2.5 text-sm text-white/80 hover:bg-white/10 hover:text-white md:inline-block md:px-0 md:py-0 md:hover:bg-transparent";
+
   return (
     <QuickCreateProvider>
       <div className="flex min-h-screen flex-col">
       <header
         className={
-          "no-print items-center justify-between border-b border-tesla-border bg-tesla-header px-4 py-3 text-white " +
-          (isProjectNote ? "hidden" : "flex")
+          "no-print border-b border-tesla-border bg-tesla-header text-white " +
+          (isProjectNote ? "hidden" : "block")
         }
       >
-        <div className="flex items-center gap-6">
-          <Link to="/" className="text-sm font-medium uppercase tracking-[0.2em]">
-            Project ERP
-          </Link>
-          <Link
-            to="/"
-            className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white"
-          >
-            <House className="h-4 w-4 opacity-90" aria-hidden />
-            Home
-          </Link>
-          <Link to="/workspace/projects" className="text-sm text-white/70 hover:text-white">
-            Projects
-          </Link>
-          <Link to="/workspace/machines" className="text-sm text-white/70 hover:text-white">
-            Machines
-          </Link>
-          <Link to="/workspace/work-complete" className="text-sm text-white/70 hover:text-white">
-            Log work
-          </Link>
-          {user.globalRole === "org_admin" && (
-            <Link
-              to="/workspace/organization"
-              className="text-sm text-white/70 hover:text-white"
+        <div className="flex items-center justify-between gap-2 px-3 py-2 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              aria-expanded={mobileMenuOpen}
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-sm border border-white/20 text-white hover:bg-white/10 md:hidden"
+              onClick={() => setMobileMenuOpen((open) => !open)}
             >
-              Organization
+              {mobileMenuOpen ? (
+                <X className="h-5 w-5" aria-hidden />
+              ) : (
+                <Menu className="h-5 w-5" aria-hidden />
+              )}
+            </button>
+            <Link
+              to="/"
+              className="truncate text-sm font-medium uppercase tracking-[0.15em] sm:tracking-[0.2em]"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Project ERP
             </Link>
-          )}
+            <nav className="ml-2 hidden items-center gap-4 md:flex lg:gap-6">
+              <Link
+                to="/"
+                className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white"
+              >
+                <House className="h-4 w-4 opacity-90" aria-hidden />
+                Home
+              </Link>
+              <Link to="/workspace/projects" className="text-sm text-white/70 hover:text-white">
+                Projects
+              </Link>
+              <Link to="/workspace/machines" className="text-sm text-white/70 hover:text-white">
+                Machines
+              </Link>
+              <Link to="/workspace/work-complete" className="text-sm text-white/70 hover:text-white">
+                Log work
+              </Link>
+              {user.globalRole === "org_admin" && (
+                <Link
+                  to="/workspace/organization"
+                  className="text-sm text-white/70 hover:text-white"
+                >
+                  Organization
+                </Link>
+              )}
+            </nav>
+          </div>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+            <div className="hidden sm:block">
+              <GlobalSearch />
+            </div>
+            <NotificationBell />
+            <Link
+              to="/profile"
+              className="inline-flex min-h-[44px] max-w-[5.5rem] items-center truncate px-1 text-sm text-white/60 hover:text-white sm:max-w-[200px] sm:px-0"
+              title="Edit profile & notifications"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <span className="sm:hidden">Profile</span>
+              <span className="hidden sm:inline">
+                {user.name}{" "}
+                <span className="text-white/40">({user.org.name})</span>
+              </span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="inline-flex min-h-[44px] items-center rounded-sm border border-white/20 px-2 py-1 text-sm hover:bg-white/10"
+            >
+              <span className="sm:hidden">Out</span>
+              <span className="hidden sm:inline">Log out</span>
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-sm">
-          <GlobalSearch />
-          <NotificationBell />
-          <Link
-            to="/profile"
-            className="max-w-[200px] truncate text-white/60 hover:text-white"
-            title="Edit profile"
-          >
-            <span className="sm:hidden">Profile</span>
-            <span className="hidden sm:inline">
-              {user.name}{" "}
-              <span className="text-white/40">({user.org.name})</span>
-            </span>
-          </Link>
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="rounded-sm border border-white/20 px-2 py-1 hover:bg-white/10"
-          >
-            Log out
-          </button>
-        </div>
+        {mobileMenuOpen && (
+          <nav className="border-t border-white/10 px-3 py-2 md:hidden">
+            <div className="mb-2 sm:hidden">
+              <GlobalSearch />
+            </div>
+            <Link to="/" className={navLinkClass} onClick={() => setMobileMenuOpen(false)}>
+              Home
+            </Link>
+            <Link
+              to="/workspace/projects"
+              className={navLinkClass}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Projects
+            </Link>
+            <Link
+              to="/workspace/machines"
+              className={navLinkClass}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Machines
+            </Link>
+            <Link
+              to="/workspace/work-complete"
+              className={navLinkClass}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Log work
+            </Link>
+            {user.globalRole === "org_admin" && (
+              <Link
+                to="/workspace/organization"
+                className={navLinkClass}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Organization
+              </Link>
+            )}
+            <Link
+              to="/profile#phone-notifications"
+              className={navLinkClass + " font-medium text-emerald-200"}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Phone notifications setup
+            </Link>
+          </nav>
+        )}
       </header>
       {isWorkspace || isProjectNote ? (
         <div className="flex min-h-0 flex-1">{children}</div>
       ) : (
-        <main className="mx-auto w-full max-w-[1600px] flex-1 p-4">{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] flex-1 p-3 sm:p-4">{children}</main>
       )}
     </div>
     </QuickCreateProvider>
