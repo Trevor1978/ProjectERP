@@ -192,11 +192,42 @@ export type GeminiPart =
   | { text: string }
   | { inlineData: { mimeType: string; data: string } };
 
+/** Per-call cap. Stay under nginx/Cloudflare gateways (typically 60–100s). */
+const GEMINI_CALL_TIMEOUT_MS = 50_000;
+/** Whole parse budget including model fallbacks. Return JSON before a 504. */
+const GEMINI_OVERALL_DEADLINE_MS = 85_000;
+
+function geminiErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.name === "TimeoutError" || err.name === "AbortError") {
+      return "Gemini request timed out";
+    }
+    return err.message;
+  }
+  return String(err);
+}
+
+function isTimeoutError(err: unknown): boolean {
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+    return true;
+  }
+  return /timed out|aborted/i.test(geminiErrorMessage(err));
+}
+
+function isFatalGeminiError(err: unknown): boolean {
+  const msg = geminiErrorMessage(err);
+  return (
+    isTimeoutError(err) ||
+    /Gemini HTTP 401|Gemini HTTP 403|Gemini HTTP 429/i.test(msg)
+  );
+}
+
 async function callGemini(opts: {
   model: string;
   apiKey: string;
   parts: GeminiPart[];
   responseSchema?: Record<string, unknown>;
+  timeoutMs: number;
 }): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(opts.model)}:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
   const generationConfig: Record<string, unknown> = {
@@ -208,14 +239,25 @@ async function callGemini(opts: {
     generationConfig.responseSchema = opts.responseSchema;
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: opts.parts }],
-      generationConfig,
-    }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: opts.parts }],
+        generationConfig,
+      }),
+      signal: AbortSignal.timeout(Math.max(1_000, opts.timeoutMs)),
+    });
+  } catch (e) {
+    if (isTimeoutError(e)) {
+      throw new Error(
+        `Gemini request timed out after ${Math.round(opts.timeoutMs / 1000)}s`,
+      );
+    }
+    throw e;
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -249,8 +291,18 @@ async function callGeminiWithModelFallback(opts: {
   responseSchema: Record<string, unknown>;
 }): Promise<string> {
   const models = resolveModelCandidates();
+  const deadline = Date.now() + GEMINI_OVERALL_DEADLINE_MS;
   let lastError: unknown;
   for (const model of models) {
+    const remaining = deadline - Date.now();
+    if (remaining < 8_000) {
+      throw new Error(
+        lastError instanceof Error
+          ? lastError.message
+          : "Gemini request timed out",
+      );
+    }
+    const timeoutMs = Math.min(GEMINI_CALL_TIMEOUT_MS, remaining - 2_000);
     try {
       let text: string;
       try {
@@ -259,9 +311,14 @@ async function callGeminiWithModelFallback(opts: {
           apiKey: opts.apiKey,
           parts: opts.parts,
           responseSchema: opts.responseSchema,
+          timeoutMs,
         });
       } catch (first) {
-        if (isModelUnavailableError(first)) throw first;
+        if (isModelUnavailableError(first) || isFatalGeminiError(first)) {
+          throw first;
+        }
+        const retryRemaining = deadline - Date.now();
+        if (retryRemaining < 8_000) throw first;
         console.warn(
           `[gemini] ${model} structured call failed, retrying without schema:`,
           first instanceof Error ? first.message : first,
@@ -270,12 +327,16 @@ async function callGeminiWithModelFallback(opts: {
           model,
           apiKey: opts.apiKey,
           parts: opts.parts,
+          timeoutMs: Math.min(GEMINI_CALL_TIMEOUT_MS, retryRemaining - 2_000),
         });
       }
       console.info(`[gemini] using model ${model}`);
       return text;
     } catch (e) {
       lastError = e;
+      if (isFatalGeminiError(e)) {
+        throw e instanceof Error ? e : new Error(geminiErrorMessage(e));
+      }
       if (isModelUnavailableError(e)) {
         console.warn(
           `[gemini] model unavailable, trying next:`,
@@ -303,7 +364,7 @@ function resolveModelCandidates(): string[] {
 }
 
 function isModelUnavailableError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = geminiErrorMessage(err);
   return /Gemini HTTP 404|no longer available|NOT_FOUND|not found/i.test(msg);
 }
 
@@ -481,14 +542,15 @@ Rules:
 1. Read the attached document carefully. Extract every distinct line item.
 2. title: short purchasing title (supplier + PO/invoice number when present).
 3. documentType: "po" for purchase orders, "tax_invoice" for tax invoices, otherwise "other".
-4. status: use "ordered" for clear POs/invoices; use "draft" if unclear.
+4. status: use "ordered" for clear POs/invoices (including marketplace orders with payment pending/verified); use "draft" if unclear.
 5. suggestedSupplierId: catalog id only, or null. Never invent UUIDs. Put the printed vendor name in supplierNameRaw.
 6. sapPoNumber: PO / order number from the document when present, else null.
 7. needBy: delivery / due date as ISO date YYYY-MM-DD when present, else null.
 8. For each line: description required; partNumber, quantity, orderedQty, unit, estUnitPrice when present.
 9. Project assignment: prefer the user's guidance notes; else use hint projectId for all lines; else match catalog by name/code mentioned in notes or document. Leave suggestedProjectId null if unsure. Never invent project ids.
-10. quantities and prices as strings of numbers (e.g. "10", "12.50").
-11. confidenceNotes: brief notes on uncertain matches.`;
+10. quantities and prices as strings of numbers (e.g. "10", "12.50"). Strip currency symbols (AU$, $, USD).
+11. confidenceNotes: brief notes on uncertain matches.
+12. Marketplace order lists (AliExpress, Amazon, eBay, etc.): extract every visible product as a line (description, qty, unit price, SKU when shown). Ignore UI chrome such as "Verifying your payment", coupons, and free-returns banners. If multiple sellers appear, leave suggestedSupplierId null unless exactly one catalog supplier matches; put seller names in supplierNameRaw and confidenceNotes. Prefer a screenshot of a single order when possible.`;
 }
 
 function qtyToString(v: string | number | null | undefined): string | null {

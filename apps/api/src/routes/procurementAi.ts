@@ -180,6 +180,16 @@ app.post("/procurement/ai-parse", async (c) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[procurement/ai-parse]", msg);
+    // 400 (not 504): Cloudflare replaces origin 504s with an HTML error page.
+    if (/timed out|aborted/i.test(msg)) {
+      return c.json(
+        {
+          error:
+            "AI analysis timed out. Try a smaller screenshot of a single order, or try again.",
+        },
+        400,
+      );
+    }
     return c.json({ error: msg }, 400);
   }
 

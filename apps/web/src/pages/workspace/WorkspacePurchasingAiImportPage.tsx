@@ -191,11 +191,13 @@ export function WorkspacePurchasingAiImportPage() {
       <p className="mb-4 text-sm text-tesla-text-secondary">
         Upload a purchase order or tax invoice. Add guidance notes so AI can
         assign projects, then review and edit before creating purchasing
-        records.
+        records. Marketplace order lists (for example AliExpress) work best as
+        a screenshot of one order — a long “my orders” page is slower and
+        easier to time out.
       </p>
 
       {err && (
-        <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="mb-3 max-h-40 overflow-auto rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 break-words">
           {err}
         </p>
       )}
@@ -206,7 +208,7 @@ export function WorkspacePurchasingAiImportPage() {
             id="po-file"
             label="Document (PDF or image)"
             accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
-            hint="PDF, JPEG, PNG, or WebP — max 15MB"
+            hint="PDF, JPEG, PNG, or WebP — max 15MB. Analysis can take up to a minute."
             onFiles={(files) => setFile(files[0] ?? null)}
           >
             {file ? (

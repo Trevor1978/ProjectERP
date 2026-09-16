@@ -1,3 +1,5 @@
+import { httpErrorMessage } from "./httpErrorMessage";
+
 /** Same-origin `/api` when unset. Ignores baked-in localhost API URL on LAN/IP deploys (browser "localhost" is the user device, not the server). */
 function apiBase(): string {
   const env = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
@@ -36,18 +38,7 @@ export async function apiForm<T>(path: string, form: FormData): Promise<T> {
     credentials: "include",
   });
   if (!r.ok) {
-    const t = await r.text();
-    let err: unknown;
-    try {
-      err = JSON.parse(t) as { error?: unknown };
-    } catch {
-      err = t;
-    }
-    throw new Error(
-      typeof err === "object" && err && "error" in err
-        ? String((err as { error: string }).error)
-        : t || r.statusText,
-    );
+    throw new Error(httpErrorMessage(r.status, await r.text()));
   }
   return r.json() as Promise<T>;
 }
@@ -65,29 +56,7 @@ export async function api<T>(
     },
   });
   if (!r.ok) {
-    const t = await r.text();
-    let err: unknown;
-    try {
-      err = JSON.parse(t) as { error?: unknown };
-    } catch {
-      err = t;
-    }
-    if (typeof err === "object" && err && "error" in err) {
-      const e = (err as { error: unknown }).error;
-      throw new Error(
-        typeof e === "string" ? e : JSON.stringify(e),
-      );
-    }
-    // Cloudflare/nginx HTML error pages are useless in the UI.
-    if (
-      typeof t === "string" &&
-      /<!DOCTYPE html>|Bad gateway|Error code 502/i.test(t)
-    ) {
-      throw new Error(
-        `Request failed (${r.status}). The API may be down, timed out, or misconfigured (check Coolify API logs and GEMINI_API_KEY).`,
-      );
-    }
-    throw new Error(t || r.statusText);
+    throw new Error(httpErrorMessage(r.status, await r.text()));
   }
   return r.json() as Promise<T>;
 }
