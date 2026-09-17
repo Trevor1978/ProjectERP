@@ -5,6 +5,10 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import {
+  nonPalmTouches,
+  shouldStartOneFingerPan,
+} from "../../lib/noteGestures";
 
 export type ViewPan = { x: number; y: number };
 
@@ -22,7 +26,7 @@ type Props = {
   pan: ViewPan;
   zoomMin: number;
   zoomMax: number;
-  /** When true, a single finger/pointer drag pans the canvas (e.g. Select tool). */
+  /** When true, a single finger/mouse drag pans the canvas (Select tool). Never the stylus. */
   oneFingerPan?: boolean;
   onTransform: (next: { scale: number; pan: ViewPan }) => void;
   onGestureStart?: () => void;
@@ -115,10 +119,10 @@ export function NoteCanvasViewport({
   onGestureStartRef.current = onGestureStart;
 
   const applyPinch = useCallback(
-    (touches: TouchList) => {
+    (touches: Touch[]) => {
       if (touches.length < 2 || !gestureRef.current || !viewportRef.current) return;
-      const a = touches.item(0);
-      const b = touches.item(1);
+      const a = touches[0];
+      const b = touches[1];
       if (!a || !b) return;
       const g = gestureRef.current;
       const dist = touchDist(a, b);
@@ -146,12 +150,13 @@ export function NoteCanvasViewport({
     if (!el) return;
 
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length >= 2) {
+      const pinch = nonPalmTouches(e.touches);
+      if (pinch.length >= 2) {
         e.preventDefault();
         oneFingerRef.current = null;
         onGestureStartRef.current?.();
-        const a = e.touches.item(0);
-        const b = e.touches.item(1);
+        const a = pinch[0];
+        const b = pinch[1];
         if (!a || !b) return;
         gestureRef.current = {
           startDist: Math.max(1, touchDist(a, b)),
@@ -163,12 +168,13 @@ export function NoteCanvasViewport({
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length >= 2) {
+      const pinch = nonPalmTouches(e.touches);
+      if (pinch.length >= 2) {
         e.preventDefault();
         if (!gestureRef.current) {
           onGestureStartRef.current?.();
-          const a = e.touches.item(0);
-          const b = e.touches.item(1);
+          const a = pinch[0];
+          const b = pinch[1];
           if (a && b) {
             gestureRef.current = {
               startDist: Math.max(1, touchDist(a, b)),
@@ -178,7 +184,7 @@ export function NoteCanvasViewport({
             };
           }
         }
-        applyPinch(e.touches);
+        applyPinch(pinch);
       }
     };
 
@@ -210,9 +216,18 @@ export function NoteCanvasViewport({
       t instanceof Element && !!t.closest("[data-note-object]");
 
     const onPointerDown = (e: PointerEvent) => {
-      if (!oneFingerPanRef.current) return;
-      if (e.button !== 0) return;
-      if (gestureRef.current) return;
+      if (
+        !shouldStartOneFingerPan({
+          enabled: oneFingerPanRef.current,
+          pointerType: e.pointerType,
+          button: e.button,
+          pinching: !!gestureRef.current,
+          contactWidth: e.width,
+          contactHeight: e.height,
+        })
+      ) {
+        return;
+      }
       if (targetIsObject(e.target)) return;
       oneFingerRef.current = {
         pointerId: e.pointerId,

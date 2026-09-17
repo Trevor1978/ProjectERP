@@ -81,6 +81,11 @@
   user-select: none;
 }
 
+.note-canvas-viewport .a4-page,
+.note-canvas-viewport canvas {
+  touch-action: none;
+}
+
 .project-note-editor {
   overscroll-behavior: none;
   height: 100dvh;

@@ -16,6 +16,7 @@ import {
   type Stroke,
   type StrokePoint,
 } from "../../lib/projectNoteTypes";
+import { shouldIgnoreInkPointer } from "../../lib/noteGestures";
 import {
   effectivePressure,
   paintStroke,
@@ -289,11 +290,17 @@ export function A4PageCanvas({
 
     if (e.pointerType === "pen") stylusSeenRef.current = true;
     if (
-      palmRejection &&
-      stylusSeenRef.current &&
-      e.pointerType === "touch"
+      shouldIgnoreInkPointer({
+        palmRejection,
+        stylusSeen: stylusSeenRef.current,
+        pointerType: e.pointerType,
+        contactWidth: e.width,
+        contactHeight: e.height,
+      })
     ) {
-      // Palm / finger while Pencil is in use — ignore for ink.
+      // Palm / extra finger: do not ink, and do not let the event pan the page.
+      e.preventDefault();
+      e.stopPropagation();
       return;
     }
 
@@ -336,6 +343,9 @@ export function A4PageCanvas({
     if (readOnly) return;
     if (inkPointerIdRef.current !== null && e.pointerId !== inkPointerIdRef.current) {
       return;
+    }
+    if (inkPointerIdRef.current === e.pointerId) {
+      e.preventDefault();
     }
     if (tool === "eraser" && e.buttons === 1 && e.pointerId === inkPointerIdRef.current) {
       const pt = toPagePoint(e.clientX, e.clientY, e.pressure, e.pointerType);
@@ -472,6 +482,7 @@ export function A4PageCanvas({
       style={{
         width: pageWidth,
         height: pageHeight,
+        touchAction: "none",
         ...backgroundStyle(background),
       }}
       onPointerDown={onPagePointerDown}

@@ -30,6 +30,7 @@ import {
   type ViewPan,
 } from "../components/projectNotes/NoteCanvasViewport";
 import { compressNoteImage } from "../lib/imageCompress";
+import { oneFingerPanForTool } from "../lib/noteGestures";
 import {
   emptyPageContent,
   newId,
@@ -641,8 +642,7 @@ export function ProjectNotePage() {
     { id: "grid", label: "10mm grid" },
   ];
 
-  const oneFingerPan =
-    tool === "select" || (zoomMode === "manual" && scale > fitScale * 1.02);
+  const oneFingerPan = oneFingerPanForTool(tool);
 
   const dockBtn = (
     active: boolean,
@@ -1040,6 +1040,7 @@ export function ProjectNotePage() {
           <button
             type="button"
             className={dockBtn(tool === "pen")}
+            title="Write — two fingers to move the page"
             onClick={() => setTool("pen")}
           >
             <PenLine className="h-5 w-5" />
@@ -1048,6 +1049,7 @@ export function ProjectNotePage() {
           <button
             type="button"
             className={dockBtn(tool === "eraser")}
+            title="Erase — two fingers to move the page"
             onClick={() => setTool("eraser")}
           >
             <Eraser className="h-5 w-5" />
@@ -1056,6 +1058,7 @@ export function ProjectNotePage() {
           <button
             type="button"
             className={dockBtn(tool === "select")}
+            title="Select objects and drag with one finger to pan"
             onClick={() => setTool("select")}
           >
             <MousePointer2 className="h-5 w-5" />
@@ -1150,6 +1153,11 @@ export function ProjectNotePage() {
             <div className="flex flex-col gap-4">
               {zoomOrientBgControls}
               <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                <p className="text-xs text-slate-500">
+                  While Pen or Eraser is selected, the stylus writes and a
+                  resting palm is ignored. Use two fingers to pan or zoom; use
+                  Select to drag the page with one finger.
+                </p>
                 <label className="flex min-h-11 items-center justify-between gap-3">
                   <span>Palm rejection (stylus)</span>
                   <input
