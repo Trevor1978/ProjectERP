@@ -86,7 +86,7 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="relative rounded px-2 py-1 text-slate-300 hover:text-white"
+        className="relative inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded px-2 py-1 text-slate-300 hover:text-white"
         aria-label="Notifications"
       >
         <span className="text-lg">🔔</span>
@@ -110,7 +110,7 @@ export function NotificationBell() {
         </button>
       )}
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 max-h-96 w-80 overflow-y-auto rounded border border-slate-200 bg-white text-sm text-slate-900 shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-1 max-h-[min(24rem,70dvh)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded border border-slate-200 bg-white text-sm text-slate-900 shadow-lg">
           <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white px-3 py-2">
             <span className="text-xs font-medium text-slate-600">
               Notifications
@@ -169,6 +169,19 @@ export function NotificationBell() {
               </div>
             );
           })}
+          <div className="sticky bottom-0 border-t border-slate-100 bg-slate-50 p-3 text-xs text-slate-600">
+            <p className="mb-2">
+              In-app alerts appear here. For phone notifications, enable push on
+              your device.
+            </p>
+            <Link
+              to="/profile#phone-notifications"
+              className="inline-flex min-h-[2.5rem] items-center font-medium text-blue-700 hover:underline"
+              onClick={() => setOpen(false)}
+            >
+              Set up phone notifications →
+            </Link>
+          </div>
         </div>
       )}
     </div>
