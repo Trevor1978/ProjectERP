@@ -538,6 +538,12 @@ app.post("/projects/:projectId/members", async (c) => {
   if (!row) {
     return c.json({ error: "Member already on project" }, 409);
   }
+  
+  await writeAudit(a, "create", "project_member", row.id, {
+    userId: { after: row.userId },
+    role: { after: row.role },
+  });
+  
   return c.json({ member: row });
 });
 
@@ -567,6 +573,12 @@ app.delete("/projects/:projectId/members/:memberId", async (c) => {
   if (cur.length === 0) {
     return c.json({ error: "Not found" }, 404);
   }
+  
+  await writeAudit(a, "delete", "project_member", memberId, {
+    userId: { before: cur[0]!.userId },
+    role: { before: cur[0]!.role },
+  });
+  
   await db.delete(projectMember).where(eq(projectMember.id, memberId));
   return c.json({ ok: true });
 });
@@ -619,19 +631,39 @@ app.patch("/milestones/:id", async (c) => {
   if (p.data.version !== undefined && p.data.version !== cur[0]!.version) {
     return c.json({ error: "Version conflict" }, 409);
   }
+  const before = cur[0]!;
   const [m] = await db
     .update(milestone)
     .set({
-      name: p.data.name ?? cur[0]!.name,
+      name: p.data.name ?? before.name,
       startAt:
-        p.data.startAt === undefined ? cur[0]!.startAt : p.data.startAt,
-      endAt: p.data.endAt === undefined ? cur[0]!.endAt : p.data.endAt,
-      orderIndex: p.data.orderIndex ?? cur[0]!.orderIndex,
-      version: (cur[0]!.version ?? 0) + 1,
+        p.data.startAt === undefined ? before.startAt : p.data.startAt,
+      endAt: p.data.endAt === undefined ? before.endAt : p.data.endAt,
+      orderIndex: p.data.orderIndex ?? before.orderIndex,
+      version: (before.version ?? 0) + 1,
       updatedAt: new Date(),
     })
     .where(eq(milestone.id, id))
     .returning();
+  
+  const diff: Record<string, unknown> = {};
+  if (p.data.name !== undefined && p.data.name !== before.name) {
+    diff.name = { before: before.name, after: p.data.name };
+  }
+  if (p.data.startAt !== undefined && p.data.startAt !== before.startAt) {
+    diff.startAt = { before: before.startAt, after: p.data.startAt };
+  }
+  if (p.data.endAt !== undefined && p.data.endAt !== before.endAt) {
+    diff.endAt = { before: before.endAt, after: p.data.endAt };
+  }
+  if (p.data.orderIndex !== undefined && p.data.orderIndex !== before.orderIndex) {
+    diff.orderIndex = { before: before.orderIndex, after: p.data.orderIndex };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    await writeAudit(a, "update", "milestone", id, diff);
+  }
+  
   return c.json({ milestone: m });
 });
 
@@ -755,6 +787,44 @@ app.patch("/tasks/:id", async (c) => {
   if (t?.useDerivedPercent) {
     await syncTaskPercentFromTodos(id);
   }
+  
+  const before = cur[0]!;
+  const diff: Record<string, unknown> = {};
+  if (p.data.milestoneId !== undefined && p.data.milestoneId !== before.milestoneId) {
+    diff.milestoneId = { before: before.milestoneId, after: p.data.milestoneId };
+  }
+  if (p.data.title !== undefined && p.data.title !== before.title) {
+    diff.title = { before: before.title, after: p.data.title };
+  }
+  if (p.data.description !== undefined && p.data.description !== before.description) {
+    diff.description = { before: before.description, after: p.data.description };
+  }
+  if (p.data.startAt !== undefined && p.data.startAt !== before.startAt) {
+    diff.startAt = { before: before.startAt, after: p.data.startAt };
+  }
+  if (p.data.estDays !== undefined && p.data.estDays !== before.estDays) {
+    diff.estDays = { before: before.estDays, after: p.data.estDays };
+  }
+  if (p.data.actualHours !== undefined && p.data.actualHours !== before.actualHours) {
+    diff.actualHours = { before: before.actualHours, after: p.data.actualHours };
+  }
+  if (p.data.percentComplete !== undefined && p.data.percentComplete !== before.percentComplete) {
+    diff.percentComplete = { before: before.percentComplete, after: p.data.percentComplete };
+  }
+  if (p.data.useDerivedPercent !== undefined && p.data.useDerivedPercent !== before.useDerivedPercent) {
+    diff.useDerivedPercent = { before: before.useDerivedPercent, after: p.data.useDerivedPercent };
+  }
+  if (p.data.orderIndex !== undefined && p.data.orderIndex !== before.orderIndex) {
+    diff.orderIndex = { before: before.orderIndex, after: p.data.orderIndex };
+  }
+  if (p.data.assigneeId !== undefined && p.data.assigneeId !== before.assigneeId) {
+    diff.assigneeId = { before: before.assigneeId, after: p.data.assigneeId };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    await writeAudit(a, "update", "task", id, diff);
+  }
+  
   return c.json({ task: t });
 });
 
@@ -794,6 +864,15 @@ app.post("/task-dependencies", async (c) => {
     })
     .onConflictDoNothing()
     .returning();
+  
+  if (d) {
+    await writeAudit(a, "create", "task_dependency", d.id, {
+      taskId: { after: d.taskId },
+      predecessorTaskId: { after: d.predecessorTaskId },
+      type: { after: d.type },
+    });
+  }
+  
   return c.json({ taskDependency: d });
 });
 
@@ -818,6 +897,13 @@ app.delete("/task-dependencies/:id", async (c) => {
   if ("error" in pr) {
     return c.json({ error: pr.error }, pr.status);
   }
+  
+  await writeAudit(a, "delete", "task_dependency", id, {
+    taskId: { before: row[0]!.taskId },
+    predecessorTaskId: { before: row[0]!.predecessorTaskId },
+    type: { before: row[0]!.type },
+  });
+  
   await db.delete(taskDependency).where(eq(taskDependency.id, id));
   return c.json({ ok: true });
 });
@@ -905,6 +991,35 @@ app.patch("/todos/:id", async (c) => {
     .where(eq(todo.id, id))
     .returning();
   await syncTaskPercentFromTodos(t[0]!.id);
+  
+  const before = cur[0]!;
+  const diff: Record<string, unknown> = {};
+  if (p.data.title !== undefined && p.data.title !== before.title) {
+    diff.title = { before: before.title, after: p.data.title };
+  }
+  if (p.data.description !== undefined && p.data.description !== before.description) {
+    diff.description = { before: before.description, after: p.data.description };
+  }
+  if (p.data.status !== undefined && p.data.status !== before.status) {
+    diff.status = { before: before.status, after: p.data.status };
+  }
+  if (p.data.dueAt !== undefined && p.data.dueAt !== before.dueAt) {
+    diff.dueAt = { before: before.dueAt, after: p.data.dueAt };
+  }
+  if (p.data.priority !== undefined && p.data.priority !== before.priority) {
+    diff.priority = { before: before.priority, after: p.data.priority };
+  }
+  if (p.data.orderIndex !== undefined && p.data.orderIndex !== before.orderIndex) {
+    diff.orderIndex = { before: before.orderIndex, after: p.data.orderIndex };
+  }
+  if (p.data.assigneeId !== undefined && p.data.assigneeId !== before.assigneeId) {
+    diff.assigneeId = { before: before.assigneeId, after: p.data.assigneeId };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    await writeAudit(a, "update", "todo", id, diff);
+  }
+  
   return c.json({ todo: row });
 });
 
