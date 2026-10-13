@@ -38,7 +38,7 @@ const line = (patch: Partial<ExistingProcLine> = {}): ExistingProcLine => ({
 assert.equal(normalizeRef("PO-100"), normalizeRef("po 100"));
 assert.equal(normalizeRef("P.O. 100"), "100");
 
-const poMatch = matchOrders(
+const poOnly = matchOrders(
   {
     documentType: "po",
     supplierId: "sup-1",
@@ -50,10 +50,15 @@ const poMatch = matchOrders(
   },
   [order()],
 );
-assert.equal(poMatch.confidence, "high");
-assert.equal(poMatch.procurementId, "order-1");
+assert.equal(poOnly.confidence, "suggested");
+assert.equal(poOnly.procurementId, "order-1");
+assert.equal(poOnly.candidates[0]?.reasons.includes("short PO number"), true);
 
-const piMatch = matchOrders(
+const bearingLines = new Map([
+  ["order-1", [{ partNumber: "ABC", description: "Bearing" }]],
+]);
+
+const poAndLines = matchOrders(
   {
     documentType: "proforma_invoice",
     supplierId: "sup-1",
@@ -64,21 +69,45 @@ const piMatch = matchOrders(
     lines: [{ partNumber: "ABC", description: "Bearing" }],
   },
   [order()],
+  bearingLines,
 );
-assert.equal(piMatch.confidence, "high");
-assert.equal(piMatch.candidates[0]?.reasons.includes("PO number"), true);
+assert.equal(poAndLines.confidence, "high");
+assert.equal(poAndLines.candidates[0]?.reasons.includes("part numbers"), true);
+assert.equal(poAndLines.candidates[0]?.reasons.includes("supplier"), true);
+
+const longPoDifferentSupplier = matchOrders(
+  {
+    documentType: "tax_invoice",
+    supplierId: "sup-2",
+    sapPoNumber: "PO-450219",
+    quoteNumber: null,
+    invoiceNumber: null,
+    deliveryDocketNumber: null,
+    lines: [{ partNumber: "ABC", description: "Bearing" }],
+  },
+  [order({ sapPoNumber: "450219" })],
+  bearingLines,
+);
+assert.equal(longPoDifferentSupplier.confidence, "suggested");
+assert.equal(
+  longPoDifferentSupplier.candidates[0]?.reasons.includes("different supplier"),
+  true,
+);
 
 const docketMatch = matchOrders(
   {
     documentType: "delivery_docket",
     supplierId: null,
-    sapPoNumber: "PO100",
+    sapPoNumber: "PO-450219",
     quoteNumber: null,
     invoiceNumber: null,
     deliveryDocketNumber: "DN-9",
-    lines: [{ partNumber: "ABC", description: "Bearing" }],
+    lines: [{ partNumber: "ABC-1", description: "SKF deep groove bearing" }],
   },
-  [order()],
+  [order({ sapPoNumber: "450219" })],
+  new Map([
+    ["order-1", [{ partNumber: "ABC1", description: "SKF bearing deep groove" }]],
+  ]),
 );
 assert.equal(docketMatch.procurementId, "order-1");
 assert.equal(docketMatch.confidence, "high");

@@ -104,12 +104,17 @@ app.post("/procurement/ai-parse", async (c) => {
   const file = body["file"];
   const notesRaw = body["notes"];
   const projectIdRaw = body["projectId"];
+  const procurementIdRaw = body["procurementId"];
 
   const notes =
     typeof notesRaw === "string" ? notesRaw.slice(0, 50000) : "";
   const hintProjectId =
     typeof projectIdRaw === "string" && UUID_RE.test(projectIdRaw.trim())
       ? projectIdRaw.trim()
+      : null;
+  const pinProcurementId =
+    typeof procurementIdRaw === "string" && UUID_RE.test(procurementIdRaw.trim())
+      ? procurementIdRaw.trim()
       : null;
 
   if (!(file instanceof File)) {
@@ -244,6 +249,7 @@ app.post("/procurement/ai-parse", async (c) => {
         description: line.description,
       })),
     }),
+    pinProcurementId,
   );
   const selected = match.candidates.find(
     (candidate) => candidate.id === match.procurementId,

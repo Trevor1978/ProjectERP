@@ -121,6 +121,7 @@ async function allowedProjectIds(a: AuthUser): Promise<string[] | null> {
 export async function loadDocumentMatch(
   a: AuthUser,
   doc: DocumentIdentity,
+  pinProcurementId?: string | null,
 ): Promise<DocumentMatchPayload> {
   const orders = await db
     .select({
@@ -198,44 +199,68 @@ export async function loadDocumentMatch(
     projectId: "",
   }));
 
-  return {
-    procurementId: match.procurementId,
-    confidence: match.confidence,
-    candidates: match.candidates.map((candidate) => {
-      const existing = (linesByOrder.get(candidate.order.id) ?? []).map((line) => ({
+  const toCandidate = (
+    order: OrderSnapshot,
+    score: number,
+    reasons: string[],
+  ) => {
+    const existing = (linesByOrder.get(order.id) ?? []).map((line) => ({
+      id: line.id,
+      partNumber: line.partNumber,
+      description: line.description,
+      quantity: "1",
+      orderedQty: null,
+      unit: null,
+      estUnitPrice: null,
+      receivedQty: 0,
+      projectId: line.projectId,
+    }));
+    const matched = matchIncomingLines(existing, incoming);
+    return {
+      id: order.id,
+      title: order.title,
+      status: order.status,
+      supplierId: order.supplierId,
+      sapPoNumber: order.sapPoNumber,
+      quoteNumber: order.quoteNumber,
+      invoiceNumber: order.invoiceNumber,
+      deliveryDocketNumbers: order.deliveryDocketNumbers,
+      score,
+      reasons,
+      lineMatches: matched.map((lineId, incomingIndex) => ({
+        incomingIndex,
+        lineId,
+      })),
+      orderLines: existing.map((line) => ({
         id: line.id,
         partNumber: line.partNumber,
         description: line.description,
-        quantity: "1",
-        orderedQty: null,
-        unit: null,
-        estUnitPrice: null,
-        receivedQty: 0,
-        projectId: line.projectId,
-      }));
-      const matched = matchIncomingLines(existing, incoming);
-      return {
-        id: candidate.order.id,
-        title: candidate.order.title,
-        status: candidate.order.status,
-        supplierId: candidate.order.supplierId,
-        sapPoNumber: candidate.order.sapPoNumber,
-        quoteNumber: candidate.order.quoteNumber,
-        invoiceNumber: candidate.order.invoiceNumber,
-        deliveryDocketNumbers: candidate.order.deliveryDocketNumbers,
-        score: candidate.score,
-        reasons: candidate.reasons,
-        lineMatches: matched.map((lineId, incomingIndex) => ({
-          incomingIndex,
-          lineId,
-        })),
-        orderLines: existing.map((line) => ({
-          id: line.id,
-          partNumber: line.partNumber,
-          description: line.description,
-        })),
-      };
-    }),
+      })),
+    };
+  };
+
+  const candidates = match.candidates.map((candidate) =>
+    toCandidate(candidate.order, candidate.score, candidate.reasons),
+  );
+  let procurementId = match.procurementId;
+  const pin = pinProcurementId?.trim() || null;
+  if (pin && visibleIds.has(pin)) {
+    const pinnedOrder = visibleOrders.find((order) => order.id === pin);
+    if (pinnedOrder) {
+      const existing = candidates.find((candidate) => candidate.id === pin);
+      if (existing) {
+        existing.reasons = ["selected order", ...existing.reasons];
+      } else {
+        candidates.unshift(toCandidate(pinnedOrder, 0, ["selected order"]));
+      }
+      procurementId = pin;
+    }
+  }
+
+  return {
+    procurementId,
+    confidence: match.confidence,
+    candidates,
   };
 }
 
