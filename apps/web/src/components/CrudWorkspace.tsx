@@ -219,7 +219,7 @@ function deleteExecutePath(tab: Tab, id: string): string {
   }
 }
 
-const newRowInputClass = "w-full min-w-[6rem] rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-sm placeholder:text-slate-400";
+const newRowInputClass = "w-full min-w-[6rem] rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-sm placeholder:text-slate-500";
 
 /** Narrow workspace table rows when `?projectId=` / `?taskId=` / `?milestoneId=` / `?supplierId=` are present. */
 function filterWorkspaceRowsByUrlParams(
@@ -538,51 +538,51 @@ export function CrudWorkspace({
           }}
           title="Open"
           aria-label="Open"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800"
+          className="inline-flex h-10 w-10 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 touch-manipulation"
         >
-          <ExternalLink size={14} />
+          <ExternalLink size={16} />
         </Link>
       ) : (
         <button
           type="button"
           title="Open"
           aria-label="Open"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800"
+          className="inline-flex h-10 w-10 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 touch-manipulation"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             setEditTarget({ tab: t, id });
           }}
         >
-          <ExternalLink size={14} />
+          <ExternalLink size={16} />
         </button>
       )}
       <button
         type="button"
         title="Edit"
         aria-label="Edit"
-        className="inline-flex h-7 w-7 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+        className="inline-flex h-10 w-10 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 touch-manipulation"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setEditTarget({ tab: t, id });
         }}
       >
-        <Pencil size={14} />
+        <Pencil size={16} />
       </button>
       {canShowDeleteForRow(t, timeEntryUserId) && (
         <button
           type="button"
           title="Delete"
           aria-label="Delete"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+          className="inline-flex h-10 w-10 items-center justify-center rounded border border-red-200 bg-red-50 text-red-800 hover:bg-red-100 touch-manipulation"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             setDeleteTarget({ tab: t, id, label });
           }}
         >
-          <X size={14} />
+          <X size={16} />
         </button>
       )}
     </div>
@@ -2026,7 +2026,7 @@ function CrudAppendRow({
     <button
       type="button"
       disabled={disabled || saving}
-      className="rounded border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+      className="rounded border border-blue-700 bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       onClick={() => {
         setErr(null);
         setSaving(true);
