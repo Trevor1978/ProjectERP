@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Routes, Route, Navigate, Link, useNavigate, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./lib/api";
@@ -30,13 +31,14 @@ import { ProjectNotePage } from "./pages/ProjectNotePage";
 import { NotesHomePage } from "./pages/NotesHomePage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { QuickCreateProvider } from "./components/QuickCreateProvider";
-import { House } from "lucide-react";
+import { House, Menu, X } from "lucide-react";
 
 function Layout({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const location = useLocation();
   const { data } = useMe();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const user = data?.user;
   const isWorkspace = user ? location.pathname.startsWith("/workspace") : false;
   const isProjectNote = user
@@ -61,36 +63,46 @@ function Layout({ children }: { children: React.ReactNode }) {
           (isProjectNote ? "hidden" : "flex")
         }
       >
-        <div className="flex items-center gap-6">
+        <div className="flex flex-1 items-center gap-3 md:gap-6">
           <Link to="/" className="text-sm font-medium uppercase tracking-[0.2em]">
             Project ERP
           </Link>
-          <Link
-            to="/"
-            className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white"
-          >
-            <House className="h-4 w-4 opacity-90" aria-hidden />
-            Home
-          </Link>
-          <Link to="/workspace/projects" className="text-sm text-white/70 hover:text-white">
-            Projects
-          </Link>
-          <Link to="/workspace/machines" className="text-sm text-white/70 hover:text-white">
-            Machines
-          </Link>
-          <Link to="/workspace/work-complete" className="text-sm text-white/70 hover:text-white">
-            Log work
-          </Link>
-          {user.globalRole === "org_admin" && (
+          <div className="hidden items-center gap-6 md:flex">
             <Link
-              to="/workspace/organization"
-              className="text-sm text-white/70 hover:text-white"
+              to="/"
+              className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white"
             >
-              Organization
+              <House className="h-4 w-4 opacity-90" aria-hidden />
+              Home
             </Link>
-          )}
+            <Link to="/workspace/projects" className="text-sm text-white/70 hover:text-white">
+              Projects
+            </Link>
+            <Link to="/workspace/machines" className="text-sm text-white/70 hover:text-white">
+              Machines
+            </Link>
+            <Link to="/workspace/work-complete" className="text-sm text-white/70 hover:text-white">
+              Log work
+            </Link>
+            {user.globalRole === "org_admin" && (
+              <Link
+                to="/workspace/organization"
+                className="text-sm text-white/70 hover:text-white"
+              >
+                Organization
+              </Link>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(!mobileNavOpen)}
+            className="ml-auto flex h-10 w-10 items-center justify-center rounded-sm text-white hover:bg-white/10 md:hidden"
+            aria-label="Toggle navigation menu"
+          >
+            {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="hidden items-center gap-3 text-sm md:flex">
           <GlobalSearch />
           <NotificationBell />
           <Link
@@ -113,6 +125,69 @@ function Layout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </header>
+      {mobileNavOpen && (
+        <div className="no-print border-b border-tesla-border bg-tesla-header md:hidden">
+          <nav className="flex flex-col p-4">
+            <Link
+              to="/"
+              onClick={() => setMobileNavOpen(false)}
+              className="flex items-center gap-2 rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+            >
+              <House className="h-4 w-4 opacity-90" aria-hidden />
+              Home
+            </Link>
+            <Link
+              to="/workspace/projects"
+              onClick={() => setMobileNavOpen(false)}
+              className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+            >
+              Projects
+            </Link>
+            <Link
+              to="/workspace/machines"
+              onClick={() => setMobileNavOpen(false)}
+              className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+            >
+              Machines
+            </Link>
+            <Link
+              to="/workspace/work-complete"
+              onClick={() => setMobileNavOpen(false)}
+              className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+            >
+              Log work
+            </Link>
+            {user.globalRole === "org_admin" && (
+              <Link
+                to="/workspace/organization"
+                onClick={() => setMobileNavOpen(false)}
+                className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+              >
+                Organization
+              </Link>
+            )}
+            <div className="mt-3 flex flex-col gap-2 border-t border-white/20 pt-3">
+              <Link
+                to="/profile"
+                onClick={() => setMobileNavOpen(false)}
+                className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+              >
+                Profile ({user.name})
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  void logout();
+                }}
+                className="rounded-sm border border-white/20 px-3 py-2.5 text-left text-sm text-white/70 hover:bg-white/10 hover:text-white"
+              >
+                Log out
+              </button>
+            </div>
+          </nav>
+        </div>
+      )}
       {isWorkspace || isProjectNote ? (
         <div className="flex min-h-0 flex-1">{children}</div>
       ) : (

@@ -122,8 +122,8 @@ export function FileDropZone({
           className={
             "rounded-sm border border-dashed px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 " +
             (dragging
-              ? "border-slate-800 bg-slate-100 text-slate-900"
-              : "border-tesla-border bg-white text-tesla-text hover:bg-tesla-muted")
+              ? "border-blue-600 bg-blue-50 text-blue-900"
+              : "border-blue-400 bg-blue-50/50 text-blue-800 hover:bg-blue-50")
           }
         >
           {dragging ? "Drop to upload" : defaultPrompt}
