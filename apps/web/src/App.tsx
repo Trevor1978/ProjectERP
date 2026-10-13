@@ -27,6 +27,7 @@ import { WorkspaceServiceHistoryPage } from "./pages/workspace/WorkspaceServiceH
 import { WorkspaceServiceHistoryDetailPage } from "./pages/workspace/WorkspaceServiceHistoryDetailPage";
 import { WorkspaceWorkCompletePage } from "./pages/workspace/WorkspaceWorkCompletePage";
 import { WorkspaceOrganizationPage } from "./pages/workspace/WorkspaceOrganizationPage";
+import { WorkspaceHistoryPage } from "./pages/workspace/WorkspaceHistoryPage";
 import { ProjectNotePage } from "./pages/ProjectNotePage";
 import { NotesHomePage } from "./pages/NotesHomePage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -267,6 +268,7 @@ export default function App() {
         <Route path="service-history/:logId" element={<WorkspaceServiceHistoryDetailPage />} />
         <Route path="work-complete" element={<WorkspaceWorkCompletePage />} />
         <Route path="organization" element={<WorkspaceOrganizationPage />} />
+        <Route path="history" element={<WorkspaceHistoryPage />} />
         <Route path=":table" element={<HomePage />} />
       </Route>
       <Route
