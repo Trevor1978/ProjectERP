@@ -85,14 +85,17 @@ function Layout({ children }: { children: React.ReactNode }) {
             <Link to="/workspace/work-complete" className="text-sm text-white/70 hover:text-white">
               Log work
             </Link>
-            {user.globalRole === "org_admin" && (
-              <Link
-                to="/workspace/organization"
-                className="text-sm text-white/70 hover:text-white"
-              >
-                Organization
-              </Link>
-            )}
+          <Link to="/workspace/history" className="text-sm text-white/70 hover:text-white">
+            History
+          </Link>
+          {user.globalRole === "org_admin" && (
+            <Link
+              to="/workspace/organization"
+              className="text-sm text-white/70 hover:text-white"
+            >
+              Organization
+            </Link>
+          )}
           </div>
           <button
             type="button"
@@ -157,6 +160,13 @@ function Layout({ children }: { children: React.ReactNode }) {
               className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
             >
               Log work
+            </Link>
+            <Link
+              to="/workspace/history"
+              onClick={() => setMobileNavOpen(false)}
+              className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+            >
+              History
             </Link>
             {user.globalRole === "org_admin" && (
               <Link

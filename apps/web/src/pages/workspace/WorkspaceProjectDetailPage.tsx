@@ -6,6 +6,7 @@ import { ProjectItemsPanel } from "../../components/ProjectItemsPanel";
 import { CrudWorkspace } from "../../components/CrudWorkspace";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { QuickCreateSelect } from "../../components/QuickCreateSelect";
+import { AuditHistory } from "../../components/AuditHistory";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
 type Project = {
@@ -58,7 +59,7 @@ export function WorkspaceProjectDetailPage() {
   const [err, setErr] = useState<string | null>(null);
   const [newMilestoneName, setNewMilestoneName] = useState("");
   const [childBusy, setChildBusy] = useState(false);
-  const [activeTab, setActiveTab] = useState<"milestones" | "tasks" | "todos" | "purchasing">("milestones");
+  const [activeTab, setActiveTab] = useState<"milestones" | "tasks" | "todos" | "purchasing" | "history">("milestones");
 
   const nextMilestoneOrder = useMemo(
     () => (milestones.length ? Math.max(...milestones.map((m) => m.orderIndex)) + 1 : 0),
@@ -223,6 +224,18 @@ export function WorkspaceProjectDetailPage() {
           >
             Purchasing
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("history")}
+            className={
+              "whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors " +
+              (activeTab === "history"
+                ? "border-b-2 border-slate-900 text-slate-900"
+                : "text-slate-600 hover:text-slate-900")
+            }
+          >
+            History
+          </button>
         </div>
 
         {activeTab === "milestones" && (
@@ -322,6 +335,12 @@ export function WorkspaceProjectDetailPage() {
               fixedProjectId={project.id}
               embedded
             />
+          </div>
+        )}
+
+        {activeTab === "history" && (
+          <div>
+            <AuditHistory entityType="project" entityId={project.id} />
           </div>
         )}
       </div>
