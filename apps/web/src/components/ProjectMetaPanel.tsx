@@ -107,6 +107,14 @@ export function ProjectMetaPanel({
             ))}
           </select>
         </div>
+        <label className="flex items-center gap-2 pb-1 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={status === "closed"}
+            onChange={(e) => setStatus(e.target.checked ? "closed" : "active")}
+          />
+          Done
+        </label>
         <div>
           <label className="text-xs text-slate-500 block">Start</label>
           <input

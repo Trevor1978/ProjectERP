@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { EntitySelect } from "../../components/QuickCreateSelect";
+import { DoneCheckbox } from "../../components/DoneCheckbox";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
 type Project = { id: string; name: string; version: number };
@@ -13,6 +15,7 @@ type Milestone = {
   startAt: string | null;
   endAt: string | null;
   orderIndex: number;
+  completed: boolean;
   version: number;
 };
 type Task = {
@@ -21,6 +24,7 @@ type Task = {
   milestoneId: string;
   title: string;
   orderIndex: number;
+  completed: boolean;
   version: number;
 };
 
@@ -42,15 +46,22 @@ export function WorkspaceMilestoneDetailPage() {
 
   const milestone = msData?.milestones.find((m) => m.id === milestoneId);
   const project = projectsData?.projects.find((p) => p.id === milestone?.projectId);
+  const [showCompleted, setShowCompleted] = useState(false);
   const tasks = useMemo(
     () => (tasksData?.tasks ?? []).filter((t) => t.milestoneId === milestoneId).sort((a, b) => a.orderIndex - b.orderIndex),
     [tasksData?.tasks, milestoneId],
+  );
+  const visibleTasks = useMemo(
+    () => (showCompleted ? tasks : tasks.filter((t) => !t.completed)),
+    [tasks, showCompleted],
   );
 
   const [name, setName] = useState("");
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [orderIndex, setOrderIndex] = useState("0");
+  const [projectId, setProjectId] = useState("");
+  const [completed, setCompleted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -67,6 +78,8 @@ export function WorkspaceMilestoneDetailPage() {
     setStartAt(isoToLocal(milestone.startAt));
     setEndAt(isoToLocal(milestone.endAt));
     setOrderIndex(String(milestone.orderIndex));
+    setProjectId(milestone.projectId);
+    setCompleted(milestone.completed);
   }, [milestone]);
 
   async function refresh() {
@@ -106,6 +119,11 @@ export function WorkspaceMilestoneDetailPage() {
       {err && <p className="text-sm text-red-600">{err}</p>}
       <div className="mb-6 grid max-w-xl gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div>
+          <label className="block text-sm font-medium">Project</label>
+          <EntitySelect entity="project" value={projectId} onSave={setProjectId} className="mt-1 w-full rounded border px-2 py-1.5" />
+          <p className="mt-1 text-xs text-slate-500">Moving this milestone also moves its tasks.</p>
+        </div>
+        <div>
           <label className="block text-sm font-medium">Name</label>
           <input className="mt-1 w-full rounded border px-2 py-1.5" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
@@ -123,9 +141,10 @@ export function WorkspaceMilestoneDetailPage() {
           <label className="block text-sm font-medium">Order</label>
           <input type="number" className="mt-1 w-full rounded border px-2 py-1.5" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
         </div>
+        <DoneCheckbox checked={completed} label="Done — hide from the milestones list" onChange={setCompleted} />
         <button
           type="button"
-          disabled={saving || !name.trim()}
+          disabled={saving || !name.trim() || !projectId}
           className="w-fit rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
           onClick={() => {
             setErr(null);
@@ -136,7 +155,9 @@ export function WorkspaceMilestoneDetailPage() {
                 name: name.trim(),
                 startAt: localToIso(startAt),
                 endAt: localToIso(endAt),
+                projectId,
                 orderIndex: Number(orderIndex) || 0,
+                completed,
                 version: milestone.version,
               }),
             })
@@ -149,14 +170,52 @@ export function WorkspaceMilestoneDetailPage() {
         </button>
       </div>
 
-      <h2 className="mb-2 text-lg font-semibold text-slate-800">Tasks</h2>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-slate-800">Tasks</h2>
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={showCompleted}
+            onChange={(e) => setShowCompleted(e.target.checked)}
+            className="rounded border-slate-300"
+          />
+          Show completed
+        </label>
+      </div>
       {tasks.length === 0 ? (
         <p className="mb-2 text-sm text-slate-500">No tasks in this milestone yet — add one below.</p>
+      ) : visibleTasks.length === 0 ? (
+        <p className="mb-2 text-sm text-slate-500">All tasks are done. Turn on Show completed to see them.</p>
       ) : (
         <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-          {tasks.map((t) => (
-            <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
-              <span className="text-slate-900">{t.title}</span>
+          {visibleTasks.map((t) => (
+            <li key={t.id} className="flex flex-wrap items-center gap-3 px-3 py-2 hover:bg-slate-50">
+              <span className="min-w-[8rem] flex-1 text-slate-900">{t.title}</span>
+              <DoneCheckbox
+                checked={t.completed}
+                onChange={(done) => {
+                  setErr(null);
+                  void api("/api/tasks/" + t.id, {
+                    method: "PATCH",
+                    body: JSON.stringify({ completed: done, version: t.version }),
+                  })
+                    .then(refresh)
+                    .catch((e: Error) => setErr(e.message));
+                }}
+              />
+              <div className="min-w-[14rem] flex-1">
+                <EntitySelect
+                  entity="milestone"
+                  value={t.milestoneId}
+                  defaults={{ projectId: t.projectId }}
+                  onSave={(v) =>
+                    api("/api/tasks/" + t.id, {
+                      method: "PATCH",
+                      body: JSON.stringify({ milestoneId: v, version: t.version }),
+                    }).then(refresh)
+                  }
+                />
+              </div>
               <Link to={`/workspace/tasks/${t.id}`} className="text-sm font-medium text-blue-700 underline">
                 Open
               </Link>

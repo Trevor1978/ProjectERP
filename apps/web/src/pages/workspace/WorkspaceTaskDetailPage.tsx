@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
-import { QuickCreateSelect } from "../../components/QuickCreateSelect";
+import { EntitySelect, QuickCreateSelect } from "../../components/QuickCreateSelect";
+import { DoneCheckbox } from "../../components/DoneCheckbox";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 import { formatTaskEndIso } from "../../lib/workDays";
 
@@ -20,6 +21,7 @@ type Task = {
   actualHours: number | null;
   percentComplete: number;
   useDerivedPercent: boolean;
+  completed: boolean;
   orderIndex: number;
   assigneeId: string | null;
   version: number;
@@ -74,7 +76,12 @@ export function WorkspaceTaskDetailPage() {
 
   const task = tasksData?.tasks.find((t) => t.id === taskId);
   const milestone = msData?.milestones.find((m) => m.id === task?.milestoneId);
+  const [showCompleted, setShowCompleted] = useState(false);
   const todos = useMemo(() => (todosData?.todos ?? []).filter((td) => td.taskId === taskId), [todosData?.todos, taskId]);
+  const visibleTodos = useMemo(
+    () => (showCompleted ? todos : todos.filter((td) => td.status !== "done" && td.status !== "cancelled")),
+    [todos, showCompleted],
+  );
   const entries = useMemo(() => (timeData?.timeEntries ?? []).filter((e) => e.taskId === taskId), [timeData?.timeEntries, taskId]);
   const userName = useMemo(() => new Map((orgUsersData?.users ?? []).map((u) => [u.id, u.name] as const)), [orgUsersData?.users]);
 
@@ -87,6 +94,8 @@ export function WorkspaceTaskDetailPage() {
     return iso ? isoToLocal(iso) : "";
   }, [startAt, estDays]);
   const [orderIndex, setOrderIndex] = useState("0");
+  const [milestoneId, setMilestoneId] = useState("");
+  const [completed, setCompleted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [newTodoTitle, setNewTodoTitle] = useState("");
@@ -106,6 +115,8 @@ export function WorkspaceTaskDetailPage() {
     setStartAt(isoToLocal(task.startAt));
     setEstDays(task.estDays == null ? "" : String(task.estDays));
     setOrderIndex(String(task.orderIndex));
+    setMilestoneId(task.milestoneId);
+    setCompleted(task.completed);
   }, [task]);
 
   async function refresh() {
@@ -146,6 +157,17 @@ export function WorkspaceTaskDetailPage() {
       {err && <p className="text-sm text-red-600">{err}</p>}
       <div className="mb-6 grid max-w-2xl gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div>
+          <label className="block text-sm font-medium">Milestone</label>
+          <EntitySelect
+            entity="milestone"
+            value={milestoneId}
+            onSave={setMilestoneId}
+            defaults={{ projectId: task.projectId }}
+            className="mt-1 w-full rounded border px-2 py-1.5"
+          />
+          <p className="mt-1 text-xs text-slate-500">Choosing a milestone in another project moves this task there.</p>
+        </div>
+        <div>
           <label className="block text-sm font-medium">Title</label>
           <input className="mt-1 w-full rounded border px-2 py-1.5" value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
@@ -185,9 +207,10 @@ export function WorkspaceTaskDetailPage() {
           <label className="block text-sm font-medium">Order</label>
           <input type="number" className="mt-1 w-full max-w-xs rounded border px-2 py-1.5" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
         </div>
+        <DoneCheckbox checked={completed} label="Done — hide from the tasks list" onChange={setCompleted} />
         <button
           type="button"
-          disabled={saving || !title.trim()}
+          disabled={saving || !title.trim() || !milestoneId}
           className="w-fit rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
           onClick={() => {
             setErr(null);
@@ -197,6 +220,8 @@ export function WorkspaceTaskDetailPage() {
               body: JSON.stringify({
                 title: title.trim(),
                 description: description.trim() || null,
+                milestoneId,
+                completed,
                 startAt: localToIso(startAt),
                 estDays: estDays.trim() ? Number(estDays) : null,
                 orderIndex: Number(orderIndex) || 0,
@@ -212,17 +237,57 @@ export function WorkspaceTaskDetailPage() {
         </button>
       </div>
 
-      <h2 className="mb-2 text-lg font-semibold text-slate-800">Todos</h2>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-slate-800">Todos</h2>
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={showCompleted}
+            onChange={(e) => setShowCompleted(e.target.checked)}
+            className="rounded border-slate-300"
+          />
+          Show completed
+        </label>
+      </div>
       {todos.length === 0 ? (
         <p className="mb-2 text-sm text-slate-500">No todos on this task — add one below.</p>
+      ) : visibleTodos.length === 0 ? (
+        <p className="mb-2 text-sm text-slate-500">All todos are done. Turn on Show completed to see them.</p>
       ) : (
         <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-          {todos.map((td) => (
-            <li key={td.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
-              <span className="text-slate-900">
+          {visibleTodos.map((td) => (
+            <li key={td.id} className="flex flex-wrap items-center gap-3 px-3 py-2 hover:bg-slate-50">
+              <span className="min-w-[8rem] flex-1 text-slate-900">
                 {td.title}{" "}
                 <span className="text-xs text-slate-500">({td.status})</span>
               </span>
+              <DoneCheckbox
+                checked={td.status === "done" || td.status === "cancelled"}
+                onChange={(done) => {
+                  setErr(null);
+                  void api("/api/todos/" + td.id, {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                      status: done ? "done" : "backlog",
+                      version: td.version,
+                    }),
+                  })
+                    .then(refresh)
+                    .catch((e: Error) => setErr(e.message));
+                }}
+              />
+              <div className="min-w-[14rem] flex-1">
+                <EntitySelect
+                  entity="task"
+                  value={td.taskId}
+                  onSave={(v) =>
+                    api("/api/todos/" + td.id, {
+                      method: "PATCH",
+                      body: JSON.stringify({ taskId: v, version: td.version }),
+                    }).then(refresh)
+                  }
+                />
+              </div>
               <Link to={`/workspace/todos/${td.id}`} className="text-sm font-medium text-blue-700 underline">
                 Open
               </Link>

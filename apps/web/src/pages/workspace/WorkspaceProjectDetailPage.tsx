@@ -5,7 +5,8 @@ import { api } from "../../lib/api";
 import { ProjectItemsPanel } from "../../components/ProjectItemsPanel";
 import { CrudWorkspace } from "../../components/CrudWorkspace";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
-import { QuickCreateSelect } from "../../components/QuickCreateSelect";
+import { EntitySelect, QuickCreateSelect } from "../../components/QuickCreateSelect";
+import { DoneCheckbox } from "../../components/DoneCheckbox";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
 type Project = {
@@ -25,6 +26,7 @@ type Milestone = {
   startAt: string | null;
   endAt: string | null;
   orderIndex: number;
+  completed: boolean;
   version: number;
 };
 
@@ -43,9 +45,14 @@ export function WorkspaceProjectDetailPage() {
   });
 
   const project = projectsData?.projects.find((p) => p.id === projectId);
+  const [showCompleted, setShowCompleted] = useState(false);
   const milestones = useMemo(
     () => (milestonesData?.milestones ?? []).filter((m) => m.projectId === projectId).sort((a, b) => a.orderIndex - b.orderIndex),
     [milestonesData?.milestones, projectId],
+  );
+  const visibleMilestones = useMemo(
+    () => (showCompleted ? milestones : milestones.filter((m) => !m.completed)),
+    [milestones, showCompleted],
   );
 
   const [name, setName] = useState("");
@@ -77,6 +84,7 @@ export function WorkspaceProjectDetailPage() {
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ["projects"] });
     await qc.invalidateQueries({ queryKey: ["milestones-all"] });
+    await qc.invalidateQueries({ queryKey: ["tasks-all"] });
   }
 
   if (!projectId) {
@@ -133,6 +141,13 @@ export function WorkspaceProjectDetailPage() {
               </option>
             ))}
           </select>
+          <div className="mt-2">
+            <DoneCheckbox
+              checked={status === "closed"}
+              label="Done — hide from the projects list"
+              onChange={(done) => setStatus(done ? "closed" : "active")}
+            />
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
@@ -172,14 +187,51 @@ export function WorkspaceProjectDetailPage() {
         </button>
       </div>
 
-      <h2 className="mb-2 text-lg font-semibold text-slate-800">Milestones</h2>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-slate-800">Milestones</h2>
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={showCompleted}
+            onChange={(e) => setShowCompleted(e.target.checked)}
+            className="rounded border-slate-300"
+          />
+          Show completed
+        </label>
+      </div>
       {milestones.length === 0 ? (
         <p className="mb-2 text-sm text-slate-500">No milestones yet — add one below.</p>
+      ) : visibleMilestones.length === 0 ? (
+        <p className="mb-2 text-sm text-slate-500">All milestones are done. Turn on Show completed to see them.</p>
       ) : (
         <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-          {milestones.map((m) => (
-            <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
-              <span className="font-medium text-slate-900">{m.name}</span>
+          {visibleMilestones.map((m) => (
+            <li key={m.id} className="flex flex-wrap items-center gap-3 px-3 py-2 hover:bg-slate-50">
+              <span className="min-w-[8rem] flex-1 font-medium text-slate-900">{m.name}</span>
+              <DoneCheckbox
+                checked={m.completed}
+                onChange={(done) => {
+                  setErr(null);
+                  void api("/api/milestones/" + m.id, {
+                    method: "PATCH",
+                    body: JSON.stringify({ completed: done, version: m.version }),
+                  })
+                    .then(refresh)
+                    .catch((e: Error) => setErr(e.message));
+                }}
+              />
+              <div className="min-w-[14rem] flex-1">
+                <EntitySelect
+                  entity="project"
+                  value={m.projectId}
+                  onSave={(v) =>
+                    api("/api/milestones/" + m.id, {
+                      method: "PATCH",
+                      body: JSON.stringify({ projectId: v, version: m.version }),
+                    }).then(refresh)
+                  }
+                />
+              </div>
               <Link to={`/workspace/milestones/${m.id}`} className="text-sm font-medium text-blue-700 underline">
                 Open
               </Link>

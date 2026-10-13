@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { EntitySelect } from "../../components/QuickCreateSelect";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
 type Task = { id: string; title: string; version: number };
@@ -42,6 +43,7 @@ export function WorkspaceTodoDetailPage() {
   const todo = todosData?.todos.find((t) => t.id === todoId);
   const task = tasksData?.tasks.find((t) => t.id === todo?.taskId);
 
+  const [taskId, setTaskId] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<Todo["status"]>("backlog");
@@ -54,6 +56,7 @@ export function WorkspaceTodoDetailPage() {
 
   useEffect(() => {
     if (!todo) return;
+    setTaskId(todo.taskId);
     setTitle(todo.title);
     setDescription(todo.description ?? "");
     setStatus(todo.status);
@@ -65,6 +68,7 @@ export function WorkspaceTodoDetailPage() {
 
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ["todos-all"] });
+    await qc.invalidateQueries({ queryKey: ["tasks-all"] });
   }
 
   if (!todoId) return null;
@@ -93,6 +97,11 @@ export function WorkspaceTodoDetailPage() {
 
       {err && <p className="text-sm text-red-600">{err}</p>}
       <div className="grid max-w-xl gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div>
+          <label className="block text-sm font-medium">Task</label>
+          <EntitySelect entity="task" value={taskId} onSave={setTaskId} className="mt-1 w-full rounded border px-2 py-1.5" />
+          <p className="mt-1 text-xs text-slate-500">Move this todo onto another task. Done and cancelled todos stay hidden in the todos table until Show completed is on.</p>
+        </div>
         <div>
           <label className="block text-sm font-medium">Title</label>
           <input className="mt-1 w-full rounded border px-2 py-1.5" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -147,7 +156,7 @@ export function WorkspaceTodoDetailPage() {
         </div>
         <button
           type="button"
-          disabled={saving || !title.trim()}
+          disabled={saving || !title.trim() || !taskId}
           className="w-fit rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
           onClick={() => {
             setErr(null);
@@ -155,6 +164,7 @@ export function WorkspaceTodoDetailPage() {
             void api("/api/todos/" + todo.id, {
               method: "PATCH",
               body: JSON.stringify({
+                taskId,
                 title: title.trim(),
                 description: description.trim() || null,
                 status,

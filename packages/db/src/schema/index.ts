@@ -208,6 +208,7 @@ export const milestone = pgTable("milestone", {
   startAt: timestamp("start_at", { withTimezone: true }),
   endAt: timestamp("end_at", { withTimezone: true }),
   orderIndex: integer("order_index").notNull().default(0),
+  completed: boolean("completed").notNull().default(false),
   version: integer("version").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -241,6 +242,7 @@ export const task = pgTable(
     useDerivedPercent: boolean("use_derived_percent")
       .notNull()
       .default(true),
+    completed: boolean("completed").notNull().default(false),
     orderIndex: integer("order_index").notNull().default(0),
     assigneeId: text("assignee_id").references(() => user.id, {
       onDelete: "set null",

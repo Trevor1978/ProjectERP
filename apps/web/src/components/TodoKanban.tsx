@@ -40,10 +40,12 @@ function ColDrop({ id, children }: { id: string; children: React.ReactNode }) {
 function Card({
   todo,
   taskTitle,
+  taskOptions,
   onUpdate,
 }: {
   todo: Todo;
   taskTitle: string;
+  taskOptions: { value: string; label: string }[];
   onUpdate: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable(
@@ -100,6 +102,28 @@ function Card({
           {todo.title}
         </button>
       )}
+      <label className="mt-1 block text-[10px] font-medium uppercase tracking-wide text-slate-400">
+        Task
+        <select
+          className="mt-0.5 w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-xs font-normal normal-case tracking-normal text-slate-700"
+          value={todo.taskId}
+          aria-label="Move todo to task"
+          onChange={(e) => {
+            const next = e.target.value;
+            if (!next || next === todo.taskId) return;
+            void api("/api/todos/" + todo.id, {
+              method: "PATCH",
+              body: JSON.stringify({ taskId: next, version: todo.version }),
+            }).then(onUpdate);
+          }}
+        >
+          {taskOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <div
         className="text-xs text-slate-400 cursor-grab mt-1"
         {...listeners}
@@ -114,11 +138,13 @@ function Card({
 export function TodoKanban({
   projectId: _projectId,
   tasks,
+  taskOptions,
   todos,
   onUpdate,
 }: {
   projectId: string;
   tasks: Task[];
+  taskOptions: { value: string; label: string }[];
   todos: Todo[];
   onUpdate: () => void;
 }) {
@@ -174,6 +200,11 @@ export function TodoKanban({
                 key={todo.id}
                 todo={todo}
                 taskTitle={tasks.find((x) => x.id === todo.taskId)?.title ?? "?"}
+                taskOptions={
+                  taskOptions.some((o) => o.value === todo.taskId)
+                    ? taskOptions
+                    : [{ value: todo.taskId, label: todo.taskId }, ...taskOptions]
+                }
                 onUpdate={onUpdate}
               />
             ))}

@@ -60,6 +60,7 @@ export function GanttView({
   const ganttRef = useRef<Gantt | null>(null);
   const [daysVisible, setDaysVisible] = useState(readDaysVisible);
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const onDaysVisibleChange = useCallback((next: number) => {
     const clamped = Math.min(365, Math.max(7, Math.round(next)));
@@ -92,7 +93,11 @@ export function GanttView({
       ganttRef.current = null;
     }
 
-    const { tasks, taskDependencies } = data;
+    const tasks = data.tasks.filter((t) => showCompleted || t.completed !== true);
+    const visibleIds = new Set(tasks.map((t) => t.id));
+    const taskDependencies = data.taskDependencies.filter(
+      (d) => visibleIds.has(d.taskId) && visibleIds.has(d.predecessorTaskId),
+    );
     if (tasks.length === 0) return;
 
     const items = tasks.map((t) => {
@@ -168,7 +173,7 @@ export function GanttView({
       thinGanttDayLabels(el, scale.columnWidth);
     }
     ganttRef.current = gantt;
-  }, [data, daysVisible, viewportWidth]);
+  }, [data, daysVisible, viewportWidth, showCompleted]);
 
   if (data.tasks.length === 0) {
     return (
@@ -186,6 +191,15 @@ export function GanttView({
         <p className="text-xs text-slate-500">
           Duration is in working days (Mon–Fri). Bars without dates use duration; weekends are skipped in duration.
         </p>
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={showCompleted}
+            onChange={(e) => setShowCompleted(e.target.checked)}
+            className="rounded border-slate-300"
+          />
+          Show completed
+        </label>
         <label className="ml-auto flex items-center gap-2 text-sm text-slate-700">
           <span className="whitespace-nowrap">Days on screen</span>
           <select
@@ -223,6 +237,9 @@ export function GanttView({
           ? scaleStatusLine(scale, daysVisible)
           : "Adjust days on screen to zoom the timeline."}
       </p>
+      {data.tasks.every((t) => t.completed === true) && !showCompleted ? (
+        <p className="mb-2 text-sm text-slate-600">All tasks are done. Turn on Show completed to see them.</p>
+      ) : null}
       <div className="overflow-x-auto">
         <div ref={ganttTargetRef} className="gantt-target min-w-full" />
       </div>
