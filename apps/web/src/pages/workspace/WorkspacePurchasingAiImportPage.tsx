@@ -9,6 +9,28 @@ import { PROC_STATUS, type Procurement } from "../../workspace/purchasingTypes";
 
 type ProcStatus = (typeof PROC_STATUS)[number];
 
+const DOCUMENT_TYPES = [
+  "rfq",
+  "quote",
+  "po",
+  "proforma_invoice",
+  "tax_invoice",
+  "delivery_docket",
+  "other",
+] as const;
+
+type DocumentType = (typeof DOCUMENT_TYPES)[number];
+
+const DOCUMENT_LABELS: Record<DocumentType, string> = {
+  rfq: "RFQ",
+  quote: "Quote",
+  po: "Purchase order",
+  proforma_invoice: "Proforma invoice (PI)",
+  tax_invoice: "Tax invoice",
+  delivery_docket: "Delivery docket",
+  other: "Other",
+};
+
 type DraftLine = {
   partNumber: string | null;
   description: string;
@@ -16,19 +38,43 @@ type DraftLine = {
   orderedQty: string | null;
   unit: string | null;
   estUnitPrice: string | null;
+  deliveredQty: string | null;
   projectId: string | null;
+  matchedLineId: string | null;
 };
 
 type Draft = {
-  documentType?: "po" | "tax_invoice" | "other";
+  documentType: DocumentType;
   title: string;
   supplierId: string | null;
   supplierNameRaw: string | null;
   status: ProcStatus;
   needBy: string | null;
   sapPoNumber: string | null;
+  quoteNumber: string | null;
+  invoiceNumber: string | null;
+  deliveryDocketNumber: string | null;
   confidenceNotes: string | null;
   lines: DraftLine[];
+};
+
+type MatchCandidate = {
+  id: string;
+  title: string;
+  status: string;
+  sapPoNumber: string | null;
+  quoteNumber: string | null;
+  invoiceNumber: string | null;
+  score: number;
+  reasons: string[];
+  lineMatches: { incomingIndex: number; lineId: string | null }[];
+  orderLines?: { id: string; partNumber: string | null; description: string }[];
+};
+
+type MatchInfo = {
+  procurementId: string | null;
+  confidence: "high" | "suggested" | "none";
+  candidates: MatchCandidate[];
 };
 
 type Supplier = { id: string; name: string };
@@ -42,6 +88,12 @@ const labelClass = "block text-xs font-medium text-tesla-text-secondary";
 const cellInput =
   "w-full min-w-[4rem] rounded border border-slate-200 px-1.5 py-1 text-sm";
 
+function asDocumentType(value: string | undefined): DocumentType {
+  return (DOCUMENT_TYPES as readonly string[]).includes(value ?? "")
+    ? (value as DocumentType)
+    : "other";
+}
+
 function emptyLine(defaultProjectId: string): DraftLine {
   return {
     partNumber: null,
@@ -50,8 +102,66 @@ function emptyLine(defaultProjectId: string): DraftLine {
     orderedQty: null,
     unit: null,
     estUnitPrice: null,
+    deliveredQty: null,
     projectId: defaultProjectId || null,
+    matchedLineId: null,
   };
+}
+
+function compactRef(value: string | null | undefined): string {
+  const compact = (value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const withoutPo = compact.replace(/^PO/, "");
+  return withoutPo || compact;
+}
+
+function compactText(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** Pair draft lines to an existing order after the user edits or switches orders. */
+function withLineMatches(
+  lines: DraftLine[],
+  candidate: MatchCandidate | undefined,
+): DraftLine[] {
+  const orderLines = candidate?.orderLines ?? [];
+  if (!candidate || orderLines.length === 0) {
+    if (!candidate) return lines.map((line) => ({ ...line, matchedLineId: null }));
+    return lines.map((line, index) => ({
+      ...line,
+      matchedLineId:
+        candidate.lineMatches.find((item) => item.incomingIndex === index)?.lineId ??
+        null,
+    }));
+  }
+  const used = new Set<string>();
+  const matched: (string | null)[] = lines.map(() => null);
+  for (let i = 0; i < lines.length; i += 1) {
+    const part = compactRef(lines[i]?.partNumber);
+    if (!part) continue;
+    const found = orderLines.find(
+      (line) => !used.has(line.id) && compactRef(line.partNumber) === part,
+    );
+    if (found) {
+      used.add(found.id);
+      matched[i] = found.id;
+    }
+  }
+  for (let i = 0; i < lines.length; i += 1) {
+    if (matched[i]) continue;
+    const description = compactText(lines[i]?.description);
+    if (!description) continue;
+    const found = orderLines.find(
+      (line) => !used.has(line.id) && compactText(line.description) === description,
+    );
+    if (found) {
+      used.add(found.id);
+      matched[i] = found.id;
+    }
+  }
+  return lines.map((line, index) => ({
+    ...line,
+    matchedLineId: matched[index] ?? null,
+  }));
 }
 
 export function WorkspacePurchasingAiImportPage() {
@@ -64,6 +174,8 @@ export function WorkspacePurchasingAiImportPage() {
   const [confirming, setConfirming] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [match, setMatch] = useState<MatchInfo | null>(null);
+  const [targetId, setTargetId] = useState("");
 
   const { data: suppliersData } = useQuery({
     queryKey: ["suppliers"],
@@ -76,6 +188,8 @@ export function WorkspacePurchasingAiImportPage() {
 
   const suppliers = suppliersData?.suppliers ?? [];
   const projects = projectsData?.projects ?? [];
+  const updating = Boolean(targetId);
+  const isDelivery = draft?.documentType === "delivery_docket";
 
   const canConfirm = useMemo(() => {
     if (!draft?.title.trim()) return false;
@@ -85,10 +199,14 @@ export function WorkspacePurchasingAiImportPage() {
     );
   }, [draft]);
 
+  const selected = match?.candidates.find((candidate) => candidate.id === targetId);
+  const matchedCount = draft?.lines.filter((line) => line.matchedLineId).length ?? 0;
+  const newCount = (draft?.lines.length ?? 0) - matchedCount;
+
   async function analyze() {
     setErr(null);
     if (!file) {
-      setErr("Choose a PO or tax invoice file (PDF or image)");
+      setErr("Choose a purchasing document (PDF or image)");
       return;
     }
     setParsing(true);
@@ -97,24 +215,43 @@ export function WorkspacePurchasingAiImportPage() {
       form.append("file", file);
       form.append("notes", notes);
       if (hintProjectId) form.append("projectId", hintProjectId);
-      const res = await apiForm<{ draft: Draft }>("/api/procurement/ai-parse", form);
+      const res = await apiForm<{ draft: Draft; match: MatchInfo }>(
+        "/api/procurement/ai-parse",
+        form,
+      );
       const d = res.draft;
+      const nextMatch = res.match ?? {
+        procurementId: null,
+        confidence: "none" as const,
+        candidates: [],
+      };
+      const nextTarget = nextMatch.procurementId ?? "";
+      const lines = (d.lines ?? []).map((l) => ({
+        partNumber: l.partNumber ?? null,
+        description: l.description ?? "",
+        quantity: l.quantity != null ? String(l.quantity) : "1",
+        orderedQty: l.orderedQty != null ? String(l.orderedQty) : null,
+        unit: l.unit ?? null,
+        estUnitPrice: l.estUnitPrice != null ? String(l.estUnitPrice) : null,
+        deliveredQty: l.deliveredQty != null ? String(l.deliveredQty) : null,
+        projectId: l.projectId ?? (hintProjectId || null),
+        matchedLineId: l.matchedLineId ?? null,
+      }));
+      const candidate = nextMatch.candidates.find((item) => item.id === nextTarget);
       setDraft({
         ...d,
+        documentType: asDocumentType(d.documentType),
         status: (PROC_STATUS as readonly string[]).includes(d.status)
           ? d.status
           : "draft",
         needBy: d.needBy ? String(d.needBy).slice(0, 10) : null,
-        lines: (d.lines ?? []).map((l) => ({
-          partNumber: l.partNumber ?? null,
-          description: l.description ?? "",
-          quantity: l.quantity != null ? String(l.quantity) : "1",
-          orderedQty: l.orderedQty != null ? String(l.orderedQty) : null,
-          unit: l.unit ?? null,
-          estUnitPrice: l.estUnitPrice != null ? String(l.estUnitPrice) : null,
-          projectId: l.projectId ?? (hintProjectId || null),
-        })),
+        quoteNumber: d.quoteNumber ?? null,
+        invoiceNumber: d.invoiceNumber ?? null,
+        deliveryDocketNumber: d.deliveryDocketNumber ?? null,
+        lines: withLineMatches(lines, candidate),
       });
+      setMatch(nextMatch);
+      setTargetId(nextTarget);
       setStep("review");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Analyze failed");
@@ -123,7 +260,17 @@ export function WorkspacePurchasingAiImportPage() {
     }
   }
 
-  async function confirmCreate() {
+  function chooseTarget(nextId: string) {
+    setTargetId(nextId);
+    const candidate = match?.candidates.find((item) => item.id === nextId);
+    setDraft((current) =>
+      current
+        ? { ...current, lines: withLineMatches(current.lines, candidate) }
+        : current,
+    );
+  }
+
+  async function confirmImport() {
     if (!draft) return;
     setErr(null);
     if (!canConfirm) {
@@ -132,16 +279,21 @@ export function WorkspacePurchasingAiImportPage() {
     }
     setConfirming(true);
     try {
-      const res = await api<{ procurement: Procurement }>(
+      const res = await api<{ procurement: Procurement; mode?: "created" | "updated" }>(
         "/api/procurement/ai-confirm",
         {
           method: "POST",
           body: JSON.stringify({
+            documentType: draft.documentType,
+            procurementId: targetId || null,
             title: draft.title.trim(),
             supplierId: draft.supplierId || null,
             status: draft.status,
             needBy: draft.needBy || null,
             sapPoNumber: draft.sapPoNumber?.trim() || null,
+            quoteNumber: draft.quoteNumber?.trim() || null,
+            invoiceNumber: draft.invoiceNumber?.trim() || null,
+            deliveryDocketNumber: draft.deliveryDocketNumber?.trim() || null,
             createProjectItems: true,
             lines: draft.lines.map((l) => ({
               partNumber: l.partNumber?.trim() || null,
@@ -150,6 +302,8 @@ export function WorkspacePurchasingAiImportPage() {
               orderedQty: l.orderedQty?.trim() || null,
               unit: l.unit?.trim() || null,
               estUnitPrice: l.estUnitPrice?.trim() || null,
+              deliveredQty: l.deliveredQty?.trim() || null,
+              matchedLineId: l.matchedLineId,
               projectId: l.projectId!,
             })),
           }),
@@ -157,7 +311,7 @@ export function WorkspacePurchasingAiImportPage() {
       );
       nav(`/workspace/purchasing/${res.procurement.id}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Create failed");
+      setErr(e instanceof Error ? e.message : "Save failed");
     } finally {
       setConfirming(false);
     }
@@ -186,14 +340,14 @@ export function WorkspacePurchasingAiImportPage() {
     <WorkspaceDetailChrome
       backTo="/workspace/purchasing"
       backLabel="← Purchasing"
-      title="Import PO / invoice"
+      title="Import purchasing document"
     >
       <p className="mb-4 text-sm text-tesla-text-secondary">
-        Upload a purchase order or tax invoice. Add guidance notes so AI can
-        assign projects, then review and edit before creating purchasing
-        records. Marketplace order lists (for example AliExpress) work best as
-        a screenshot of one order — a long “my orders” page is slower and
-        easier to time out.
+        Upload an RFQ, quote, purchase order, proforma invoice (PI), tax invoice,
+        or delivery docket. AI reads the document, checks whether that order
+        already exists, and lets you update it or create a new one. A PO creates
+        the order. A later PI or delivery docket that cites the same PO number
+        updates prices, invoice details, or received quantities on that order.
       </p>
 
       {err && (
@@ -270,11 +424,9 @@ export function WorkspacePurchasingAiImportPage() {
             >
               ← Back to upload
             </button>
-            {draft.documentType && (
-              <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                Detected: {draft.documentType.replace("_", " ")}
-              </span>
-            )}
+            <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+              {DOCUMENT_LABELS[draft.documentType]}
+            </span>
           </div>
 
           {draft.confidenceNotes && (
@@ -282,6 +434,49 @@ export function WorkspacePurchasingAiImportPage() {
               {draft.confidenceNotes}
             </p>
           )}
+
+          <div className="max-w-3xl rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <label className={labelClass} htmlFor="apply-target">
+              Apply to
+            </label>
+            <select
+              id="apply-target"
+              className={selectClass}
+              value={targetId}
+              onChange={(e) => chooseTarget(e.target.value)}
+            >
+              <option value="">Create a new order</option>
+              {(match?.candidates ?? []).map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  Update {candidate.title}
+                  {candidate.sapPoNumber ? ` · PO ${candidate.sapPoNumber}` : ""}
+                  {candidate.reasons.length ? ` (${candidate.reasons.join(", ")})` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-sm text-slate-600">
+              {match?.confidence === "high" && updating
+                ? `Matched an existing order by ${selected?.reasons.join(" and ") || "reference number"}.`
+                : match?.confidence === "suggested" && updating
+                  ? "Possible match from part numbers or descriptions. Confirm this is the same order before updating."
+                  : "No existing order was selected. This will create a new purchasing record."}
+              {updating
+                ? ` ${matchedCount} line${matchedCount === 1 ? "" : "s"} match, ${newCount} new.`
+                : ""}
+            </p>
+            {updating && (
+              <p className="mt-1 text-xs text-slate-500">
+                The existing order title is kept. Prices, quantities, invoice
+                number, and receipts update from this document.
+              </p>
+            )}
+            {isDelivery && !draft.deliveryDocketNumber?.trim() && (
+              <p className="mt-2 text-sm text-amber-800">
+                No delivery docket number was found. Received quantities will be
+                added, and uploading this docket again can count them twice.
+              </p>
+            )}
+          </div>
 
           {draft.supplierNameRaw && !draft.supplierId && (
             <p className="text-sm text-slate-600">
@@ -298,6 +493,22 @@ export function WorkspacePurchasingAiImportPage() {
                 value={draft.title}
                 onChange={(e) => patchDraft({ title: e.target.value })}
               />
+            </div>
+            <div>
+              <label className={labelClass}>Document type</label>
+              <select
+                className={selectClass}
+                value={draft.documentType}
+                onChange={(e) =>
+                  patchDraft({ documentType: asDocumentType(e.target.value) })
+                }
+              >
+                {DOCUMENT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {DOCUMENT_LABELS[type]}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className={labelClass}>Supplier</label>
@@ -341,7 +552,7 @@ export function WorkspacePurchasingAiImportPage() {
               />
             </div>
             <div>
-              <label className={labelClass}>SAP / PO number</label>
+              <label className={labelClass}>PO number</label>
               <input
                 className={inputClass}
                 value={draft.sapPoNumber ?? ""}
@@ -350,16 +561,49 @@ export function WorkspacePurchasingAiImportPage() {
                 }
               />
             </div>
+            <div>
+              <label className={labelClass}>Quote number</label>
+              <input
+                className={inputClass}
+                value={draft.quoteNumber ?? ""}
+                onChange={(e) =>
+                  patchDraft({ quoteNumber: e.target.value || null })
+                }
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Invoice / PI number</label>
+              <input
+                className={inputClass}
+                value={draft.invoiceNumber ?? ""}
+                onChange={(e) =>
+                  patchDraft({ invoiceNumber: e.target.value || null })
+                }
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Delivery docket number</label>
+              <input
+                className={inputClass}
+                value={draft.deliveryDocketNumber ?? ""}
+                onChange={(e) =>
+                  patchDraft({ deliveryDocketNumber: e.target.value || null })
+                }
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-            <table className="w-full min-w-[56rem] border-collapse text-sm">
+            <table className="w-full min-w-[64rem] border-collapse text-sm">
               <thead>
                 <tr className="border-b bg-slate-50 text-left">
                   <th className="px-2 py-2 font-medium">Part #</th>
                   <th className="px-2 py-2 font-medium">Description</th>
                   <th className="px-2 py-2 font-medium">Qty</th>
                   <th className="px-2 py-2 font-medium">Ordered</th>
+                  {isDelivery && (
+                    <th className="px-2 py-2 font-medium">Delivered</th>
+                  )}
                   <th className="px-2 py-2 font-medium">Unit</th>
                   <th className="px-2 py-2 font-medium">Price</th>
                   <th className="px-2 py-2 font-medium">Project</th>
@@ -388,6 +632,11 @@ export function WorkspacePurchasingAiImportPage() {
                           patchLine(idx, { description: e.target.value })
                         }
                       />
+                      {updating && (
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {line.matchedLineId ? "Updates existing line" : "New line"}
+                        </p>
+                      )}
                     </td>
                     <td className="p-1.5">
                       <input
@@ -409,6 +658,19 @@ export function WorkspacePurchasingAiImportPage() {
                         }
                       />
                     </td>
+                    {isDelivery && (
+                      <td className="p-1.5">
+                        <input
+                          className={`${cellInput} w-16`}
+                          value={line.deliveredQty ?? ""}
+                          onChange={(e) =>
+                            patchLine(idx, {
+                              deliveredQty: e.target.value || null,
+                            })
+                          }
+                        />
+                      </td>
+                    )}
                     <td className="p-1.5">
                       <input
                         className={`${cellInput} w-14`}
@@ -476,9 +738,13 @@ export function WorkspacePurchasingAiImportPage() {
               type="button"
               disabled={confirming || !canConfirm}
               className="rounded border border-slate-800 bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-              onClick={() => void confirmCreate()}
+              onClick={() => void confirmImport()}
             >
-              {confirming ? "Creating…" : "Create purchasing"}
+              {confirming
+                ? "Saving…"
+                : updating
+                  ? "Update order"
+                  : "Create purchasing"}
             </button>
             <span className="text-xs text-slate-500">
               {draft.lines.length} line{draft.lines.length === 1 ? "" : "s"}

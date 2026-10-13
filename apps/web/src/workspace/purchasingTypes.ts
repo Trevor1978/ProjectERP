@@ -13,6 +13,9 @@ export type Procurement = {
   fullyReceivedOverride: boolean;
   needBy: string | null;
   sapPoNumber: string | null;
+  quoteNumber: string | null;
+  invoiceNumber: string | null;
+  deliveryDocketNumbers: string | null;
   version: number;
 };
 export type ProcurementLine = {

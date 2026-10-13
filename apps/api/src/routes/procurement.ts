@@ -443,6 +443,18 @@ app.patch("/procurement/:id", async (c) => {
         p.data.sapPoNumber === undefined
           ? cur[0]!.sapPoNumber
           : p.data.sapPoNumber,
+      quoteNumber:
+        p.data.quoteNumber === undefined
+          ? cur[0]!.quoteNumber
+          : p.data.quoteNumber,
+      invoiceNumber:
+        p.data.invoiceNumber === undefined
+          ? cur[0]!.invoiceNumber
+          : p.data.invoiceNumber,
+      deliveryDocketNumbers:
+        p.data.deliveryDocketNumbers === undefined
+          ? cur[0]!.deliveryDocketNumbers
+          : p.data.deliveryDocketNumbers,
       version: (cur[0]!.version ?? 0) + 1,
       updatedAt: new Date(),
     })

@@ -133,7 +133,13 @@ function buildProcurementReportHtml(opts: {
   <p class="meta">
     <strong>${escapeHtml(row.title)}</strong><br/>
     Status: ${escapeHtml(row.status)} · Supplier: ${escapeHtml(supplier?.name ?? "—")}<br/>
-    Need by: ${fmtDate(row.needBy)} · SAP PO: ${escapeHtml(row.sapPoNumber ?? "—")}
+    Need by: ${fmtDate(row.needBy)} · SAP PO: ${escapeHtml(row.sapPoNumber ?? "—")}${
+      row.quoteNumber ? ` · Quote: ${escapeHtml(row.quoteNumber)}` : ""
+    }${row.invoiceNumber ? ` · Invoice: ${escapeHtml(row.invoiceNumber)}` : ""}${
+      row.deliveryDocketNumbers
+        ? ` · Delivery: ${escapeHtml(row.deliveryDocketNumbers)}`
+        : ""
+    }
   </p>
   <table>
     <thead><tr>

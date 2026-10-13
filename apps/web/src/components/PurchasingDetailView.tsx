@@ -217,6 +217,9 @@ export function PurchasingDetailView({
   const [supplierId, setSupplierId] = useState(row.supplierId ?? "");
   const [needBy, setNeedBy] = useState(isoToLocal(row.needBy));
   const [sapPo, setSapPo] = useState(row.sapPoNumber ?? "");
+  const [quoteNumber, setQuoteNumber] = useState(row.quoteNumber ?? "");
+  const [invoiceNumber, setInvoiceNumber] = useState(row.invoiceNumber ?? "");
+  const [deliveryDockets, setDeliveryDockets] = useState(row.deliveryDocketNumbers ?? "");
   const [headerVersion, setHeaderVersion] = useState(row.version);
   const [headerErr, setHeaderErr] = useState<string | null>(null);
 
@@ -247,6 +250,9 @@ export function PurchasingDetailView({
     setSupplierId(row.supplierId ?? "");
     setNeedBy(isoToLocal(row.needBy));
     setSapPo(row.sapPoNumber ?? "");
+    setQuoteNumber(row.quoteNumber ?? "");
+    setInvoiceNumber(row.invoiceNumber ?? "");
+    setDeliveryDockets(row.deliveryDocketNumbers ?? "");
     setFullyReceivedOverride(row.fullyReceivedOverride ?? false);
     setHeaderVersion(row.version);
     headerSyncedVersion.current = row.version;
@@ -259,10 +265,24 @@ export function PurchasingDetailView({
       supplierId: supplierId || null,
       needBy: localToIso(needBy),
       sapPoNumber: sapPo.trim() || null,
+      quoteNumber: quoteNumber.trim() || null,
+      invoiceNumber: invoiceNumber.trim() || null,
+      deliveryDocketNumbers: deliveryDockets.trim() || null,
       fullyReceivedOverride,
       version: headerVersion,
     }),
-    [title, status, supplierId, needBy, sapPo, fullyReceivedOverride, headerVersion],
+    [
+      title,
+      status,
+      supplierId,
+      needBy,
+      sapPo,
+      quoteNumber,
+      invoiceNumber,
+      deliveryDockets,
+      fullyReceivedOverride,
+      headerVersion,
+    ],
   );
 
   const saveHeader = useCallback(
@@ -279,6 +299,9 @@ export function PurchasingDetailView({
         setStatus(p.status);
         setSupplierId(p.supplierId ?? "");
         setSapPo(p.sapPoNumber ?? "");
+        setQuoteNumber(p.quoteNumber ?? "");
+        setInvoiceNumber(p.invoiceNumber ?? "");
+        setDeliveryDockets(p.deliveryDocketNumbers ?? "");
         setFullyReceivedOverride(p.fullyReceivedOverride ?? false);
         setHeaderErr(null);
         onHeaderSaved(p);
@@ -401,6 +424,18 @@ export function PurchasingDetailView({
         <div>
           <label className="block text-sm font-medium text-tesla-text-secondary">SAP PO</label>
           <input className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={sapPo} onChange={(e) => setSapPo(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-tesla-text-secondary">Quote number</label>
+          <input className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={quoteNumber} onChange={(e) => setQuoteNumber(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-tesla-text-secondary">Invoice number</label>
+          <input className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block text-sm font-medium text-tesla-text-secondary">Delivery dockets</label>
+          <input className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1" value={deliveryDockets} onChange={(e) => setDeliveryDockets(e.target.value)} placeholder="Comma-separated docket numbers" />
         </div>
         <div className="sm:col-span-2">
           <label className="flex items-start gap-2 text-sm">
