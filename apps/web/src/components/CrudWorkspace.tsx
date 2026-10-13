@@ -2010,7 +2010,7 @@ function CrudAppendRow({
   if (!me) return null;
 
   const stickyActionsTd =
-    "sticky right-0 z-[1] border-l border-slate-100 bg-slate-50 p-2 align-top shadow-[inset_1px_0_0_0_rgb(241_245_249)]";
+    "lg:sticky right-0 z-[1] border-l border-slate-100 bg-slate-50 p-2 align-top lg:shadow-[inset_1px_0_0_0_rgb(241_245_249)]";
 
   const createBtn = (onClick: () => void, disabled: boolean) => (
     <button
@@ -2654,7 +2654,7 @@ function FilterSortTable({
   }
 
   const stickyActionsTh =
-    "sticky right-0 z-[2] border-l border-slate-200 bg-slate-100 shadow-[inset_1px_0_0_0_rgb(226_232_240)]";
+    "lg:sticky right-0 z-[2] border-l border-slate-200 bg-slate-100 lg:shadow-[inset_1px_0_0_0_rgb(226_232_240)]";
 
   return (
     <div className="space-y-2">
@@ -2834,7 +2834,7 @@ function FilterSortTable({
                     {c}
                   </td>
                 ))}
-                <td className="sticky right-0 z-[1] border-l border-slate-100 bg-white p-2 align-top shadow-[inset_1px_0_0_0_rgb(241_245_249)]">
+                <td className="lg:sticky right-0 z-[1] border-l border-slate-100 bg-white p-2 align-top lg:shadow-[inset_1px_0_0_0_rgb(241_245_249)]">
                   {r.action}
                 </td>
               </tr>
