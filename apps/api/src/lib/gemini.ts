@@ -4,6 +4,7 @@ import {
   nowInTimeZoneIso,
   parseAiDateTime,
 } from "./digestTz.js";
+import { extractPdfText, isUsefulPdfText } from "./pdfText.js";
 
 const geminiDraftSchema = z.object({
   suggestedClientId: z.string().nullable().optional(),
@@ -215,11 +216,16 @@ function isTimeoutError(err: unknown): boolean {
 }
 
 function isFatalGeminiError(err: unknown): boolean {
-  const msg = geminiErrorMessage(err);
-  return (
-    isTimeoutError(err) ||
-    /Gemini HTTP 401|Gemini HTTP 403|Gemini HTTP 429/i.test(msg)
-  );
+  return /Gemini HTTP 401|Gemini HTTP 403|Gemini HTTP 429/i.test(geminiErrorMessage(err));
+}
+
+/** A timeout used to abort the whole parse. Try the next model while time remains. */
+export function geminiFailureAction(
+  err: unknown,
+): "fatal" | "next-model" | "retry-without-schema" {
+  if (isFatalGeminiError(err)) return "fatal";
+  if (isTimeoutError(err) || isModelUnavailableError(err)) return "next-model";
+  return "retry-without-schema";
 }
 
 async function callGemini(opts: {
@@ -314,7 +320,7 @@ async function callGeminiWithModelFallback(opts: {
           timeoutMs,
         });
       } catch (first) {
-        if (isModelUnavailableError(first) || isFatalGeminiError(first)) {
+        if (geminiFailureAction(first) !== "retry-without-schema") {
           throw first;
         }
         const retryRemaining = deadline - Date.now();
@@ -334,12 +340,13 @@ async function callGeminiWithModelFallback(opts: {
       return text;
     } catch (e) {
       lastError = e;
-      if (isFatalGeminiError(e)) {
+      const action = geminiFailureAction(e);
+      if (action === "fatal") {
         throw e instanceof Error ? e : new Error(geminiErrorMessage(e));
       }
-      if (isModelUnavailableError(e)) {
+      if (action === "next-model") {
         console.warn(
-          `[gemini] model unavailable, trying next:`,
+          `[gemini] ${model} failed, trying next:`,
           e instanceof Error ? e.message : e,
         );
         continue;
@@ -356,16 +363,20 @@ function resolveModelCandidates(): string[] {
   const preferred = process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
   const fallbacks = [
     "gemini-3.6-flash",
+    "gemini-3.8-flash",
     "gemini-3.5-flash",
     "gemini-flash-latest",
-    "gemini-2.0-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
   ];
   return [preferred, ...fallbacks.filter((m) => m !== preferred)];
 }
 
 function isModelUnavailableError(err: unknown): boolean {
   const msg = geminiErrorMessage(err);
-  return /Gemini HTTP 404|no longer available|NOT_FOUND|not found/i.test(msg);
+  return /Gemini HTTP 404|Gemini HTTP 503|no longer available|NOT_FOUND|not found|UNAVAILABLE|high demand/i.test(
+    msg,
+  );
 }
 
 function normalizeDraftTimes(draft: GeminiWorkDraft): GeminiWorkDraft {
@@ -551,12 +562,42 @@ const PROCUREMENT_RESPONSE_SCHEMA = {
   ],
 };
 
+const CATALOG_CAP = 500;
+
+function preferCatalogMatches(
+  items: CatalogItem[],
+  documentText: string | null,
+): CatalogItem[] {
+  if (items.length <= CATALOG_CAP) return items;
+  const hay = (documentText ?? "").toLowerCase();
+  const matched = hay
+    ? items.filter((item) =>
+        item.label
+          .toLowerCase()
+          .split(/[^a-z0-9]+/)
+          .some((token) => token.length >= 4 && hay.includes(token)),
+      )
+    : [];
+  const matchedIds = new Set(matched.map((item) => item.id));
+  const rest = items.filter((item) => !matchedIds.has(item.id));
+  return [...matched, ...rest].slice(0, CATALOG_CAP);
+}
+
 function buildProcurementPrompt(opts: {
   notes: string;
   hintProjectId?: string | null;
   catalogs: ProcurementAiCatalogs;
+  documentText?: string | null;
 }): string {
-  return `You are a purchasing assistant for Spantec ERP. Analyse the attached purchasing document and extract structured header + line items. Documents may be a request for quotation (RFQ), supplier quote, purchase order (PO), proforma invoice (PI), tax invoice, or delivery docket / packing slip / goods receipt.
+  const documentBlock = opts.documentText
+    ? `Purchasing document text, extracted from the uploaded PDF. Treat this text as the document:
+---
+${opts.documentText}
+---`
+    : "The purchasing document is attached as a file.";
+  return `You are a purchasing assistant for Spantec ERP. Analyse the purchasing document and extract structured header + line items. Documents may be a request for quotation (RFQ), supplier quote, purchase order (PO), proforma invoice (PI), tax invoice, or delivery docket / packing slip / goods receipt.
+
+${documentBlock}
 
 Guidance notes from the user (use these to assign projects to lines):
 ---
@@ -572,7 +613,7 @@ Projects (id: label) — match suggestedProjectId only to these ids:
 ${formatCatalog(opts.catalogs.projects)}
 
 Rules:
-1. Read the attached document carefully. Extract every distinct line item.
+1. Read the document carefully. Extract every distinct line item.
 2. title: short purchasing title (supplier + the document's own number when present).
 3. documentType:
    - "rfq" request for quotation
@@ -602,6 +643,43 @@ function qtyToString(v: string | number | null | undefined): string | null {
   return String(v);
 }
 
+export function procurementGeminiParts(opts: {
+  notes: string;
+  hintProjectId?: string | null;
+  file: { mimeType: string; base64: string };
+  catalogs: ProcurementAiCatalogs;
+}): { parts: GeminiPart[]; usedExtractedText: boolean } {
+  let documentText: string | null = null;
+  if (opts.file.mimeType === "application/pdf") {
+    try {
+      const buf = Buffer.from(opts.file.base64, "base64");
+      const extracted = extractPdfText(buf);
+      if (isUsefulPdfText(extracted)) documentText = extracted.slice(0, 100_000);
+    } catch (e) {
+      console.warn(
+        "[gemini] PDF text extraction failed:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+  const prompt = buildProcurementPrompt({
+    notes: opts.notes,
+    hintProjectId: opts.hintProjectId,
+    documentText,
+    catalogs: {
+      suppliers: preferCatalogMatches(opts.catalogs.suppliers, documentText),
+      projects: preferCatalogMatches(opts.catalogs.projects, documentText),
+    },
+  });
+  const parts: GeminiPart[] = [{ text: prompt }];
+  if (!documentText) {
+    parts.push({
+      inlineData: { mimeType: opts.file.mimeType, data: opts.file.base64 },
+    });
+  }
+  return { parts, usedExtractedText: documentText != null };
+}
+
 export async function parseProcurementDocumentWithGemini(opts: {
   notes: string;
   hintProjectId?: string | null;
@@ -612,13 +690,13 @@ export async function parseProcurementDocumentWithGemini(opts: {
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not set");
   }
-  const prompt = buildProcurementPrompt(opts);
+  const prepared = procurementGeminiParts(opts);
+  if (prepared.usedExtractedText) {
+    console.info("[gemini] procurement parse using extracted PDF text");
+  }
   const text = await callGeminiWithModelFallback({
     apiKey,
-    parts: [
-      { text: prompt },
-      { inlineData: { mimeType: opts.file.mimeType, data: opts.file.base64 } },
-    ],
+    parts: prepared.parts,
     responseSchema: PROCUREMENT_RESPONSE_SCHEMA,
   });
 

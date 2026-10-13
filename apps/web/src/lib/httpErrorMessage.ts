@@ -18,7 +18,7 @@ export function httpErrorMessage(status: number, body: string): string {
     );
   if (htmlish) {
     if (status === 504 || /Error code 504|Gateway time-out/i.test(t)) {
-      return "Request timed out (504). AI analysis of this document took too long. Try a smaller screenshot (one order at a time) or try again.";
+      return "Request timed out (504). AI analysis of this document took too long. Try again, or upload one document at a time.";
     }
     return `Request failed (${status}). The API may be down, timed out, or misconfigured (check Coolify API logs and GEMINI_API_KEY).`;
   }
