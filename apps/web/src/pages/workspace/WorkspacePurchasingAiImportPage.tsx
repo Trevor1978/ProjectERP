@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, apiForm } from "../../lib/api";
 import { QuickCreateSelect } from "../../components/QuickCreateSelect";
@@ -164,18 +164,69 @@ function withLineMatches(
   }));
 }
 
+function normalizeParsedImport(
+  raw: { draft: Draft; match?: MatchInfo },
+  pinnedOrderId: string,
+  hintProjectId: string,
+): { draft: Draft; match: MatchInfo; targetId: string } {
+  const d = raw.draft;
+  const nextMatch = raw.match ?? {
+    procurementId: null,
+    confidence: "none" as const,
+    candidates: [],
+  };
+  const nextTarget = pinnedOrderId || nextMatch.procurementId || "";
+  const lines = (d.lines ?? []).map((l) => ({
+    partNumber: l.partNumber ?? null,
+    description: l.description ?? "",
+    quantity: l.quantity != null ? String(l.quantity) : "1",
+    orderedQty: l.orderedQty != null ? String(l.orderedQty) : null,
+    unit: l.unit ?? null,
+    estUnitPrice: l.estUnitPrice != null ? String(l.estUnitPrice) : null,
+    deliveredQty: l.deliveredQty != null ? String(l.deliveredQty) : null,
+    projectId: l.projectId ?? (hintProjectId || null),
+    matchedLineId: l.matchedLineId ?? null,
+  }));
+  const candidate = nextMatch.candidates.find((item) => item.id === nextTarget);
+  return {
+    match: nextMatch,
+    targetId: nextTarget,
+    draft: {
+      ...d,
+      documentType: asDocumentType(d.documentType),
+      status: (PROC_STATUS as readonly string[]).includes(d.status) ? d.status : "draft",
+      needBy: d.needBy ? String(d.needBy).slice(0, 10) : null,
+      quoteNumber: d.quoteNumber ?? null,
+      invoiceNumber: d.invoiceNumber ?? null,
+      deliveryDocketNumber: d.deliveryDocketNumber ?? null,
+      lines: withLineMatches(lines, candidate),
+    },
+  };
+}
+
 export function WorkspacePurchasingAiImportPage() {
   const nav = useNavigate();
-  const [step, setStep] = useState<"entry" | "review">("entry");
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const pinnedOrderId = searchParams.get("order")?.trim() ?? "";
+  const seed = location.state as {
+    parseResult?: { draft: Draft; match?: MatchInfo };
+    orderTitle?: string;
+  } | null;
+  const seeded = seed?.parseResult
+    ? normalizeParsedImport(seed.parseResult, pinnedOrderId, "")
+    : null;
+  const [step, setStep] = useState<"entry" | "review">(seeded ? "review" : "entry");
   const [file, setFile] = useState<File | null>(null);
   const [notes, setNotes] = useState("");
   const [hintProjectId, setHintProjectId] = useState("");
   const [parsing, setParsing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [match, setMatch] = useState<MatchInfo | null>(null);
-  const [targetId, setTargetId] = useState("");
+  const [draft, setDraft] = useState<Draft | null>(seeded?.draft ?? null);
+  const [match, setMatch] = useState<MatchInfo | null>(seeded?.match ?? null);
+  const [targetId, setTargetId] = useState(seeded?.targetId ?? pinnedOrderId);
+  const [orderTitle, setOrderTitle] = useState(seed?.orderTitle ?? "");
 
   const { data: suppliersData } = useQuery({
     queryKey: ["suppliers"],
@@ -215,43 +266,17 @@ export function WorkspacePurchasingAiImportPage() {
       form.append("file", file);
       form.append("notes", notes);
       if (hintProjectId) form.append("projectId", hintProjectId);
+      if (pinnedOrderId) form.append("procurementId", pinnedOrderId);
       const res = await apiForm<{ draft: Draft; match: MatchInfo }>(
         "/api/procurement/ai-parse",
         form,
       );
-      const d = res.draft;
-      const nextMatch = res.match ?? {
-        procurementId: null,
-        confidence: "none" as const,
-        candidates: [],
-      };
-      const nextTarget = nextMatch.procurementId ?? "";
-      const lines = (d.lines ?? []).map((l) => ({
-        partNumber: l.partNumber ?? null,
-        description: l.description ?? "",
-        quantity: l.quantity != null ? String(l.quantity) : "1",
-        orderedQty: l.orderedQty != null ? String(l.orderedQty) : null,
-        unit: l.unit ?? null,
-        estUnitPrice: l.estUnitPrice != null ? String(l.estUnitPrice) : null,
-        deliveredQty: l.deliveredQty != null ? String(l.deliveredQty) : null,
-        projectId: l.projectId ?? (hintProjectId || null),
-        matchedLineId: l.matchedLineId ?? null,
-      }));
-      const candidate = nextMatch.candidates.find((item) => item.id === nextTarget);
-      setDraft({
-        ...d,
-        documentType: asDocumentType(d.documentType),
-        status: (PROC_STATUS as readonly string[]).includes(d.status)
-          ? d.status
-          : "draft",
-        needBy: d.needBy ? String(d.needBy).slice(0, 10) : null,
-        quoteNumber: d.quoteNumber ?? null,
-        invoiceNumber: d.invoiceNumber ?? null,
-        deliveryDocketNumber: d.deliveryDocketNumber ?? null,
-        lines: withLineMatches(lines, candidate),
-      });
-      setMatch(nextMatch);
-      setTargetId(nextTarget);
+      const parsed = normalizeParsedImport(res, pinnedOrderId, hintProjectId);
+      setDraft(parsed.draft);
+      setMatch(parsed.match);
+      setTargetId(parsed.targetId);
+      const pinned = parsed.match.candidates.find((item) => item.id === pinnedOrderId);
+      if (pinned) setOrderTitle(pinned.title);
       setStep("review");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Analyze failed");
@@ -344,10 +369,10 @@ export function WorkspacePurchasingAiImportPage() {
     >
       <p className="mb-4 text-sm text-tesla-text-secondary">
         Upload an RFQ, quote, purchase order, proforma invoice (PI), tax invoice,
-        or delivery docket. AI reads the document, checks whether that order
-        already exists, and lets you update it or create a new one. A PO creates
-        the order. A later PI or delivery docket that cites the same PO number
-        updates prices, invoice details, or received quantities on that order.
+        or delivery docket. A matching PO number is only a hint. The suggestion
+        also uses the supplier and the line items, and you choose the order
+        before anything is saved. To add a document to an order you already
+        have open, use Add document on that purchase order.
       </p>
 
       {err && (
@@ -358,6 +383,11 @@ export function WorkspacePurchasingAiImportPage() {
 
       {step === "entry" && (
         <div className="max-w-2xl space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          {pinnedOrderId && (
+            <p className="text-sm text-slate-700">
+              This upload updates {orderTitle || "the purchase order you opened"}. It will not create a separate order unless you change that on the review screen.
+            </p>
+          )}
           <FileDropZone
             id="po-file"
             label="Document (PDF or image)"
@@ -455,11 +485,13 @@ export function WorkspacePurchasingAiImportPage() {
               ))}
             </select>
             <p className="mt-2 text-sm text-slate-600">
-              {match?.confidence === "high" && updating
-                ? `Matched an existing order by ${selected?.reasons.join(" and ") || "reference number"}.`
-                : match?.confidence === "suggested" && updating
-                  ? "Possible match from part numbers or descriptions. Confirm this is the same order before updating."
-                  : "No existing order was selected. This will create a new purchasing record."}
+              {pinnedOrderId && targetId === pinnedOrderId
+                ? `This document will update ${orderTitle || "the purchase order you opened"}.`
+                : match?.confidence === "high" && updating
+                  ? `Supplier, line items, and reference numbers agree on this order (${selected?.reasons.filter((reason) => reason !== "selected order").join(", ")}).`
+                  : match?.confidence === "suggested" && updating
+                    ? "This looks similar, but a PO number on its own is not enough. Check the supplier and lines before updating."
+                    : "No existing order was selected. This will create a new purchasing record."}
               {updating
                 ? ` ${matchedCount} line${matchedCount === 1 ? "" : "s"} match, ${newCount} new.`
                 : ""}

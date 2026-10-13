@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { useNavigate } from "react-router-dom";
+import { api, apiForm } from "../lib/api";
+import { FileDropZone } from "./FileDropZone";
 import type { ProjectItem } from "../workspace/projectItemTypes";
 import { projectItemStatusLabel } from "../workspace/projectItemTypes";
 import { openProcurementPdfReport } from "../lib/procurementReport";
@@ -211,7 +213,12 @@ export function PurchasingDetailView({
   onLineAdded: (line: ProcurementLine) => void;
   onLineRemoved: (lineId: string) => void;
 }) {
+  const nav = useNavigate();
   const [reportOpening, setReportOpening] = useState(false);
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docNotes, setDocNotes] = useState("");
+  const [docParsing, setDocParsing] = useState(false);
+  const [docErr, setDocErr] = useState<string | null>(null);
   const [title, setTitle] = useState(row.title);
   const [status, setStatus] = useState(row.status);
   const [supplierId, setSupplierId] = useState(row.supplierId ?? "");
@@ -346,6 +353,29 @@ export function PurchasingDetailView({
     setNewProjectItemId("");
   }, [newProjectId]);
 
+  async function analyzeForThisOrder() {
+    setDocErr(null);
+    if (!docFile) {
+      setDocErr("Choose a PDF or image");
+      return;
+    }
+    setDocParsing(true);
+    try {
+      const form = new FormData();
+      form.append("file", docFile);
+      form.append("notes", docNotes);
+      form.append("procurementId", row.id);
+      const parseResult = await apiForm("/api/procurement/ai-parse", form);
+      nav(`/workspace/purchasing/ai-import?order=${row.id}`, {
+        state: { parseResult, orderTitle: row.title },
+      });
+    } catch (e) {
+      setDocErr(e instanceof Error ? e.message : "Analyze failed");
+    } finally {
+      setDocParsing(false);
+    }
+  }
+
   function applyProjectItem(itemId: string) {
     setNewProjectItemId(itemId);
     if (!itemId) return;
@@ -390,6 +420,45 @@ export function PurchasingDetailView({
             {reportOpening ? "Opening…" : "RFQ / PO report"}
           </button>
         </div>
+      </div>
+      <div className="mb-4 rounded-sm border border-tesla-border bg-tesla-muted/40 p-3">
+        <h3 className="text-sm font-medium text-tesla-text">Add a document to this order</h3>
+        <p className="mb-3 mt-1 text-xs text-tesla-text-secondary">
+          Upload a quote, proforma invoice, tax invoice, or delivery docket. It is reviewed first, then applied to this order.
+        </p>
+        {docErr && <p className="mb-2 text-sm text-red-600">{docErr}</p>}
+        <FileDropZone
+          id="order-document"
+          label="Document (PDF or image)"
+          accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
+          hint="PDF, JPEG, PNG, or WebP — max 15MB."
+          onFiles={(files) => setDocFile(files[0] ?? null)}
+        >
+          {docFile ? (
+            <p className="mt-2 text-xs text-tesla-text-secondary">
+              Selected: <strong>{docFile.name}</strong>
+            </p>
+          ) : null}
+        </FileDropZone>
+        <label className="mt-3 block text-xs font-medium text-tesla-text-secondary" htmlFor="order-doc-notes">
+          Guidance for AI
+        </label>
+        <textarea
+          id="order-doc-notes"
+          className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1 text-sm"
+          rows={2}
+          placeholder="Optional notes, for example which project a line belongs to"
+          value={docNotes}
+          onChange={(e) => setDocNotes(e.target.value)}
+        />
+        <button
+          type="button"
+          disabled={docParsing || !docFile}
+          className="mt-3 rounded-sm bg-tesla-text px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          onClick={() => void analyzeForThisOrder()}
+        >
+          {docParsing ? "Analyzing…" : "Review document"}
+        </button>
       </div>
       <div className="mb-4 grid gap-2 sm:grid-cols-2">
         <div className="sm:col-span-2">

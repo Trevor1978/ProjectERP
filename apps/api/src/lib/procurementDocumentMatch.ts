@@ -149,32 +149,45 @@ export function appendDocketNumber(
   return [...parts, trimmed].join(", ");
 }
 
-function refsConflict(
-  incoming: string | null | undefined,
-  stored: string | null | undefined,
-): boolean {
-  const a = normalizeRef(incoming);
-  const b = normalizeRef(stored);
-  return Boolean(a && b && a !== b);
+function descriptionTokens(value: string): Set<string> {
+  return new Set(value.split(" ").filter((token) => token.length >= 3));
+}
+
+function descriptionsAgree(incoming: string, existing: string): boolean {
+  if (!incoming || !existing) return false;
+  if (incoming === existing) return true;
+  if (
+    incoming.length >= 8 &&
+    existing.length >= 8 &&
+    (incoming.includes(existing) || existing.includes(incoming))
+  ) {
+    return true;
+  }
+  const left = descriptionTokens(incoming);
+  const right = descriptionTokens(existing);
+  if (left.size === 0 || right.size === 0) return false;
+  let shared = 0;
+  for (const token of left) {
+    if (right.has(token)) shared += 1;
+  }
+  const smaller = Math.min(left.size, right.size);
+  return shared >= 2 && shared / smaller >= 0.5;
 }
 
 function lineOverlap(
   doc: DocumentIdentity,
   orderParts: { partNumber: string | null; description: string }[] | undefined,
-): { partHits: number; descriptionHits: number } {
+): { partHits: number; descriptionHits: number; ratio: number; orderLineCount: number } {
+  const orderLineCount = orderParts?.length ?? 0;
   if (!orderParts?.length || doc.lines.length === 0) {
-    return { partHits: 0, descriptionHits: 0 };
+    return { partHits: 0, descriptionHits: 0, ratio: 0, orderLineCount };
   }
   const parts = new Set(
-    orderParts
-      .map((line) => normalizeRef(line.partNumber))
-      .filter(Boolean),
+    orderParts.map((line) => normalizeRef(line.partNumber)).filter(Boolean),
   );
-  const descriptions = new Set(
-    orderParts
-      .map((line) => normalizeText(line.description))
-      .filter(Boolean),
-  );
+  const descriptions = orderParts
+    .map((line) => normalizeText(line.description))
+    .filter(Boolean);
   let partHits = 0;
   let descriptionHits = 0;
   for (const line of doc.lines) {
@@ -184,20 +197,47 @@ function lineOverlap(
       continue;
     }
     const description = normalizeText(line.description);
-    if (description && descriptions.has(description)) descriptionHits += 1;
+    if (description && descriptions.some((existing) => descriptionsAgree(description, existing))) {
+      descriptionHits += 1;
+    }
   }
-  return { partHits, descriptionHits };
+  const matched = partHits + descriptionHits;
+  return {
+    partHits,
+    descriptionHits,
+    ratio: matched / doc.lines.length,
+    orderLineCount,
+  };
+}
+
+function confidentMatch(reasons: string[], orderLineCount: number): boolean {
+  const hasStrongRef = reasons.some((reason) =>
+    reason === "PO number" ||
+    reason === "invoice number" ||
+    reason === "quote number" ||
+    reason === "delivery docket",
+  );
+  const hasLines =
+    reasons.includes("part numbers") || reasons.includes("line descriptions");
+  const hasSupplier = reasons.includes("supplier");
+  if (reasons.includes("different PO number") || reasons.includes("different supplier")) {
+    return false;
+  }
+  if (orderLineCount > 0) {
+    return (
+      hasLines &&
+      (hasStrongRef || hasSupplier || reasons.includes("short PO number"))
+    );
+  }
+  return hasStrongRef && hasSupplier;
 }
 
 export function scoreOrder(
   doc: DocumentIdentity,
   order: OrderSnapshot,
   orderLines?: { partNumber: string | null; description: string }[],
-): { score: number; reasons: string[] } {
-  if (order.status === "cancelled") return { score: 0, reasons: [] };
-  if (refsConflict(doc.sapPoNumber, order.sapPoNumber)) {
-    return { score: 0, reasons: [] };
-  }
+): { score: number; reasons: string[]; orderLineCount: number } {
+  if (order.status === "cancelled") return { score: 0, reasons: [], orderLineCount: 0 };
 
   let score = 0;
   const reasons: string[] = [];
@@ -205,17 +245,26 @@ export function scoreOrder(
   const invoice = normalizeRef(doc.invoiceNumber);
   const quote = normalizeRef(doc.quoteNumber);
   const docket = normalizeRef(doc.deliveryDocketNumber);
+  const orderPo = normalizeRef(order.sapPoNumber);
 
-  if (po && po === normalizeRef(order.sapPoNumber)) {
-    score += 100;
-    reasons.push("PO number");
+  if (po && orderPo && po !== orderPo) {
+    score -= 30;
+    reasons.push("different PO number");
+  } else if (po && po === orderPo) {
+    if (po.length >= 5) {
+      score += 35;
+      reasons.push("PO number");
+    } else {
+      score += 12;
+      reasons.push("short PO number");
+    }
   }
   if (invoice && invoice === normalizeRef(order.invoiceNumber)) {
-    score += 90;
+    score += invoice.length >= 4 ? 30 : 10;
     reasons.push("invoice number");
   }
   if (quote && quote === normalizeRef(order.quoteNumber)) {
-    score += 80;
+    score += quote.length >= 4 ? 25 : 10;
     reasons.push("quote number");
   }
   if (
@@ -224,23 +273,34 @@ export function scoreOrder(
       (part) => normalizeRef(part) === docket,
     )
   ) {
-    score += 75;
+    score += docket.length >= 4 ? 25 : 10;
     reasons.push("delivery docket");
   }
 
-  if (score === 0) {
-    const { partHits, descriptionHits } = lineOverlap(doc, orderLines);
-    const supplierOk =
-      !doc.supplierId ||
-      !order.supplierId ||
-      doc.supplierId === order.supplierId;
-    if (supplierOk && (partHits >= 1 || descriptionHits >= 2)) {
-      score += 50;
-      reasons.push(partHits >= 1 ? "part numbers" : "line descriptions");
+  if (doc.supplierId && order.supplierId) {
+    if (doc.supplierId === order.supplierId) {
+      score += 15;
+      reasons.push("supplier");
+    } else {
+      score -= 20;
+      reasons.push("different supplier");
     }
   }
 
-  return { score, reasons };
+  const overlap = lineOverlap(doc, orderLines);
+  const matched = overlap.partHits + overlap.descriptionHits;
+  const strongLines =
+    overlap.partHits >= 2 || (matched > 0 && overlap.ratio >= 0.6);
+  if (strongLines) {
+    score += Math.round(40 * Math.max(overlap.ratio, 0.6));
+    reasons.push(overlap.partHits >= 1 ? "part numbers" : "line descriptions");
+  } else if (matched > 0) {
+    score += Math.round(15 * overlap.ratio);
+    reasons.push("some line items");
+  }
+
+  if (score <= 0) return { score: 0, reasons: [], orderLineCount: overlap.orderLineCount };
+  return { score, reasons, orderLineCount: overlap.orderLineCount };
 }
 
 export function matchOrders(
@@ -250,12 +310,8 @@ export function matchOrders(
 ): OrderMatch {
   const ranked = orders
     .map((order) => {
-      const { score, reasons } = scoreOrder(
-        doc,
-        order,
-        linesByOrderId?.get(order.id),
-      );
-      return { order, score, reasons };
+      const scored = scoreOrder(doc, order, linesByOrderId?.get(order.id));
+      return { order, ...scored };
     })
     .filter((row) => row.score > 0)
     .sort(
@@ -266,10 +322,16 @@ export function matchOrders(
   const second = ranked[1];
   let procurementId: string | null = null;
   let confidence: MatchConfidence = "none";
-  if (top && top.score >= 75 && (!second || top.score > second.score)) {
+  const topIsConfident = Boolean(
+    top && confidentMatch(top.reasons, top.orderLineCount),
+  );
+  const secondIsConfident = Boolean(
+    second && confidentMatch(second.reasons, second.orderLineCount),
+  );
+  if (top && topIsConfident && !secondIsConfident) {
     procurementId = top.order.id;
     confidence = "high";
-  } else if (top && top.score >= 50) {
+  } else if (top && top.score >= 12) {
     procurementId = top.order.id;
     confidence = "suggested";
   }
