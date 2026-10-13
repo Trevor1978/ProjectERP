@@ -1,8 +1,7 @@
 import { Hono } from "hono";
-import { db } from "@project-erp/db";
-import { auditLog, user } from "@project-erp/db/schema";
+import { db, auditLog, user } from "@project-erp/db";
 import { and, eq, desc, gte, lte, sql } from "drizzle-orm";
-import { requireAuth } from "../lib/session.js";
+import { requireAuth, type AuthUser } from "../lib/session.js";
 
 export const auditApp = new Hono();
 
@@ -22,7 +21,7 @@ auditApp.use("/*", requireAuth);
  * - offset: pagination offset
  */
 auditApp.get("/audit/history", async (c) => {
-  const reqUser = c.get("user");
+  const reqUser = c.get("auth") as AuthUser;
   if (!reqUser) return c.json({ error: "Unauthorized" }, 401);
 
   const entityType = c.req.query("entityType");
@@ -96,7 +95,7 @@ auditApp.get("/audit/history", async (c) => {
  * Fetch audit history for a specific entity.
  */
 auditApp.get("/audit/entity/:entityType/:entityId", async (c) => {
-  const reqUser = c.get("user");
+  const reqUser = c.get("auth") as AuthUser;
   if (!reqUser) return c.json({ error: "Unauthorized" }, 401);
 
   const entityType = c.req.param("entityType");
