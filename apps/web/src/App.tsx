@@ -71,31 +71,43 @@ function Layout({ children }: { children: React.ReactNode }) {
           <div className="hidden items-center gap-6 md:flex">
             <Link
               to="/"
-              className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white"
+              className={`flex items-center gap-1.5 text-sm ${location.pathname === "/" ? "text-white" : "text-white/70 hover:text-white"}`}
             >
               <House className="h-4 w-4 opacity-90" aria-hidden />
               Home
             </Link>
-            <Link to="/workspace/projects" className="text-sm text-white/70 hover:text-white">
+            <Link 
+              to="/workspace/projects" 
+              className={`text-sm ${location.pathname.startsWith("/workspace/projects") || location.pathname.startsWith("/workspace/milestones") || location.pathname.startsWith("/workspace/tasks") || location.pathname.startsWith("/workspace/todos") || location.pathname.startsWith("/workspace/time-entries") ? "text-white" : "text-white/70 hover:text-white"}`}
+            >
               Projects
             </Link>
-            <Link to="/workspace/machines" className="text-sm text-white/70 hover:text-white">
+            <Link 
+              to="/workspace/machines" 
+              className={`text-sm ${location.pathname.startsWith("/workspace/machines") || location.pathname.startsWith("/workspace/service-history") ? "text-white" : "text-white/70 hover:text-white"}`}
+            >
               Machines
             </Link>
-            <Link to="/workspace/work-complete" className="text-sm text-white/70 hover:text-white">
+            <Link 
+              to="/workspace/work-complete" 
+              className={`text-sm ${location.pathname.startsWith("/workspace/work-complete") ? "text-white" : "text-white/70 hover:text-white"}`}
+            >
               Log work
             </Link>
-          <Link to="/workspace/history" className="text-sm text-white/70 hover:text-white">
+          <Link 
+            to="/workspace/history" 
+            className={`text-sm ${location.pathname.startsWith("/workspace/history") ? "text-white" : "text-white/70 hover:text-white"}`}
+          >
             History
           </Link>
-          {user.globalRole === "org_admin" && (
-            <Link
-              to="/workspace/organization"
-              className="text-sm text-white/70 hover:text-white"
-            >
-              Organization
-            </Link>
-          )}
+            {user.globalRole === "org_admin" && (
+              <Link
+                to="/workspace/organization"
+                className={`text-sm ${location.pathname.startsWith("/workspace/organization") ? "text-white" : "text-white/70 hover:text-white"}`}
+              >
+                Organization
+              </Link>
+            )}
           </div>
           <button
             type="button"
@@ -135,7 +147,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             <Link
               to="/"
               onClick={() => setMobileNavOpen(false)}
-              className="flex items-center gap-2 rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+              className={`flex items-center gap-2 rounded-sm px-3 py-2.5 text-sm ${location.pathname === "/" ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
             >
               <House className="h-4 w-4 opacity-90" aria-hidden />
               Home
@@ -143,28 +155,28 @@ function Layout({ children }: { children: React.ReactNode }) {
             <Link
               to="/workspace/projects"
               onClick={() => setMobileNavOpen(false)}
-              className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+              className={`rounded-sm px-3 py-2.5 text-sm ${location.pathname.startsWith("/workspace/projects") || location.pathname.startsWith("/workspace/milestones") || location.pathname.startsWith("/workspace/tasks") || location.pathname.startsWith("/workspace/todos") || location.pathname.startsWith("/workspace/time-entries") ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
             >
               Projects
             </Link>
             <Link
               to="/workspace/machines"
               onClick={() => setMobileNavOpen(false)}
-              className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+              className={`rounded-sm px-3 py-2.5 text-sm ${location.pathname.startsWith("/workspace/machines") || location.pathname.startsWith("/workspace/service-history") ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
             >
               Machines
             </Link>
             <Link
               to="/workspace/work-complete"
               onClick={() => setMobileNavOpen(false)}
-              className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+              className={`rounded-sm px-3 py-2.5 text-sm ${location.pathname.startsWith("/workspace/work-complete") ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
             >
               Log work
             </Link>
             <Link
               to="/workspace/history"
               onClick={() => setMobileNavOpen(false)}
-              className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+              className={`rounded-sm px-3 py-2.5 text-sm ${location.pathname.startsWith("/workspace/history") ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
             >
               History
             </Link>
@@ -172,7 +184,7 @@ function Layout({ children }: { children: React.ReactNode }) {
               <Link
                 to="/workspace/organization"
                 onClick={() => setMobileNavOpen(false)}
-                className="rounded-sm px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+                className={`rounded-sm px-3 py-2.5 text-sm ${location.pathname.startsWith("/workspace/organization") ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
               >
                 Organization
               </Link>
