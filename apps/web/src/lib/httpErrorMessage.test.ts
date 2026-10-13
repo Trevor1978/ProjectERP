@@ -19,7 +19,7 @@ Gateway time-out
 `;
 assert.match(
   httpErrorMessage(504, cloudflare504),
-  /timed out \(504\).*one order at a time/i,
+  /timed out \(504\).*one document at a time/i,
 );
 
 assert.match(

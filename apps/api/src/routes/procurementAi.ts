@@ -186,7 +186,7 @@ app.post("/procurement/ai-parse", async (c) => {
       return c.json(
         {
           error:
-            "AI analysis timed out. Try a smaller screenshot of a single order, or try again.",
+            "AI analysis timed out. Try again. One invoice or order at a time works best.",
         },
         400,
       );
