@@ -605,6 +605,15 @@ app.post("/assets", async (c) => {
       clientId: p.data.clientId ?? null,
     })
     .returning();
+  
+  if (row) {
+    await writeAudit(a, "create", "asset", row.id, {
+      name: { after: row.name },
+      site: { after: row.site },
+      line: { after: row.line },
+    });
+  }
+  
   return c.json({ asset: row });
 });
 
@@ -658,6 +667,28 @@ app.patch("/assets/:assetId", async (c) => {
     })
     .where(eq(asset.id, assetId))
     .returning();
+  
+  const diff: Record<string, unknown> = {};
+  if (p.data.name !== undefined && p.data.name !== row0.name) {
+    diff.name = { before: row0.name, after: p.data.name };
+  }
+  if (p.data.site !== undefined && p.data.site !== row0.site) {
+    diff.site = { before: row0.site, after: p.data.site };
+  }
+  if (p.data.line !== undefined && p.data.line !== row0.line) {
+    diff.line = { before: row0.line, after: p.data.line };
+  }
+  if (p.data.serial !== undefined && p.data.serial !== row0.serial) {
+    diff.serial = { before: row0.serial, after: p.data.serial };
+  }
+  if (p.data.clientId !== undefined && p.data.clientId !== row0.clientId) {
+    diff.clientId = { before: row0.clientId, after: p.data.clientId };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    await writeAudit(a, "update", "asset", assetId, diff);
+  }
+  
   return c.json({ asset: row });
 });
 
@@ -807,6 +838,14 @@ app.post("/asset-service-logs", async (c) => {
       technicianName: p.data.technicianName ?? null,
     })
     .returning();
+  
+  if (row) {
+    await writeAudit(a, "create", "asset_service_log", row.id, {
+      assetId: { after: row.assetId },
+      title: { after: row.title },
+    });
+  }
+  
   return c.json({ log: row });
 });
 
@@ -863,6 +902,28 @@ app.patch("/asset-service-logs/:id", async (c) => {
     })
     .where(eq(assetServiceLog.id, id))
     .returning();
+  
+  const diff: Record<string, unknown> = {};
+  if (p.data.title !== undefined && p.data.title !== log.title) {
+    diff.title = { before: log.title, after: p.data.title };
+  }
+  if (p.data.description !== undefined && p.data.description !== log.description) {
+    diff.description = { before: log.description, after: p.data.description };
+  }
+  if (p.data.performedAt !== undefined && p.data.performedAt !== log.performedAt) {
+    diff.performedAt = { before: log.performedAt, after: p.data.performedAt };
+  }
+  if (p.data.technicianName !== undefined && p.data.technicianName !== log.technicianName) {
+    diff.technicianName = { before: log.technicianName, after: p.data.technicianName };
+  }
+  if (p.data.reportMarkdown !== undefined) {
+    diff.reportMarkdownUpdated = { after: true };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    await writeAudit(a, "update", "asset_service_log", id, diff);
+  }
+  
   return c.json({
     log: row,
     ...(reportPdfGenerated === undefined
