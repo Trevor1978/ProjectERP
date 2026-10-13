@@ -231,7 +231,7 @@ export function WorkspaceHistoryPage() {
                               </div>
                             </div>
 
-                            {entry.diff && entry.action === "update" && entry.diff.fields && (
+                            {entry.diff && entry.action === "update" && "fields" in entry.diff && (
                               <div className="mt-2 rounded border border-slate-100 bg-slate-50 p-2 text-xs">
                                 <p className="mb-1 font-medium text-slate-700">
                                   {Object.keys(entry.diff.fields as Record<string, unknown>).length} field(s) changed

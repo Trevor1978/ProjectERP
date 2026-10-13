@@ -29,7 +29,7 @@ function formatFieldName(field: string): string {
     .trim();
 }
 
-function formatValue(value: unknown): string {
+function formatValue(value: unknown): React.ReactNode {
   if (value === null || value === undefined) {
     return "(empty)";
   }
@@ -132,7 +132,7 @@ export function AuditHistory({
                     </div>
                   </div>
 
-                  {entry.diff && entry.action === "update" && entry.diff.fields && (
+                  {entry.diff && entry.action === "update" && "fields" in entry.diff && (
                     <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
                       <p className="text-xs font-medium text-slate-700">Changes:</p>
                       {Object.entries(entry.diff.fields as Record<string, { before: unknown; after: unknown }>).map(
@@ -165,13 +165,13 @@ export function AuditHistory({
                     </div>
                   )}
 
-                  {entry.action === "create" && entry.diff?.created && (
+                  {entry.action === "create" && entry.diff && "created" in entry.diff && (
                     <div className="mt-3 rounded border border-green-100 bg-green-50 p-2 text-xs text-green-900">
                       Record created with initial values
                     </div>
                   )}
 
-                  {entry.action === "delete" && entry.diff?.deleted && (
+                  {entry.action === "delete" && entry.diff && "deleted" in entry.diff && (
                     <div className="mt-3 rounded border border-red-100 bg-red-50 p-2 text-xs text-red-900">
                       Record permanently deleted
                     </div>

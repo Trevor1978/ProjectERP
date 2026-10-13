@@ -420,7 +420,7 @@ export function WorkspaceMachineDetailPage() {
       />
 
       <div className="mt-8 border-t border-slate-200 pt-6">
-        <AuditHistory entityType="asset" entityId={machine.id} />
+        <AuditHistory entityType="asset" entityId={assetId} />
       </div>
     </WorkspaceDetailChrome>
   );
