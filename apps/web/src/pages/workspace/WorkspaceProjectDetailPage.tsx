@@ -106,14 +106,14 @@ export function WorkspaceProjectDetailPage() {
       </p>
 
       {err && <p className="text-sm text-red-600">{err}</p>}
-      <div className="mb-6 grid max-w-2xl gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-6 grid max-w-2xl gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <div>
           <label className="block text-sm font-medium text-slate-700">Name</label>
-          <input className="mt-1 w-full rounded border px-2 py-1.5" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="mt-1 w-full min-w-0 rounded border px-2 py-1.5" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700">Code</label>
-          <input className="mt-1 w-full rounded border px-2 py-1.5" value={code} onChange={(e) => setCode(e.target.value)} />
+          <input className="mt-1 w-full min-w-0 rounded border px-2 py-1.5" value={code} onChange={(e) => setCode(e.target.value)} />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700">Customer</label>
@@ -121,12 +121,12 @@ export function WorkspaceProjectDetailPage() {
             entity="client"
             value={clientId}
             onChange={setClientId}
-            className="mt-1 w-full rounded border px-2 py-1.5"
+            className="mt-1 w-full min-w-0 rounded border px-2 py-1.5"
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700">Status</label>
-          <select className="mt-1 w-full rounded border px-2 py-1.5" value={status} onChange={(e) => setStatus(e.target.value as Project["status"])}>
+          <select className="mt-1 w-full min-w-0 rounded border px-2 py-1.5" value={status} onChange={(e) => setStatus(e.target.value as Project["status"])}>
             {STATUS_OPTS.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -135,13 +135,13 @@ export function WorkspaceProjectDetailPage() {
           </select>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
+          <div className="min-w-0">
             <label className="block text-sm font-medium text-slate-700">Start</label>
-            <input type="datetime-local" className="mt-1 w-full rounded border px-2 py-1.5" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
+            <input type="datetime-local" className="mt-1 w-full min-w-0 rounded border px-2 py-1.5 text-sm" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
           </div>
-          <div>
+          <div className="min-w-0">
             <label className="block text-sm font-medium text-slate-700">End</label>
-            <input type="datetime-local" className="mt-1 w-full rounded border px-2 py-1.5" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
+            <input type="datetime-local" className="mt-1 w-full min-w-0 rounded border px-2 py-1.5 text-sm" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
           </div>
         </div>
         <button

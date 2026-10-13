@@ -1109,7 +1109,17 @@ export function CrudWorkspace({
           </span>,
           <InlineNumberNullable
             key="min"
-            value={te.durationMinutes}
+            value={(() => {
+              if (te.durationMinutes !== null) return te.durationMinutes;
+              if (te.startedAt && te.endedAt) {
+                const start = new Date(te.startedAt).getTime();
+                const end = new Date(te.endedAt).getTime();
+                if (!isNaN(start) && !isNaN(end) && end > start) {
+                  return Math.round((end - start) / 60000);
+                }
+              }
+              return null;
+            })()}
             int
             onSave={(v) =>
               api("/api/time-entries/" + te.id, {
