@@ -410,6 +410,10 @@ export const procurementRequest = pgTable("procurement_request", {
     .default(false),
   needBy: timestamp("need_by", { withTimezone: true }),
   sapPoNumber: text("sap_po_number"),
+  quoteNumber: text("quote_number"),
+  invoiceNumber: text("invoice_number"),
+  /** Comma-separated delivery docket / packing slip numbers recorded against this order. */
+  deliveryDocketNumbers: text("delivery_docket_numbers"),
   sapLineCache: text("sap_line_cache"), // JSON
   lastSapSyncAt: timestamp("last_sap_sync_at", { withTimezone: true }),
   version: integer("version").notNull().default(0),
@@ -486,6 +490,38 @@ export const procurementRequestLine = pgTable(
     version: integer("version").notNull().default(0),
   },
   (t) => [index("prline_proc").on(t.procurementId)],
+);
+
+/** One row per purchasing document imported onto an order (PO, PI, delivery docket, …). */
+export const procurementSourceDocument = pgTable(
+  "procurement_source_document",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    procurementId: text("procurement_id")
+      .notNull()
+      .references(() => procurementRequest.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    documentType: text("document_type").notNull(),
+    referenceNumber: text("reference_number"),
+    poNumber: text("po_number"),
+    notes: text("notes"),
+    /** JSON map of line id → units this delivery docket contributed to received qty. */
+    receiptJson: text("receipt_json"),
+    createdById: text("created_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("proc_source_doc_proc").on(t.procurementId),
+    index("proc_source_doc_org_ref").on(t.organizationId, t.referenceNumber),
+  ],
 );
 
 /* --- filters, docs, handover, comments, assets --- */

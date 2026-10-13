@@ -194,6 +194,9 @@ export const procurementPatch = z
     status: rfqStatus.optional(),
     needBy: z.coerce.date().optional().nullable(),
     sapPoNumber: z.string().max(32).optional().nullable(),
+    quoteNumber: z.string().max(64).optional().nullable(),
+    invoiceNumber: z.string().max(64).optional().nullable(),
+    deliveryDocketNumbers: z.string().max(2000).optional().nullable(),
     fullyReceivedOverride: z.boolean().optional(),
     version,
   })
@@ -356,7 +359,15 @@ export const procurementMerge = z.object({
   ids: z.array(id).min(2),
 });
 
-export const procurementAiDocumentType = z.enum(["po", "tax_invoice", "other"]);
+export const procurementAiDocumentType = z.enum([
+  "rfq",
+  "quote",
+  "po",
+  "proforma_invoice",
+  "tax_invoice",
+  "delivery_docket",
+  "other",
+]);
 
 /** AI parse result returned to the client for review (projectId may be null until confirm). */
 export const procurementAiDraftLine = z.object({
@@ -369,7 +380,12 @@ export const procurementAiDraftLine = z.object({
     .union([z.string(), z.number().nonnegative()])
     .optional()
     .nullable(),
+  deliveredQty: z
+    .union([z.string(), z.number().nonnegative()])
+    .optional()
+    .nullable(),
   projectId: id.optional().nullable(),
+  matchedLineId: id.optional().nullable(),
 });
 
 export const procurementAiDraft = z.object({
@@ -380,6 +396,9 @@ export const procurementAiDraft = z.object({
   status: rfqStatus.optional().default("draft"),
   needBy: z.coerce.date().optional().nullable(),
   sapPoNumber: z.string().max(32).optional().nullable(),
+  quoteNumber: z.string().max(64).optional().nullable(),
+  invoiceNumber: z.string().max(64).optional().nullable(),
+  deliveryDocketNumber: z.string().max(64).optional().nullable(),
   confidenceNotes: z.string().max(4000).optional().nullable(),
   lines: z.array(procurementAiDraftLine).min(0).max(500),
 });
@@ -395,15 +414,26 @@ export const procurementAiConfirmLine = z.object({
     .union([z.string(), z.number().nonnegative()])
     .optional()
     .nullable(),
+  deliveredQty: z
+    .union([z.string(), z.number().nonnegative()])
+    .optional()
+    .nullable(),
+  matchedLineId: id.optional().nullable(),
   projectId: id,
 });
 
 export const procurementAiConfirm = z.object({
+  documentType: procurementAiDocumentType.optional().default("other"),
+  /** Existing order to update. Omit to create a new purchasing record. */
+  procurementId: id.optional().nullable(),
   title: z.string().min(1).max(500),
   supplierId: id.optional().nullable(),
   status: rfqStatus.optional().default("draft"),
   needBy: z.coerce.date().optional().nullable(),
   sapPoNumber: z.string().max(32).optional().nullable(),
+  quoteNumber: z.string().max(64).optional().nullable(),
+  invoiceNumber: z.string().max(64).optional().nullable(),
+  deliveryDocketNumber: z.string().max(64).optional().nullable(),
   lines: z.array(procurementAiConfirmLine).min(1).max(500),
   createProjectItems: z.boolean().optional().default(true),
 });

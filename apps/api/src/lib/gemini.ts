@@ -416,8 +416,18 @@ export async function parseWorkNotesWithGemini(opts: {
   return normalizeDraftTimes(draft.data);
 }
 
+const procurementDocumentTypeSchema = z.enum([
+  "rfq",
+  "quote",
+  "po",
+  "proforma_invoice",
+  "tax_invoice",
+  "delivery_docket",
+  "other",
+]);
+
 const procurementAiDraftSchema = z.object({
-  documentType: z.enum(["po", "tax_invoice", "other"]).optional().default("other"),
+  documentType: procurementDocumentTypeSchema.optional().default("other"),
   title: z.string().min(1),
   suggestedSupplierId: z.string().nullable().optional(),
   supplierNameRaw: z.string().nullable().optional(),
@@ -435,6 +445,9 @@ const procurementAiDraftSchema = z.object({
     .default("draft"),
   needBy: z.string().nullable().optional(),
   sapPoNumber: z.string().nullable().optional(),
+  quoteNumber: z.string().nullable().optional(),
+  invoiceNumber: z.string().nullable().optional(),
+  deliveryDocketNumber: z.string().nullable().optional(),
   confidenceNotes: z.string().nullable().optional(),
   lines: z
     .array(
@@ -445,6 +458,7 @@ const procurementAiDraftSchema = z.object({
         orderedQty: z.union([z.string(), z.number()]).optional().nullable(),
         unit: z.string().nullable().optional(),
         estUnitPrice: z.union([z.string(), z.number()]).optional().nullable(),
+        deliveredQty: z.union([z.string(), z.number()]).optional().nullable(),
         suggestedProjectId: z.string().nullable().optional(),
       }),
     )
@@ -461,7 +475,18 @@ export type ProcurementAiCatalogs = {
 const PROCUREMENT_RESPONSE_SCHEMA = {
   type: "object",
   properties: {
-    documentType: { type: "string", enum: ["po", "tax_invoice", "other"] },
+    documentType: {
+      type: "string",
+      enum: [
+        "rfq",
+        "quote",
+        "po",
+        "proforma_invoice",
+        "tax_invoice",
+        "delivery_docket",
+        "other",
+      ],
+    },
     title: { type: "string" },
     suggestedSupplierId: { type: "string", nullable: true },
     supplierNameRaw: { type: "string", nullable: true },
@@ -479,6 +504,9 @@ const PROCUREMENT_RESPONSE_SCHEMA = {
     },
     needBy: { type: "string", nullable: true },
     sapPoNumber: { type: "string", nullable: true },
+    quoteNumber: { type: "string", nullable: true },
+    invoiceNumber: { type: "string", nullable: true },
+    deliveryDocketNumber: { type: "string", nullable: true },
     confidenceNotes: { type: "string", nullable: true },
     lines: {
       type: "array",
@@ -491,6 +519,7 @@ const PROCUREMENT_RESPONSE_SCHEMA = {
           orderedQty: { type: "string", nullable: true },
           unit: { type: "string", nullable: true },
           estUnitPrice: { type: "string", nullable: true },
+          deliveredQty: { type: "string", nullable: true },
           suggestedProjectId: { type: "string", nullable: true },
         },
         required: [
@@ -500,6 +529,7 @@ const PROCUREMENT_RESPONSE_SCHEMA = {
           "orderedQty",
           "unit",
           "estUnitPrice",
+          "deliveredQty",
           "suggestedProjectId",
         ],
       },
@@ -513,6 +543,9 @@ const PROCUREMENT_RESPONSE_SCHEMA = {
     "status",
     "needBy",
     "sapPoNumber",
+    "quoteNumber",
+    "invoiceNumber",
+    "deliveryDocketNumber",
     "confidenceNotes",
     "lines",
   ],
@@ -523,7 +556,7 @@ function buildProcurementPrompt(opts: {
   hintProjectId?: string | null;
   catalogs: ProcurementAiCatalogs;
 }): string {
-  return `You are a purchasing assistant for Spantec ERP. Analyse the attached purchase order or tax invoice and extract structured purchasing header + line items.
+  return `You are a purchasing assistant for Spantec ERP. Analyse the attached purchasing document and extract structured header + line items. Documents may be a request for quotation (RFQ), supplier quote, purchase order (PO), proforma invoice (PI), tax invoice, or delivery docket / packing slip / goods receipt.
 
 Guidance notes from the user (use these to assign projects to lines):
 ---
@@ -540,17 +573,28 @@ ${formatCatalog(opts.catalogs.projects)}
 
 Rules:
 1. Read the attached document carefully. Extract every distinct line item.
-2. title: short purchasing title (supplier + PO/invoice number when present).
-3. documentType: "po" for purchase orders, "tax_invoice" for tax invoices, otherwise "other".
-4. status: use "ordered" for clear POs/invoices (including marketplace orders with payment pending/verified); use "draft" if unclear.
+2. title: short purchasing title (supplier + the document's own number when present).
+3. documentType:
+   - "rfq" request for quotation
+   - "quote" supplier quotation
+   - "po" purchase order
+   - "proforma_invoice" proforma invoice (often labelled PI)
+   - "tax_invoice" tax invoice or commercial invoice
+   - "delivery_docket" delivery docket, delivery note, packing slip, or goods receipt
+   - "other" if none of those fit
+4. status: "rfq_sent" for an RFQ, "quoted" for a quote, "ordered" for a PO, PI, tax invoice, or delivery docket (including marketplace orders). Use "draft" if unclear.
 5. suggestedSupplierId: catalog id only, or null. Never invent UUIDs. Put the printed vendor name in supplierNameRaw.
-6. sapPoNumber: PO / order number from the document when present, else null.
-7. needBy: delivery / due date as ISO date YYYY-MM-DD when present, else null.
-8. For each line: description required; partNumber, quantity, orderedQty, unit, estUnitPrice when present.
-9. Project assignment: prefer the user's guidance notes; else use hint projectId for all lines; else match catalog by name/code mentioned in notes or document. Leave suggestedProjectId null if unsure. Never invent project ids.
-10. quantities and prices as strings of numbers (e.g. "10", "12.50"). Strip currency symbols (AU$, $, USD).
-11. confidenceNotes: brief notes on uncertain matches.
-12. Marketplace order lists (AliExpress, Amazon, eBay, etc.): extract every visible product as a line (description, qty, unit price, SKU when shown). Ignore UI chrome such as "Verifying your payment", coupons, and free-returns banners. If multiple sellers appear, leave suggestedSupplierId null unless exactly one catalog supplier matches; put seller names in supplierNameRaw and confidenceNotes. Prefer a screenshot of a single order when possible.`;
+6. sapPoNumber: the purchase order number this document belongs to. On a PO it is the PO number. On a PI, tax invoice, quote, or delivery docket it is the PO / order number they reference. Null if none is printed.
+7. quoteNumber: supplier quote number when this is a quote, else null.
+8. invoiceNumber: PI or tax invoice number when printed, else null.
+9. deliveryDocketNumber: delivery docket / packing slip number when printed, else null.
+10. needBy: delivery / due date as ISO date YYYY-MM-DD when present, else null.
+11. For each line: description required; partNumber, quantity, orderedQty, unit, estUnitPrice when present.
+12. deliveredQty: on a delivery docket, the quantity delivered on this document for that line (string). Null for every other document type.
+13. Project assignment: prefer the user's guidance notes; else use hint projectId for all lines; else match catalog by name/code mentioned in notes or document. Leave suggestedProjectId null if unsure. Never invent project ids.
+14. quantities and prices as strings of numbers (e.g. "10", "12.50"). Strip currency symbols (AU$, $, USD).
+15. confidenceNotes: brief notes on uncertain matches, including when a PO number was inferred from a reference line.
+16. Marketplace order lists (AliExpress, Amazon, eBay, etc.): extract every visible product as a line (description, qty, unit price, SKU when shown). Ignore UI chrome such as "Verifying your payment", coupons, and free-returns banners. If multiple sellers appear, leave suggestedSupplierId null unless exactly one catalog supplier matches; put seller names in supplierNameRaw and confidenceNotes. Prefer a screenshot of a single order when possible.`;
 }
 
 function qtyToString(v: string | number | null | undefined): string | null {
@@ -598,6 +642,7 @@ export async function parseProcurementDocumentWithGemini(opts: {
       quantity: qtyToString(l.quantity) ?? "1",
       orderedQty: qtyToString(l.orderedQty),
       estUnitPrice: qtyToString(l.estUnitPrice),
+      deliveredQty: qtyToString(l.deliveredQty),
     })),
   };
 }

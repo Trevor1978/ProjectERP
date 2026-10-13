@@ -1,13 +1,6 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import {
-  db,
-  procurementRequest,
-  procurementRequestLine,
-  project,
-  projectMember,
-  supplier,
-} from "@project-erp/db";
+import { db, project, projectMember, supplier } from "@project-erp/db";
 import { procurementAiConfirm } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
 import { requireProject } from "../lib/projectAccess.js";
@@ -16,9 +9,12 @@ import {
   parseProcurementDocumentWithGemini,
   type CatalogItem,
 } from "../lib/gemini.js";
-import { resolveProjectItemIdForLine } from "../lib/projectItemForLine.js";
-import { syncProjectItemStatus } from "../lib/syncProjectItemStatus.js";
-import { syncProcurementStatusFromLineReceipts } from "../lib/syncProcurementReceiveStatus.js";
+import {
+  createProcurementFromDocument,
+  documentIdentityFromExtract,
+  loadDocumentMatch,
+  updateProcurementFromDocument,
+} from "../lib/applyProcurementDocument.js";
 
 const app = new Hono();
 app.use("/*", requireAuth);
@@ -198,6 +194,27 @@ app.post("/procurement/ai-parse", async (c) => {
     hintProjectId ??
     (projectCatalog.length === 1 ? projectCatalog[0]!.id : null);
 
+  const lines = raw.lines.map((l) => {
+    const matched = catalogIdIn(projectCatalog, l.suggestedProjectId);
+    return {
+      partNumber: l.partNumber?.slice(0, 256) ?? null,
+      description: l.description.slice(0, 2000),
+      quantity: String(l.quantity ?? "1"),
+      orderedQty: l.orderedQty != null ? String(l.orderedQty) : null,
+      unit: l.unit?.slice(0, 32) ?? null,
+      estUnitPrice:
+        l.estUnitPrice != null && l.estUnitPrice !== ""
+          ? String(l.estUnitPrice)
+          : null,
+      deliveredQty:
+        l.deliveredQty != null && l.deliveredQty !== ""
+          ? String(l.deliveredQty)
+          : null,
+      projectId: matched ?? defaultProject,
+      matchedLineId: null as string | null,
+    };
+  });
+
   const draft = {
     documentType: raw.documentType,
     title: raw.title.slice(0, 500),
@@ -206,25 +223,41 @@ app.post("/procurement/ai-parse", async (c) => {
     status: raw.status,
     needBy: parseNeedBy(raw.needBy),
     sapPoNumber: raw.sapPoNumber?.slice(0, 32) ?? null,
+    quoteNumber: raw.quoteNumber?.slice(0, 64) ?? null,
+    invoiceNumber: raw.invoiceNumber?.slice(0, 64) ?? null,
+    deliveryDocketNumber: raw.deliveryDocketNumber?.slice(0, 64) ?? null,
     confidenceNotes: raw.confidenceNotes?.slice(0, 4000) ?? null,
-    lines: raw.lines.map((l) => {
-      const matched = catalogIdIn(projectCatalog, l.suggestedProjectId);
-      return {
-        partNumber: l.partNumber?.slice(0, 256) ?? null,
-        description: l.description.slice(0, 2000),
-        quantity: String(l.quantity ?? "1"),
-        orderedQty: l.orderedQty != null ? String(l.orderedQty) : null,
-        unit: l.unit?.slice(0, 32) ?? null,
-        estUnitPrice:
-          l.estUnitPrice != null && l.estUnitPrice !== ""
-            ? String(l.estUnitPrice)
-            : null,
-        projectId: matched ?? defaultProject,
-      };
-    }),
+    lines,
   };
 
-  return c.json({ draft });
+  const match = await loadDocumentMatch(
+    a,
+    documentIdentityFromExtract({
+      documentType: draft.documentType,
+      supplierId: draft.supplierId,
+      sapPoNumber: draft.sapPoNumber,
+      quoteNumber: draft.quoteNumber,
+      invoiceNumber: draft.invoiceNumber,
+      deliveryDocketNumber: draft.deliveryDocketNumber,
+      lines: draft.lines.map((line) => ({
+        partNumber: line.partNumber,
+        description: line.description,
+      })),
+    }),
+  );
+  const selected = match.candidates.find(
+    (candidate) => candidate.id === match.procurementId,
+  );
+  if (selected) {
+    draft.lines = draft.lines.map((line, index) => ({
+      ...line,
+      matchedLineId:
+        selected.lineMatches.find((item) => item.incomingIndex === index)
+          ?.lineId ?? null,
+    }));
+  }
+
+  return c.json({ draft, match });
 });
 
 app.post("/procurement/ai-confirm", async (c) => {
@@ -246,79 +279,34 @@ app.post("/procurement/ai-confirm", async (c) => {
     }
   }
 
-  const [procurement] = await db
-    .insert(procurementRequest)
-    .values({
-      organizationId: a.organizationId,
-      supplierId: sid.supplierId,
-      title: p.data.title,
-      status: p.data.status ?? "draft",
-      fullyReceivedOverride: false,
-      needBy: p.data.needBy ?? null,
-      sapPoNumber: p.data.sapPoNumber ?? null,
-      createdById: a.id,
-    })
-    .returning();
-
-  if (!procurement) {
-    return c.json({ error: "Failed to create purchasing record" }, 500);
+  const result = p.data.procurementId
+    ? await updateProcurementFromDocument(
+        a,
+        p.data.procurementId,
+        p.data,
+        sid.supplierId,
+      )
+    : await createProcurementFromDocument(a, p.data, sid.supplierId);
+  if (!result.ok) {
+    return c.json({ error: result.error }, result.status as 400);
   }
 
-  const lines = [];
-  let orderIndex = 0;
-  for (const line of p.data.lines) {
-    const qty = line.quantity;
-    const itemRes = await resolveProjectItemIdForLine(a, {
-      projectId: line.projectId,
-      partNumber: line.partNumber,
-      description: line.description,
-      quantity: qty,
-      unit: line.unit,
-      createProjectItem: p.data.createProjectItems,
-    });
-    if (!itemRes.ok) {
-      return c.json({ error: itemRes.error }, (itemRes.status ?? 400) as 400);
-    }
-    const ordQty = line.orderedQty?.trim() ? line.orderedQty : null;
-    const [created] = await db
-      .insert(procurementRequestLine)
-      .values({
-        procurementId: procurement.id,
-        projectId: line.projectId,
-        projectItemId: itemRes.projectItemId,
-        partNumber: line.partNumber ?? null,
-        description: line.description,
-        quantity: qty,
-        orderedQty: ordQty,
-        unit: line.unit ?? null,
-        estUnitPrice:
-          line.estUnitPrice === undefined || line.estUnitPrice === null
-            ? null
-            : Number(line.estUnitPrice),
-        orderIndex,
-        receivedQty: 0,
-      })
-      .returning();
-    if (itemRes.projectItemId) {
-      await syncProjectItemStatus(itemRes.projectItemId);
-    }
-    if (created) lines.push(created);
-    orderIndex += 1;
-  }
-
-  await syncProcurementStatusFromLineReceipts(procurement.id);
-  const [afterSync] = await db
-    .select()
-    .from(procurementRequest)
-    .where(eq(procurementRequest.id, procurement.id));
-
-  await writeAudit(a, "procurement.ai_import", "procurement_request", procurement.id, {
-    lineCount: lines.length,
-  });
+  await writeAudit(
+    a,
+    result.mode === "updated" ? "procurement.ai_update" : "procurement.ai_import",
+    "procurement_request",
+    result.procurement.id,
+    {
+      lineCount: result.lines.length,
+      documentType: p.data.documentType ?? "other",
+      mode: result.mode,
+    },
+  );
 
   return c.json({
-    procurement: afterSync ?? procurement,
-    lines,
+    procurement: result.procurement,
+    lines: result.lines,
+    mode: result.mode,
   });
 });
 

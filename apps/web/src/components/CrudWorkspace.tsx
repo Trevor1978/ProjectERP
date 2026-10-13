@@ -1713,7 +1713,7 @@ export function CrudWorkspace({
                   to="/workspace/purchasing/ai-import"
                   className="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50"
                 >
-                  Import PO / invoice
+                  Import document
                 </Link>
               ) : null}
               {tab === "procurement" ? (
