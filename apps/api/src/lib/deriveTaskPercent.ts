@@ -7,19 +7,20 @@ export async function syncTaskPercentFromTodos(taskId: string) {
   if (!t[0]!.useDerivedPercent) return;
 
   const list = await db.select().from(todo).where(eq(todo.taskId, taskId));
-  if (list.length === 0) {
-    await db
-      .update(task)
-      .set({ percentComplete: 0, updatedAt: new Date() })
-      .where(eq(task.id, taskId));
-    return;
+  const prev = t[0]!.percentComplete ?? 0;
+  let pct = 0;
+  if (list.length > 0) {
+    const done = list.filter(
+      (r) => r.status === "done" || r.status === "cancelled",
+    ).length;
+    pct = Math.round((done / list.length) * 100);
   }
-  const done = list.filter(
-    (r) => r.status === "done" || r.status === "cancelled",
-  ).length;
-  const pct = Math.round((done / list.length) * 100);
   await db
     .update(task)
-    .set({ percentComplete: pct, updatedAt: new Date() })
+    .set({
+      percentComplete: pct,
+      ...(pct >= 100 && prev < 100 ? { completed: true } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(task.id, taskId));
 }

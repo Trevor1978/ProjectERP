@@ -12,7 +12,8 @@ import { workspaceSlugToTab, workspaceTabToSlug } from "../lib/workspaceNav";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
 import { procurementLineRowClass } from "../workspace/procurementLineStatus";
-import { columnFilterMatches, filterCell, TABS_WITH_COMPLETED } from "../lib/workspaceTableUtils";
+import { columnFilterMatches, filterCell, rowIsCompleted, TABS_WITH_COMPLETED } from "../lib/workspaceTableUtils";
+import { DoneCheckbox } from "./DoneCheckbox";
 import { WorkspaceCsvToolbar } from "./WorkspaceCsvToolbar";
 import { ColumnFilterInput } from "./ColumnFilterInput";
 import { buildCsvImportHandler } from "../lib/workspaceCsvImport";
@@ -44,6 +45,7 @@ type Milestone = {
   startAt: string | null;
   endAt: string | null;
   orderIndex: number;
+  completed: boolean;
   version: number;
 };
 type Task = {
@@ -58,6 +60,7 @@ type Task = {
   actualHours: number | null;
   percentComplete: number;
   useDerivedPercent: boolean;
+  completed: boolean;
   orderIndex: number;
   assigneeId: string | null;
   version: number;
@@ -318,6 +321,7 @@ function attachTableRowMeta(
   rows: TableRow[],
   entities: {
     projects: Project[];
+    milestones: Milestone[];
     tasks: Task[];
     todos: Todo[];
     procurement: Procurement[];
@@ -326,21 +330,29 @@ function attachTableRowMeta(
   return rows.map((r) => {
     let isCompleted = false;
     switch (tab) {
-      case "projects":
-        isCompleted = entities.projects.find((p) => p.id === r.key)?.status === "closed";
+      case "projects": {
+        const status = entities.projects.find((p) => p.id === r.key)?.status;
+        isCompleted = rowIsCompleted("projects", { status });
         break;
-      case "tasks":
-        isCompleted = (entities.tasks.find((t) => t.id === r.key)?.percentComplete ?? 0) >= 100;
+      }
+      case "milestones": {
+        const completed = entities.milestones.find((m) => m.id === r.key)?.completed;
+        isCompleted = rowIsCompleted("milestones", { completed });
         break;
-      case "todos":
-        isCompleted = (() => {
-          const st = entities.todos.find((t) => t.id === r.key)?.status;
-          return st === "done" || st === "cancelled";
-        })();
+      }
+      case "tasks": {
+        const completed = entities.tasks.find((t) => t.id === r.key)?.completed;
+        isCompleted = rowIsCompleted("tasks", { completed });
         break;
+      }
+      case "todos": {
+        const status = entities.todos.find((t) => t.id === r.key)?.status;
+        isCompleted = rowIsCompleted("todos", { status });
+        break;
+      }
       case "procurement": {
-        const st = entities.procurement.find((p) => p.id === r.key)?.status;
-        isCompleted = st === "closed" || st === "cancelled";
+        const status = entities.procurement.find((p) => p.id === r.key)?.status;
+        isCompleted = rowIsCompleted("procurement", { status });
         break;
       }
       default:
@@ -778,7 +790,7 @@ export function CrudWorkspace({
       })),
     },
     projects: {
-      dataHeaders: ["Name", "Code", "Customer", "Status", "Start", "End"],
+      dataHeaders: ["Name", "Code", "Customer", "Status", "Start", "End", "Done"],
       rows: projects.map((p) => ({
         key: p.id,
         action: rowActions("projects", p.id, p.name, undefined, { openHref: `/workspace/projects/${p.id}` }),
@@ -845,18 +857,41 @@ export function CrudWorkspace({
               }).then(refreshProjects)
             }
           />,
+          <DoneCheckbox
+            key="done"
+            checked={p.status === "closed"}
+            onChange={(done) => {
+              void api("/api/projects/" + p.id, {
+                method: "PATCH",
+                body: JSON.stringify({
+                  status: done ? "closed" : "active",
+                  version: p.version,
+                }),
+              }).then(refreshProjects);
+            }}
+          />,
         ],
-        search: `${p.name} ${p.code ?? ""} ${clientName.get(p.clientId) ?? ""} ${p.status}`,
-        sort: [p.name, p.code ?? "", clientName.get(p.clientId) ?? "", p.status, p.startAt ?? "", p.endAt ?? ""],
+        search: `${p.name} ${p.code ?? ""} ${clientName.get(p.clientId) ?? ""} ${p.status} ${p.status === "closed" ? "done" : "open"}`,
+        sort: [p.name, p.code ?? "", clientName.get(p.clientId) ?? "", p.status, p.startAt ?? "", p.endAt ?? "", p.status === "closed" ? "done" : "open"],
       })),
     },
     milestones: {
-      dataHeaders: ["Project", "Name", "Start", "End", "Order"],
+      dataHeaders: ["Project", "Name", "Start", "End", "Order", "Done"],
       rows: milestones.map((m) => ({
         key: m.id,
         action: rowActions("milestones", m.id, m.name, undefined, { openHref: `/workspace/milestones/${m.id}` }),
         cells: [
-          <span key="p">{projectName.get(m.projectId) ?? m.projectId}</span>,
+          <EntitySelect
+            key="p"
+            entity="project"
+            value={m.projectId}
+            onSave={(v) =>
+              api("/api/milestones/" + m.id, {
+                method: "PATCH",
+                body: JSON.stringify({ projectId: v, version: m.version }),
+              }).then(refreshSchedule)
+            }
+          />,
           <InlineText
             key="n"
             value={m.name}
@@ -897,13 +932,30 @@ export function CrudWorkspace({
               }).then(refreshSchedule)
             }
           />,
+          <DoneCheckbox
+            key="done"
+            checked={m.completed}
+            onChange={(done) => {
+              void api("/api/milestones/" + m.id, {
+                method: "PATCH",
+                body: JSON.stringify({ completed: done, version: m.version }),
+              }).then(refreshSchedule);
+            }}
+          />,
         ],
-        search: `${projectName.get(m.projectId) ?? ""} ${m.name}`,
-        sort: [projectName.get(m.projectId) ?? "", m.name, m.startAt ?? "", m.endAt ?? "", m.orderIndex],
+        search: `${projectName.get(m.projectId) ?? ""} ${m.name} ${m.completed ? "done" : "open"}`,
+        sort: [
+          projectName.get(m.projectId) ?? "",
+          m.name,
+          m.startAt ?? "",
+          m.endAt ?? "",
+          m.orderIndex,
+          m.completed ? "done" : "open",
+        ],
       })),
     },
     tasks: {
-      dataHeaders: ["Project", "Milestone", "Title", "Start", "Est days", "End", "%"],
+      dataHeaders: ["Project", "Milestone", "Title", "Start", "Est days", "End", "%", "Done"],
       rows: tasks.map((t) => ({
         key: t.id,
         action: rowActions("tasks", t.id, t.title, undefined, { openHref: `/workspace/tasks/${t.id}` }),
@@ -913,7 +965,7 @@ export function CrudWorkspace({
             key="m"
             entity="milestone"
             value={t.milestoneId}
-            filter={{ projectId: t.projectId }}
+            defaults={{ projectId: t.projectId }}
             onSave={(v) =>
               api("/api/tasks/" + t.id, {
                 method: "PATCH",
@@ -970,8 +1022,18 @@ export function CrudWorkspace({
               }).then(refreshSchedule)
             }
           />,
+          <DoneCheckbox
+            key="done"
+            checked={t.completed}
+            onChange={(done) => {
+              void api("/api/tasks/" + t.id, {
+                method: "PATCH",
+                body: JSON.stringify({ completed: done, version: t.version }),
+              }).then(refreshSchedule);
+            }}
+          />,
         ],
-        search: `${projectName.get(t.projectId) ?? ""} ${milestoneName.get(t.milestoneId) ?? ""} ${t.title} ${t.startAt ?? ""} ${t.estDays ?? ""}`,
+        search: `${projectName.get(t.projectId) ?? ""} ${milestoneName.get(t.milestoneId) ?? ""} ${t.title} ${t.startAt ?? ""} ${t.estDays ?? ""} ${t.completed ? "done" : "open"}`,
         sort: [
           projectName.get(t.projectId) ?? "",
           milestoneName.get(t.milestoneId) ?? "",
@@ -980,6 +1042,7 @@ export function CrudWorkspace({
           t.estDays ?? 0,
           formatTaskEndIso(t.startAt, t.estDays) ?? "",
           t.percentComplete,
+          t.completed ? "done" : "open",
         ],
       })),
     },
@@ -994,7 +1057,17 @@ export function CrudWorkspace({
         action: rowActions("todos", td.id, td.title, undefined, { openHref: `/workspace/todos/${td.id}` }),
         cells: [
           <span key="pj">{projectLabel || "—"}</span>,
-          <span key="tk">{taskName.get(td.taskId) ?? td.taskId}</span>,
+          <EntitySelect
+            key="tk"
+            entity="task"
+            value={td.taskId}
+            onSave={(v) =>
+              api("/api/todos/" + td.id, {
+                method: "PATCH",
+                body: JSON.stringify({ taskId: v, version: td.version }),
+              }).then(refreshSchedule)
+            }
+          />,
           <InlineText
             key="ti"
             value={td.title}
@@ -1405,7 +1478,7 @@ export function CrudWorkspace({
       },
       { milestones, tasks, todos, timeEntries, procLines, procurement },
     );
-    rows = attachTableRowMeta(tab, rows, { projects, tasks, todos, procurement });
+    rows = attachTableRowMeta(tab, rows, { projects, milestones, tasks, todos, procurement });
     if (!showCompleted && (TABS_WITH_COMPLETED as readonly string[]).includes(tab)) {
       rows = rows.filter((r) => !r.isCompleted);
     }
@@ -1601,6 +1674,10 @@ export function CrudWorkspace({
           <TodoKanban
             projectId={kanbanProjectId === "all" ? "" : kanbanProjectId}
             tasks={tasks}
+            taskOptions={tasks.map((t) => ({
+              value: t.id,
+              label: `${projectName.get(t.projectId) ?? "Project"} · ${milestoneName.get(t.milestoneId) ?? "Milestone"} · ${t.title}`,
+            }))}
             todos={kanbanTodos}
             onUpdate={refreshSchedule}
           />
@@ -1799,7 +1876,7 @@ export function CrudWorkspace({
         />
       )}
       <p className="text-xs text-slate-500">
-        Use the dashed <strong>new row</strong> at the bottom of each table to create records, click a cell to edit inline, or use <strong>Edit</strong> for all fields in a form. Time entries: you can only change your own unless you are an org admin.
+        Use the dashed <strong>new row</strong> at the bottom of each table to create records, click a cell to edit inline, or use <strong>Edit</strong> for all fields in a form. Move a milestone to another project, a task to another milestone (including another project), or a todo to another task from the parent column. <strong>Done</strong> hides that row until Show completed is on. Closed projects count as done. Time entries: you can only change your own unless you are an org admin.
       </p>
 
       {editTarget && (
@@ -3009,15 +3086,14 @@ function EditDetailModal({
     return <ProjectEditModal project={p} onClose={onClose} onSaved={onSaved} />;
   }
   if (target.tab === "milestones" && m) {
-    const pn = projects.find((x) => x.id === m.projectId)?.name ?? m.projectId;
-    return <MilestoneEditModal milestone={m} projectLabel={pn} onClose={onClose} onSaved={onSaved} />;
+    return <MilestoneEditModal milestone={m} onClose={onClose} onSaved={onSaved} />;
   }
   if (target.tab === "tasks" && t) {
-    const pl = projects.find((x) => x.id === t.projectId)?.name ?? t.projectId;
     return (
       <TaskEditModal
         task={t}
-        projectLabel={pl}
+        milestones={milestones}
+        projects={projects}
         orgUsers={orgUsers}
         onClose={onClose}
         onSaved={onSaved}
@@ -3025,8 +3101,7 @@ function EditDetailModal({
     );
   }
   if (target.tab === "todos" && td) {
-    const tl = tasks.find((x) => x.id === td.taskId)?.title ?? td.taskId;
-    return <TodoEditModal todo={td} taskLabel={tl} orgUsers={orgUsers} onClose={onClose} onSaved={onSaved} />;
+    return <TodoEditModal todo={td} orgUsers={orgUsers} onClose={onClose} onSaved={onSaved} />;
   }
   if (target.tab === "timeEntries" && te) {
     const tk = tasks.find((x) => x.id === te.taskId)?.title ?? te.taskId;
@@ -3245,6 +3320,13 @@ function ProjectEditModal({
         onSave={(v) => setStatus(v as Project["status"])}
         className="mb-2 w-full rounded border px-2 py-1"
       />
+      <div className="mb-2">
+        <DoneCheckbox
+          checked={status === "closed"}
+          label="Done — hide from the projects list"
+          onChange={(done) => setStatus(done ? "closed" : status === "closed" ? "active" : status)}
+        />
+      </div>
       <label className="block text-sm font-medium">Start</label>
       <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
       <label className="block text-sm font-medium">End</label>
@@ -3255,26 +3337,28 @@ function ProjectEditModal({
 
 function MilestoneEditModal({
   milestone,
-  projectLabel,
   onClose,
   onSaved,
 }: {
   milestone: Milestone;
-  projectLabel: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const [projectId, setProjectId] = useState(milestone.projectId);
   const [name, setName] = useState(milestone.name);
   const [startAt, setStartAt] = useState(isoToLocal(milestone.startAt));
   const [endAt, setEndAt] = useState(isoToLocal(milestone.endAt));
   const [orderIndex, setOrderIndex] = useState(String(milestone.orderIndex));
+  const [completed, setCompleted] = useState(milestone.completed);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
+    setProjectId(milestone.projectId);
     setName(milestone.name);
     setStartAt(isoToLocal(milestone.startAt));
     setEndAt(isoToLocal(milestone.endAt));
     setOrderIndex(String(milestone.orderIndex));
+    setCompleted(milestone.completed);
   }, [milestone]);
   return (
     <ModalShell
@@ -3285,17 +3369,19 @@ function MilestoneEditModal({
           <button
             type="button"
             className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-            disabled={saving || !name.trim()}
+            disabled={saving || !name.trim() || !projectId}
             onClick={() => {
               setErr(null);
               setSaving(true);
               void api("/api/milestones/" + milestone.id, {
                 method: "PATCH",
                 body: JSON.stringify({
+                  projectId,
                   name: name.trim(),
                   startAt: localToIso(startAt),
                   endAt: localToIso(endAt),
                   orderIndex: Number(orderIndex) || 0,
+                  completed,
                   version: milestone.version,
                 }),
               })
@@ -3310,7 +3396,14 @@ function MilestoneEditModal({
       }
     >
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
-      <p className="mb-2 text-sm text-slate-600">Project: {projectLabel}</p>
+      <label className="block text-sm font-medium">Project</label>
+      <QuickCreateSelect
+        entity="project"
+        value={projectId}
+        onChange={setProjectId}
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
+      <p className="mb-2 text-xs text-slate-500">Moving a milestone also moves its tasks to that project.</p>
       <label className="block text-sm font-medium">Name</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={name} onChange={(e) => setName(e.target.value)} />
       <label className="block text-sm font-medium">Start</label>
@@ -3318,20 +3411,23 @@ function MilestoneEditModal({
       <label className="block text-sm font-medium">End</label>
       <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
       <label className="block text-sm font-medium">Order</label>
-      <input type="number" className="w-full rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
+      <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
+      <DoneCheckbox checked={completed} label="Done — hide from the milestones list" onChange={setCompleted} />
     </ModalShell>
   );
 }
 
 function TaskEditModal({
   task,
-  projectLabel,
+  milestones,
+  projects,
   orgUsers,
   onClose,
   onSaved,
 }: {
   task: Task;
-  projectLabel: string;
+  milestones: Milestone[];
+  projects: Project[];
   orgUsers: OrgUser[];
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -3339,6 +3435,7 @@ function TaskEditModal({
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [milestoneId, setMilestoneId] = useState(task.milestoneId);
+  const [completed, setCompleted] = useState(task.completed);
   const [startAt, setStartAt] = useState(isoToLocal(task.startAt));
   const [estDays, setEstDays] = useState(task.estDays == null ? "" : String(task.estDays));
   const computedEnd = useMemo(() => {
@@ -3356,6 +3453,7 @@ function TaskEditModal({
     setTitle(task.title);
     setDescription(task.description ?? "");
     setMilestoneId(task.milestoneId);
+    setCompleted(task.completed);
     setStartAt(isoToLocal(task.startAt));
     setEstDays(task.estDays == null ? "" : String(task.estDays));
     setActualHours(task.actualHours == null ? "" : String(task.actualHours));
@@ -3388,6 +3486,7 @@ function TaskEditModal({
                   actualHours: actualHours.trim() ? Number(actualHours) : null,
                   percentComplete: Number(percentComplete) || 0,
                   useDerivedPercent: useDerived,
+                  completed,
                   orderIndex: Number(orderIndex) || 0,
                   assigneeId: assigneeId || null,
                   version: task.version,
@@ -3404,7 +3503,11 @@ function TaskEditModal({
       }
     >
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
-      <p className="mb-2 text-sm text-slate-600">Project: {projectLabel}</p>
+      <p className="mb-2 text-sm text-slate-600">
+        Project:{" "}
+        {projects.find((p) => p.id === milestones.find((m) => m.id === milestoneId)?.projectId)?.name ??
+          "—"}
+      </p>
       <label className="block text-sm font-medium">Title</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
       <label className="block text-sm font-medium">Milestone</label>
@@ -3412,10 +3515,10 @@ function TaskEditModal({
         entity="milestone"
         value={milestoneId}
         onChange={setMilestoneId}
-        filter={{ projectId: task.projectId }}
         defaults={{ projectId: task.projectId }}
         className="mb-2 w-full rounded border px-2 py-1"
       />
+      <p className="mb-2 text-xs text-slate-500">Choosing a milestone in another project moves this task there.</p>
       <label className="block text-sm font-medium">Description</label>
       <textarea className="mb-2 w-full rounded border px-2 py-1" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
       <label className="block text-sm font-medium">Start</label>
@@ -3439,6 +3542,9 @@ function TaskEditModal({
         <input type="checkbox" checked={useDerived} onChange={(e) => setUseDerived(e.target.checked)} />
         Use derived %
       </label>
+      <div className="mt-2">
+        <DoneCheckbox checked={completed} label="Done — hide from the tasks list" onChange={setCompleted} />
+      </div>
       <label className="mt-2 block text-sm font-medium">Order</label>
       <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
       <label className="block text-sm font-medium">Assignee</label>
@@ -3456,17 +3562,16 @@ function TaskEditModal({
 
 function TodoEditModal({
   todo,
-  taskLabel,
   orgUsers,
   onClose,
   onSaved,
 }: {
   todo: Todo;
-  taskLabel: string;
   orgUsers: OrgUser[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const [taskId, setTaskId] = useState(todo.taskId);
   const [title, setTitle] = useState(todo.title);
   const [status, setStatus] = useState(todo.status);
   const [dueAt, setDueAt] = useState(isoToLocal(todo.dueAt));
@@ -3476,6 +3581,7 @@ function TodoEditModal({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
+    setTaskId(todo.taskId);
     setTitle(todo.title);
     setStatus(todo.status);
     setDueAt(isoToLocal(todo.dueAt));
@@ -3492,13 +3598,14 @@ function TodoEditModal({
           <button
             type="button"
             className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-            disabled={saving || !title.trim()}
+            disabled={saving || !title.trim() || !taskId}
             onClick={() => {
               setErr(null);
               setSaving(true);
               void api("/api/todos/" + todo.id, {
                 method: "PATCH",
                 body: JSON.stringify({
+                  taskId,
                   title: title.trim(),
                   status,
                   dueAt: localToIso(dueAt),
@@ -3519,7 +3626,13 @@ function TodoEditModal({
       }
     >
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
-      <p className="mb-2 text-sm text-slate-600">Task: {taskLabel}</p>
+      <label className="block text-sm font-medium">Task</label>
+      <QuickCreateSelect
+        entity="task"
+        value={taskId}
+        onChange={setTaskId}
+        className="mb-2 w-full rounded border px-2 py-1"
+      />
       <label className="block text-sm font-medium">Title</label>
       <input className="mb-2 w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
       <label className="block text-sm font-medium">Status</label>

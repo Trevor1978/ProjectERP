@@ -29,6 +29,7 @@ export type Task = {
   actualHours: number | null;
   percentComplete: number;
   useDerivedPercent: boolean;
+  completed?: boolean;
   version: number;
 };
 
@@ -42,7 +43,14 @@ export type Todo = {
 };
 
 export type Client = { id: string; name: string; code: string | null; version: number };
-export type Milestone = { id: string; projectId: string; name: string; orderIndex: number; version: number };
+export type Milestone = {
+  id: string;
+  projectId: string;
+  name: string;
+  orderIndex: number;
+  completed?: boolean;
+  version: number;
+};
 export type Procurement = {
   id: string;
   projectId: string;

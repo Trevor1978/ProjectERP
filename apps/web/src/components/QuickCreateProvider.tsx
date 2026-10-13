@@ -89,6 +89,8 @@ export function QuickCreateProvider({ children }: { children: ReactNode }) {
 
   const getOptions = useCallback(
     (entity: QuickCreateEntity, filter?: QuickCreateFilter) => {
+      const projectName = new Map(projects.map((p) => [p.id, p.name]));
+      const milestoneName = new Map(milestones.map((m) => [m.id, m.name]));
       switch (entity) {
         case "client":
           return clients.map((c) => ({ value: c.id, label: c.name }));
@@ -99,7 +101,12 @@ export function QuickCreateProvider({ children }: { children: ReactNode }) {
         case "milestone":
           return milestones
             .filter((m) => !filter?.projectId || m.projectId === filter.projectId)
-            .map((m) => ({ value: m.id, label: m.name }));
+            .map((m) => ({
+              value: m.id,
+              label: filter?.projectId
+                ? m.name
+                : `${projectName.get(m.projectId) ?? "Project"} · ${m.name}`,
+            }));
         case "task":
           return tasks
             .filter(
@@ -107,7 +114,14 @@ export function QuickCreateProvider({ children }: { children: ReactNode }) {
                 (!filter?.projectId || t.projectId === filter.projectId) &&
                 (!filter?.milestoneId || t.milestoneId === filter.milestoneId),
             )
-            .map((t) => ({ value: t.id, label: t.title }));
+            .map((t) => {
+              const title = t.title;
+              if (filter?.milestoneId) return { value: t.id, label: title };
+              const milestoneLabel = milestoneName.get(t.milestoneId) ?? "Milestone";
+              if (filter?.projectId) return { value: t.id, label: `${milestoneLabel} · ${title}` };
+              const projectLabel = projectName.get(t.projectId) ?? "Project";
+              return { value: t.id, label: `${projectLabel} · ${milestoneLabel} · ${title}` };
+            });
         case "todo":
           return todos
             .filter((td) => {

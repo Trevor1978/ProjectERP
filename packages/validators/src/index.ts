@@ -82,10 +82,12 @@ export const milestoneCreate = z.object({
 });
 export const milestonePatch = z
   .object({
+    projectId: id.optional(),
     name: z.string().min(1).max(255).optional(),
     startAt: z.coerce.date().optional().nullable(),
     endAt: z.coerce.date().optional().nullable(),
     orderIndex: z.number().int().min(0).optional(),
+    completed: z.boolean().optional(),
     version,
   })
   .strict();
@@ -115,6 +117,7 @@ export const taskPatch = z
     actualHours: z.coerce.number().nonnegative().optional().nullable(),
     percentComplete: z.number().min(0).max(100).optional(),
     useDerivedPercent: z.boolean().optional(),
+    completed: z.boolean().optional(),
     orderIndex: z.number().int().min(0).optional(),
     assigneeId: id.nullable().optional(),
     version,
@@ -136,6 +139,7 @@ export const todoCreate = z.object({
 
 export const todoPatch = z
   .object({
+    taskId: id.optional(),
     title: z.string().min(1).max(500).optional(),
     description: z.string().max(10000).optional().nullable(),
     status: z

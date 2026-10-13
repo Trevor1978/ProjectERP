@@ -22,23 +22,32 @@ export function columnFilterMatches(cellFilterValue: string, userFilter: string)
 
 export type CompletedTab =
   | "projects"
+  | "milestones"
   | "tasks"
   | "todos"
   | "procurement";
 
-export function isCompletedStatus(tab: CompletedTab, status: string): boolean {
+export function rowIsCompleted(
+  tab: CompletedTab,
+  row: { status?: string | null; completed?: boolean | null },
+): boolean {
   switch (tab) {
     case "projects":
-      return status === "closed";
+      return row.status === "closed";
+    case "milestones":
     case "tasks":
-      return false;
+      return row.completed === true;
     case "todos":
-      return status === "done" || status === "cancelled";
+      return row.status === "done" || row.status === "cancelled";
     case "procurement":
-      return status === "closed" || status === "cancelled";
-    default:
-      return false;
+      return row.status === "closed" || row.status === "cancelled";
   }
 }
 
-export const TABS_WITH_COMPLETED: CompletedTab[] = ["projects", "tasks", "todos", "procurement"];
+export const TABS_WITH_COMPLETED: CompletedTab[] = [
+  "projects",
+  "milestones",
+  "tasks",
+  "todos",
+  "procurement",
+];

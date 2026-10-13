@@ -47,6 +47,8 @@ import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
 import { syncTaskPercentFromTodos } from "../lib/deriveTaskPercent.js";
 import { resolveTaskEndAt } from "../lib/workDays.js";
+import { nextCompletedFlag } from "../lib/completion.js";
+import { dropCrossProjectDependencies } from "../lib/moveWork.js";
 
 const app = new Hono();
 
@@ -619,19 +621,36 @@ app.patch("/milestones/:id", async (c) => {
   if (p.data.version !== undefined && p.data.version !== cur[0]!.version) {
     return c.json({ error: "Version conflict" }, 409);
   }
+  const nextProjectId = p.data.projectId ?? cur[0]!.projectId;
+  if (nextProjectId !== cur[0]!.projectId) {
+    const dest = await requireProject(a, nextProjectId);
+    if ("error" in dest) {
+      return c.json({ error: dest.error }, dest.status);
+    }
+  }
   const [m] = await db
     .update(milestone)
     .set({
+      projectId: nextProjectId,
       name: p.data.name ?? cur[0]!.name,
       startAt:
         p.data.startAt === undefined ? cur[0]!.startAt : p.data.startAt,
       endAt: p.data.endAt === undefined ? cur[0]!.endAt : p.data.endAt,
       orderIndex: p.data.orderIndex ?? cur[0]!.orderIndex,
+      completed: p.data.completed ?? cur[0]!.completed,
       version: (cur[0]!.version ?? 0) + 1,
       updatedAt: new Date(),
     })
     .where(eq(milestone.id, id))
     .returning();
+  if (nextProjectId !== cur[0]!.projectId) {
+    const moved = await db
+      .update(task)
+      .set({ projectId: nextProjectId, updatedAt: new Date() })
+      .where(eq(task.milestoneId, id))
+      .returning({ id: task.id });
+    await dropCrossProjectDependencies(moved.map((row) => row.id));
+  }
   return c.json({ milestone: m });
 });
 
@@ -707,24 +726,34 @@ app.patch("/tasks/:id", async (c) => {
     return c.json({ error: "Version conflict" }, 409);
   }
   const mId = p.data.milestoneId ?? cur[0]!.milestoneId;
-  if (p.data.milestoneId) {
-    const ms = await db
-      .select()
-      .from(milestone)
-      .where(eq(milestone.id, mId));
-    if (ms.length === 0 || ms[0]!.projectId !== cur[0]!.projectId) {
-      return c.json({ error: "Milestone not in project" }, 400);
+  let projectId = cur[0]!.projectId;
+  if (mId !== cur[0]!.milestoneId) {
+    const ms = await db.select().from(milestone).where(eq(milestone.id, mId));
+    if (ms.length === 0) {
+      return c.json({ error: "Milestone not found" }, 400);
     }
+    const dest = await requireProject(a, ms[0]!.projectId);
+    if ("error" in dest) {
+      return c.json({ error: dest.error }, dest.status);
+    }
+    projectId = ms[0]!.projectId;
   }
   const startAt =
     p.data.startAt === undefined ? cur[0]!.startAt : p.data.startAt;
   const estDays =
     p.data.estDays === undefined ? cur[0]!.estDays : p.data.estDays;
   const endAt = resolveTaskEndAt(startAt, estDays);
+  const completed = nextCompletedFlag({
+    currentCompleted: cur[0]!.completed,
+    currentPercent: cur[0]!.percentComplete,
+    completed: p.data.completed,
+    percentComplete: p.data.percentComplete,
+  });
 
   const [t] = await db
     .update(task)
     .set({
+      projectId,
       milestoneId: mId,
       title: p.data.title ?? cur[0]!.title,
       description:
@@ -742,6 +771,7 @@ app.patch("/tasks/:id", async (c) => {
         p.data.percentComplete ?? cur[0]!.percentComplete,
       useDerivedPercent:
         p.data.useDerivedPercent ?? cur[0]!.useDerivedPercent,
+      completed,
       orderIndex: p.data.orderIndex ?? cur[0]!.orderIndex,
       assigneeId:
         p.data.assigneeId === undefined
@@ -752,10 +782,20 @@ app.patch("/tasks/:id", async (c) => {
     })
     .where(eq(task.id, id))
     .returning();
-  if (t?.useDerivedPercent) {
+  if (projectId !== cur[0]!.projectId) {
+    await dropCrossProjectDependencies([id]);
+  }
+  if (t?.useDerivedPercent && p.data.percentComplete === undefined) {
     await syncTaskPercentFromTodos(id);
   }
-  return c.json({ task: t });
+  if (p.data.completed !== undefined) {
+    await db
+      .update(task)
+      .set({ completed: p.data.completed, updatedAt: new Date() })
+      .where(eq(task.id, id));
+  }
+  const [fresh] = await db.select().from(task).where(eq(task.id, id));
+  return c.json({ task: fresh ?? t });
 });
 
 app.post("/task-dependencies", async (c) => {
@@ -883,9 +923,21 @@ app.patch("/todos/:id", async (c) => {
   if (p.data.version !== undefined && p.data.version !== cur[0]!.version) {
     return c.json({ error: "Version conflict" }, 409);
   }
+  const nextTaskId = p.data.taskId ?? cur[0]!.taskId;
+  if (nextTaskId !== cur[0]!.taskId) {
+    const dest = await db.select().from(task).where(eq(task.id, nextTaskId));
+    if (dest.length === 0) {
+      return c.json({ error: "Task not found" }, 404);
+    }
+    const destProject = await requireProject(a, dest[0]!.projectId);
+    if ("error" in destProject) {
+      return c.json({ error: destProject.error }, destProject.status);
+    }
+  }
   const [row] = await db
     .update(todo)
     .set({
+      taskId: nextTaskId,
       title: p.data.title ?? cur[0]!.title,
       description:
         p.data.description === undefined
@@ -905,6 +957,9 @@ app.patch("/todos/:id", async (c) => {
     .where(eq(todo.id, id))
     .returning();
   await syncTaskPercentFromTodos(t[0]!.id);
+  if (nextTaskId !== t[0]!.id) {
+    await syncTaskPercentFromTodos(nextTaskId);
+  }
   return c.json({ todo: row });
 });
 
