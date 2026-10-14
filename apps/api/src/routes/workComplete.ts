@@ -289,6 +289,7 @@ app.post("/work-complete/confirm", async (c) => {
   }
 
   let taskId = data.taskId ?? null;
+  let taskTitle: string | null = data.newTask?.title ?? null;
   if (!taskId && data.newTask?.title) {
     let milestoneId = data.newTask.milestoneId ?? null;
     if (milestoneId) {
@@ -334,12 +335,13 @@ app.post("/work-complete/confirm", async (c) => {
     await writeAudit(a, "task.create", "task", taskId, {
       title: createdTask!.title,
       via: "work_complete",
-    });
+    }, createdTask!.title);
   } else if (taskId) {
     const trows = await db.select().from(task).where(eq(task.id, taskId));
     if (trows.length === 0 || trows[0]!.projectId !== data.projectId) {
       return c.json({ error: "Task not found in project" }, 400);
     }
+    taskTitle = trows[0]!.title;
   }
 
   const [te] = await db
@@ -366,7 +368,7 @@ app.post("/work-complete/confirm", async (c) => {
 
   await writeAudit(a, "time.create", "time_entry", te!.id, {
     via: "work_complete",
-  });
+  }, taskTitle || "Time Entry");
 
   const [log] = await db
     .insert(assetServiceLog)
@@ -386,7 +388,7 @@ app.post("/work-complete/confirm", async (c) => {
 
   await writeAudit(a, "asset_service_log.create", "asset_service_log", log!.id, {
     via: "work_complete",
-  });
+  }, log!.title);
 
   return c.json({
     log,

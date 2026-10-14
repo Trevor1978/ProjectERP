@@ -120,6 +120,7 @@ app.post("/time-entries", async (c) => {
     "time_entry",
     row?.id ?? "",
     { taskId: p.data.taskId },
+    t[0]!.title || "Time Entry",
   );
   return c.json({ timeEntry: row });
 });
@@ -184,7 +185,7 @@ app.patch("/time-entries/:id", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "time_entry", id, diff);
+    await writeAudit(a, "update", "time_entry", id, diff, tk[0]!.title || "Time Entry");
   }
   
   const all2 = await db
@@ -268,7 +269,7 @@ app.post("/user-rates", async (c) => {
     await writeAudit(a, "create", "user_rate", r.id, {
       userId: { after: r.userId },
       hourlyRate: { after: r.hourlyRate },
-    });
+    }, u[0]!.name || u[0]!.email || "User Rate");
   }
   
   return c.json({ userRate: r });

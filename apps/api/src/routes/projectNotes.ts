@@ -182,7 +182,7 @@ app.post("/projects/:projectId/notes", async (c) => {
 
   await writeAudit(a, "project_note.create", "project_note", note!.id, {
     projectId,
-  });
+  }, note!.title);
 
   return c.json({
     note: noteDto(note!, [pageDto(page!)], []),
@@ -247,7 +247,7 @@ app.patch("/project-notes/:noteId", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "project_note", loaded.note.id, diff);
+    await writeAudit(a, "update", "project_note", loaded.note.id, diff, updated!.title);
   }
 
   return c.json({ note: noteDto(updated!) });
@@ -269,7 +269,7 @@ app.delete("/project-notes/:noteId", async (c) => {
   await db.delete(projectNote).where(eq(projectNote.id, loaded.note.id));
   await writeAudit(a, "project_note.delete", "project_note", loaded.note.id, {
     projectId: loaded.note.projectId,
-  });
+  }, loaded.note.title);
   return c.json({ ok: true });
 });
 

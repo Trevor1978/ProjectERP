@@ -450,7 +450,7 @@ app.delete("/documents/:id", async (c) => {
   await db.delete(documentLink).where(eq(documentLink.id, id));
   await writeAudit(a, "document.delete", "document_link", id, {
     projectId: cur[0]!.projectId,
-  });
+  }, cur[0]!.label || "Document");
   return c.json({ ok: true });
 });
 
@@ -611,7 +611,7 @@ app.post("/assets", async (c) => {
       name: { after: row.name },
       site: { after: row.site },
       line: { after: row.line },
-    });
+    }, row.name);
   }
   
   return c.json({ asset: row });
@@ -686,7 +686,7 @@ app.patch("/assets/:assetId", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "asset", assetId, diff);
+    await writeAudit(a, "update", "asset", assetId, diff, row?.name ?? row0.name);
   }
   
   return c.json({ asset: row });
@@ -843,7 +843,7 @@ app.post("/asset-service-logs", async (c) => {
     await writeAudit(a, "create", "asset_service_log", row.id, {
       assetId: { after: row.assetId },
       title: { after: row.title },
-    });
+    }, row.title);
   }
   
   return c.json({ log: row });
@@ -921,7 +921,7 @@ app.patch("/asset-service-logs/:id", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "asset_service_log", id, diff);
+    await writeAudit(a, "update", "asset_service_log", id, diff, row?.title ?? log.title);
   }
   
   return c.json({

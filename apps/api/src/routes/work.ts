@@ -221,7 +221,7 @@ app.post("/clients", async (c) => {
   if (!row) {
     return c.json({ error: "Failed" }, 500);
   }
-  await writeAudit(a, "client.create", "client", row.id, { name: row.name });
+  await writeAudit(a, "client.create", "client", row.id, { name: row.name }, row.name);
   return c.json({ client: row });
 });
 
@@ -255,7 +255,7 @@ app.patch("/clients/:id", async (c) => {
     })
     .where(eq(client.id, id))
     .returning();
-  await writeAudit(a, "client.update", "client", id, p.data);
+  await writeAudit(a, "client.update", "client", id, p.data, u.name);
   return c.json({ client: u });
 });
 
@@ -293,7 +293,7 @@ app.post("/suppliers", async (c) => {
   if (!row) {
     return c.json({ error: "Failed" }, 500);
   }
-  await writeAudit(a, "supplier.create", "supplier", row.id, { name: row.name });
+  await writeAudit(a, "supplier.create", "supplier", row.id, { name: row.name }, row.name);
   return c.json({ supplier: row });
 });
 
@@ -328,7 +328,7 @@ app.patch("/suppliers/:id", async (c) => {
     })
     .where(eq(supplier.id, id))
     .returning();
-  await writeAudit(a, "supplier.update", "supplier", id, p.data);
+  await writeAudit(a, "supplier.update", "supplier", id, p.data, u.name);
   return c.json({ supplier: u });
 });
 
@@ -374,7 +374,7 @@ app.post("/projects", async (c) => {
     userId: a.id,
     role: "admin",
   });
-  await writeAudit(a, "project.create", "project", prow.id, { name: prow.name });
+  await writeAudit(a, "project.create", "project", prow.id, { name: prow.name }, prow.name);
   return c.json({ project: prow });
 });
 
@@ -429,7 +429,7 @@ app.patch("/projects/:projectId", async (c) => {
     })
     .where(eq(project.id, id))
     .returning();
-  await writeAudit(a, "project.update", "project", id, p.data);
+  await writeAudit(a, "project.update", "project", id, p.data, u.name);
   return c.json({ project: u });
 });
 
@@ -542,7 +542,7 @@ app.post("/projects/:projectId/members", async (c) => {
   await writeAudit(a, "create", "project_member", row.id, {
     userId: { after: row.userId },
     role: { after: row.role },
-  });
+  }, u2[0]!.name || u2[0]!.email || "Project Member");
   
   return c.json({ member: row });
 });
@@ -577,7 +577,7 @@ app.delete("/projects/:projectId/members/:memberId", async (c) => {
   await writeAudit(a, "delete", "project_member", memberId, {
     userId: { before: cur[0]!.userId },
     role: { before: cur[0]!.role },
-  });
+  }, "Project Member");
   
   await db.delete(projectMember).where(eq(projectMember.id, memberId));
   return c.json({ ok: true });
@@ -609,6 +609,7 @@ app.post("/milestones", async (c) => {
     "milestone",
     m?.id ?? "",
     { name: p.data.name },
+    p.data.name,
   );
   return c.json({ milestone: m });
 });
@@ -661,7 +662,7 @@ app.patch("/milestones/:id", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "milestone", id, diff);
+    await writeAudit(a, "update", "milestone", id, diff, m.name);
   }
   
   return c.json({ milestone: m });
@@ -716,6 +717,7 @@ app.post("/tasks", async (c) => {
     "task",
     t?.id ?? "",
     { title: t?.title },
+    t?.title,
   );
   return c.json({ task: t });
 });
@@ -822,7 +824,7 @@ app.patch("/tasks/:id", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "task", id, diff);
+    await writeAudit(a, "update", "task", id, diff, t.title);
   }
   
   return c.json({ task: t });
@@ -870,7 +872,7 @@ app.post("/task-dependencies", async (c) => {
       taskId: { after: d.taskId },
       predecessorTaskId: { after: d.predecessorTaskId },
       type: { after: d.type },
-    });
+    }, "Task Dependency");
   }
   
   return c.json({ taskDependency: d });
@@ -902,7 +904,7 @@ app.delete("/task-dependencies/:id", async (c) => {
     taskId: { before: row[0]!.taskId },
     predecessorTaskId: { before: row[0]!.predecessorTaskId },
     type: { before: row[0]!.type },
-  });
+  }, "Task Dependency");
   
   await db.delete(taskDependency).where(eq(taskDependency.id, id));
   return c.json({ ok: true });
@@ -940,7 +942,7 @@ app.post("/todos", async (c) => {
     })
     .returning();
   await syncTaskPercentFromTodos(t[0]!.id);
-  await writeAudit(a, "todo.create", "todo", row?.id ?? "", { title: row?.title });
+  await writeAudit(a, "todo.create", "todo", row?.id ?? "", { title: row?.title }, row?.title);
   return c.json({ todo: row });
 });
 
@@ -1017,7 +1019,7 @@ app.patch("/todos/:id", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "todo", id, diff);
+    await writeAudit(a, "update", "todo", id, diff, row.title);
   }
   
   return c.json({ todo: row });

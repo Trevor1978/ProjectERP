@@ -246,7 +246,7 @@ export async function handleProcurementImportDbf(c: Context) {
     fileName: file.name,
     manufacturers: created.length,
     lines: created.reduce((s, x) => s + x.lineCount, 0),
-  });
+  }, `Import: ${file.name}`);
 
   return c.json({ created, rowCount: records.length });
 }
@@ -351,7 +351,7 @@ app.post("/procurement/merge", async (c) => {
   await writeAudit(a, "procurement.merge", "procurement", primaryId, {
     mergedIds: mergeIds,
     movedLines: movedLineCount,
-  });
+  }, primaryOut.title || "Procurement");
   return c.json({
     procurement: primaryOut,
     movedLineCount,
@@ -387,6 +387,7 @@ app.post("/procurement", async (c) => {
     "procurement",
     row?.id ?? "",
     { title: p.data.title },
+    p.data.title,
   );
   return c.json({ procurement: row });
 });
@@ -492,7 +493,8 @@ app.patch("/procurement/:id", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "procurement", id, diff);
+    const label = (p.data.title !== undefined ? p.data.title : before.title) || "Procurement";
+    await writeAudit(a, "update", "procurement", id, diff, label);
   }
   
   if (overrideChanged) {
@@ -564,7 +566,7 @@ app.post("/procurement-lines", async (c) => {
       projectId: { after: line.projectId },
       description: { after: line.description },
       quantity: { after: line.quantity },
-    });
+    }, line.description || "Procurement Line");
   }
   
   if (itemRes.projectItemId) {
@@ -707,7 +709,8 @@ app.patch("/procurement-lines/:id", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "procurement_line", id, diff);
+    const label = (p.data.description !== undefined ? p.data.description : cur[0]!.description) || "Procurement Line";
+    await writeAudit(a, "update", "procurement_line", id, diff, label);
   }
   
   if (prevItemId) await syncProjectItemStatus(prevItemId);

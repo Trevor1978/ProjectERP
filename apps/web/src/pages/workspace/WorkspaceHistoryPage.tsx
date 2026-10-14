@@ -30,6 +30,14 @@ function formatEntityType(type: string): string {
     .join(" ");
 }
 
+function displayEntityLabel(entry: { entityLabel: string | null; entityType: string; entityId: string }): string {
+  const label = entry.entityLabel?.trim();
+  if (label) return label;
+  const typeName = formatEntityType(entry.entityType);
+  const shortId = entry.entityId?.slice(0, 8);
+  return shortId ? `${typeName} ${shortId}` : typeName;
+}
+
 const actionIcons = {
   create: Plus,
   update: Edit,
@@ -215,11 +223,9 @@ export function WorkspaceHistoryPage() {
                               <div>
                                 <p className="text-sm font-medium text-slate-900">
                                   {actionLabels[entry.action]} {formatEntityType(entry.entityType)}
-                                  {entry.entityLabel && (
-                                    <span className="ml-1 text-slate-600">
-                                      "{entry.entityLabel}"
-                                    </span>
-                                  )}
+                                  <span className="ml-1 text-slate-600">
+                                    "{displayEntityLabel(entry)}"
+                                  </span>
                                 </p>
                                 <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
                                   <User className="h-3 w-3" />
