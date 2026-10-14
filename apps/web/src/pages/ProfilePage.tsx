@@ -168,7 +168,8 @@ export function ProfilePage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Your profile</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Update your account details and verify daily digest delivery.
+          Update your account details, set up phone notifications, and verify
+          daily digest delivery.
         </p>
       </div>
 
@@ -222,13 +223,23 @@ export function ProfilePage() {
         </button>
       </section>
 
-      <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section
+        id="phone-notifications"
+        className="scroll-mt-4 space-y-3 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+      >
         <h2 className="text-lg font-semibold text-slate-900">
           Phone notifications
         </h2>
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-600">
+          <li>Tap <strong>Enable on this device</strong> below and allow notifications when prompted.</li>
+          <li>Tap <strong>Send test notification</strong> — you should see an alert on this phone.</li>
+          <li>
+            On Android, add the site to your home screen (Chrome menu → Add to Home
+            screen) for reliable background alerts.
+          </li>
+        </ol>
         <p className="text-sm text-slate-600">
-          Receive due-item and in-app alerts on this device. Install the app to
-          your home screen for the best experience on mobile.
+          Due-item alerts are sent here in addition to your daily email digest.
         </p>
         {!pushSupported ? (
           <p className="text-sm text-amber-800">
@@ -253,12 +264,12 @@ export function ProfilePage() {
                 </span>
               )}
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               {pushEnabledOnDevice ? (
                 <button
                   type="button"
                   disabled={pushBusy || testingPush}
-                  className="rounded border border-slate-800 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+                  className="min-h-[44px] rounded border border-slate-800 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50"
                   onClick={() => void handleDisablePush()}
                 >
                   {pushBusy ? "Updating…" : "Disable on this device"}
@@ -267,7 +278,7 @@ export function ProfilePage() {
                 <button
                   type="button"
                   disabled={pushBusy || testingPush}
-                  className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  className="min-h-[44px] rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
                   onClick={() => void handleEnablePush()}
                 >
                   {pushBusy ? "Enabling…" : "Enable on this device"}
@@ -276,7 +287,7 @@ export function ProfilePage() {
               <button
                 type="button"
                 disabled={pushBusy || testingPush || !pushEnabledOnDevice}
-                className="rounded border border-slate-800 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+                className="min-h-[44px] rounded border border-emerald-700 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
                 onClick={() => void handleTestPush()}
               >
                 {testingPush ? "Sending…" : "Send test notification"}

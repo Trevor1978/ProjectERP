@@ -47,7 +47,7 @@ export function GlobalSearch() {
       <input
         type="search"
         placeholder="Search…"
-        className="bg-slate-800 border border-slate-700 text-sm text-slate-200 placeholder:text-slate-500 rounded px-2 py-1 w-40 md:w-56 focus:outline-none focus:ring-1 focus:ring-slate-500"
+        className="w-full min-w-0 rounded border border-slate-700 bg-slate-800 px-2 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 sm:w-40 sm:py-1 md:w-56"
         value={q}
         onChange={(e) => {
           setQ(e.target.value);

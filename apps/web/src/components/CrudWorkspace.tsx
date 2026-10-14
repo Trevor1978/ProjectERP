@@ -538,7 +538,7 @@ export function CrudWorkspace({
           }}
           title="Open"
           aria-label="Open"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800"
+          className="inline-flex h-9 w-9 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 sm:h-7 sm:w-7"
         >
           <ExternalLink size={14} />
         </Link>
@@ -547,7 +547,7 @@ export function CrudWorkspace({
           type="button"
           title="Open"
           aria-label="Open"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800"
+          className="inline-flex h-9 w-9 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 sm:h-7 sm:w-7"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -561,7 +561,7 @@ export function CrudWorkspace({
         type="button"
         title="Edit"
         aria-label="Edit"
-        className="inline-flex h-7 w-7 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+        className="inline-flex h-9 w-9 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 sm:h-7 sm:w-7"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -575,7 +575,7 @@ export function CrudWorkspace({
           type="button"
           title="Delete"
           aria-label="Delete"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+          className="inline-flex h-9 w-9 items-center justify-center rounded border border-red-200 bg-red-50 text-red-800 hover:bg-red-100 sm:h-7 sm:w-7"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1463,9 +1463,9 @@ export function CrudWorkspace({
     (active ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h1 className={embedded ? "text-lg font-semibold text-slate-800" : "text-2xl font-semibold"}>
+        <h1 className={embedded ? "text-lg font-semibold text-slate-800" : "text-xl font-semibold sm:text-2xl"}>
           {LABEL[tab]}
         </h1>
         <span className="text-xs text-slate-500">
@@ -2658,29 +2658,33 @@ function FilterSortTable({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
         <input
-          className="border rounded px-2 py-1 text-sm min-w-64"
+          className="w-full min-w-0 rounded border px-3 py-2 text-sm sm:max-w-xs sm:py-1"
           placeholder="Filter rows..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <span className="text-xs text-slate-500">{total} matching</span>
-        <label className="flex items-center gap-1.5 text-sm text-slate-600">
-          <span>Rows per page</span>
-          <select
-            className="rounded border px-2 py-1 text-sm"
-            value={pageSize}
-            onChange={(e) => setPageSize(e.target.value)}
-          >
-            {PAGE_SIZE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="text-xs text-slate-400">Click column headers to sort</span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span className="text-xs text-slate-500">{total} matching</span>
+          <label className="flex items-center gap-1.5 text-sm text-slate-600">
+            <span>Rows per page</span>
+            <select
+              className="rounded border px-2 py-1.5 text-sm sm:py-1"
+              value={pageSize}
+              onChange={(e) => setPageSize(e.target.value)}
+            >
+              {PAGE_SIZE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="hidden text-xs text-slate-400 md:inline">
+            Click column headers to sort
+          </span>
+        </div>
         {extraToolbar}
       </div>
       {Object.keys(colFilters).length > 0 && (
@@ -2732,9 +2736,10 @@ function FilterSortTable({
           </button>
         </div>
       )}
+      <p className="text-xs text-slate-500 md:hidden">Swipe the table sideways to see all columns.</p>
       <div className="overflow-hidden rounded border border-slate-200 bg-white">
-        <div className="overflow-x-auto">
-        <table className="w-full table-auto text-sm">
+        <div className="overflow-x-auto overscroll-x-contain">
+        <table className="w-full min-w-[640px] table-auto text-sm">
           <thead className="bg-slate-100 text-left">
             <tr>
               {leadingColumn ? (
