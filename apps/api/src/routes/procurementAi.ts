@@ -307,6 +307,7 @@ app.post("/procurement/ai-confirm", async (c) => {
       documentType: p.data.documentType ?? "other",
       mode: result.mode,
     },
+    result.procurement.title || "Procurement",
   );
 
   return c.json({

@@ -246,7 +246,7 @@ export async function handleProcurementImportDbf(c: Context) {
     fileName: file.name,
     manufacturers: created.length,
     lines: created.reduce((s, x) => s + x.lineCount, 0),
-  });
+  }, `Import: ${file.name}`);
 
   return c.json({ created, rowCount: records.length });
 }
@@ -351,7 +351,7 @@ app.post("/procurement/merge", async (c) => {
   await writeAudit(a, "procurement.merge", "procurement", primaryId, {
     mergedIds: mergeIds,
     movedLines: movedLineCount,
-  });
+  }, primaryOut.title || "Procurement");
   return c.json({
     procurement: primaryOut,
     movedLineCount,
@@ -387,6 +387,7 @@ app.post("/procurement", async (c) => {
     "procurement",
     row?.id ?? "",
     { title: p.data.title },
+    p.data.title,
   );
   return c.json({ procurement: row });
 });
@@ -460,6 +461,42 @@ app.patch("/procurement/:id", async (c) => {
     })
     .where(eq(procurementRequest.id, id))
     .returning();
+  
+  const before = cur[0]!;
+  const diff: Record<string, unknown> = {};
+  if (p.data.supplierId !== undefined && p.data.supplierId !== before.supplierId) {
+    diff.supplierId = { before: before.supplierId, after: p.data.supplierId };
+  }
+  if (p.data.title !== undefined && p.data.title !== before.title) {
+    diff.title = { before: before.title, after: p.data.title };
+  }
+  if (p.data.status !== undefined && p.data.status !== before.status) {
+    diff.status = { before: before.status, after: p.data.status };
+  }
+  if (p.data.fullyReceivedOverride !== undefined && p.data.fullyReceivedOverride !== before.fullyReceivedOverride) {
+    diff.fullyReceivedOverride = { before: before.fullyReceivedOverride, after: p.data.fullyReceivedOverride };
+  }
+  if (p.data.needBy !== undefined && p.data.needBy !== before.needBy) {
+    diff.needBy = { before: before.needBy, after: p.data.needBy };
+  }
+  if (p.data.sapPoNumber !== undefined && p.data.sapPoNumber !== before.sapPoNumber) {
+    diff.sapPoNumber = { before: before.sapPoNumber, after: p.data.sapPoNumber };
+  }
+  if (p.data.quoteNumber !== undefined && p.data.quoteNumber !== before.quoteNumber) {
+    diff.quoteNumber = { before: before.quoteNumber, after: p.data.quoteNumber };
+  }
+  if (p.data.invoiceNumber !== undefined && p.data.invoiceNumber !== before.invoiceNumber) {
+    diff.invoiceNumber = { before: before.invoiceNumber, after: p.data.invoiceNumber };
+  }
+  if (p.data.deliveryDocketNumbers !== undefined && p.data.deliveryDocketNumbers !== before.deliveryDocketNumbers) {
+    diff.deliveryDocketNumbers = { before: before.deliveryDocketNumbers, after: p.data.deliveryDocketNumbers };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    const label = (p.data.title !== undefined ? p.data.title : before.title) || "Procurement";
+    await writeAudit(a, "update", "procurement", id, diff, label);
+  }
+  
   if (overrideChanged) {
     await syncProcurementStatusFromLineReceipts(id);
     const [afterSync] = await db
@@ -522,6 +559,16 @@ app.post("/procurement-lines", async (c) => {
       receivedQty: p.data.receivedQty ?? 0,
     })
     .returning();
+  
+  if (line) {
+    await writeAudit(a, "create", "procurement_line", line.id, {
+      procurementId: { after: line.procurementId },
+      projectId: { after: line.projectId },
+      description: { after: line.description },
+      quantity: { after: line.quantity },
+    }, line.description || "Procurement Line");
+  }
+  
   if (itemRes.projectItemId) {
     await syncProjectItemStatus(itemRes.projectItemId);
   }
@@ -627,6 +674,45 @@ app.patch("/procurement-lines/:id", async (c) => {
     })
     .where(eq(procurementRequestLine.id, id))
     .returning();
+  
+  const before = cur[0]!;
+  const diff: Record<string, unknown> = {};
+  if (p.data.projectId !== undefined && p.data.projectId !== before.projectId) {
+    diff.projectId = { before: before.projectId, after: p.data.projectId };
+  }
+  if (p.data.projectItemId !== undefined && p.data.projectItemId !== before.projectItemId) {
+    diff.projectItemId = { before: before.projectItemId, after: p.data.projectItemId };
+  }
+  if (p.data.partNumber !== undefined && p.data.partNumber !== before.partNumber) {
+    diff.partNumber = { before: before.partNumber, after: p.data.partNumber };
+  }
+  if (p.data.description !== undefined && p.data.description !== before.description) {
+    diff.description = { before: before.description, after: p.data.description };
+  }
+  if (p.data.quantity !== undefined && p.data.quantity !== before.quantity) {
+    diff.quantity = { before: before.quantity, after: p.data.quantity };
+  }
+  if (p.data.orderedQty !== undefined && p.data.orderedQty !== before.orderedQty) {
+    diff.orderedQty = { before: before.orderedQty, after: p.data.orderedQty };
+  }
+  if (p.data.unit !== undefined && p.data.unit !== before.unit) {
+    diff.unit = { before: before.unit, after: p.data.unit };
+  }
+  if (p.data.estUnitPrice !== undefined && p.data.estUnitPrice !== before.estUnitPrice) {
+    diff.estUnitPrice = { before: before.estUnitPrice, after: p.data.estUnitPrice };
+  }
+  if (p.data.orderIndex !== undefined && p.data.orderIndex !== before.orderIndex) {
+    diff.orderIndex = { before: before.orderIndex, after: p.data.orderIndex };
+  }
+  if (p.data.receivedQty !== undefined && p.data.receivedQty !== before.receivedQty) {
+    diff.receivedQty = { before: before.receivedQty, after: p.data.receivedQty };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    const label = (p.data.description !== undefined ? p.data.description : cur[0]!.description) || "Procurement Line";
+    await writeAudit(a, "update", "procurement_line", id, diff, label);
+  }
+  
   if (prevItemId) await syncProjectItemStatus(prevItemId);
   if (nextItemId && nextItemId !== prevItemId) {
     await syncProjectItemStatus(nextItemId);

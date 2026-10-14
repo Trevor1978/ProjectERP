@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { AuditHistory } from "../../components/AuditHistory";
 import { QuickCreateSelect } from "../../components/QuickCreateSelect";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 import { formatTaskEndIso } from "../../lib/workDays";
@@ -72,11 +73,11 @@ export function WorkspaceTaskDetailPage() {
     queryFn: () => api<{ users: OrgUser[] }>("/api/org/users"),
   });
 
-  const task = tasksData?.tasks.find((t) => t.id === taskId);
-  const milestone = msData?.milestones.find((m) => m.id === task?.milestoneId);
-  const todos = useMemo(() => (todosData?.todos ?? []).filter((td) => td.taskId === taskId), [todosData?.todos, taskId]);
-  const entries = useMemo(() => (timeData?.timeEntries ?? []).filter((e) => e.taskId === taskId), [timeData?.timeEntries, taskId]);
-  const userName = useMemo(() => new Map((orgUsersData?.users ?? []).map((u) => [u.id, u.name] as const)), [orgUsersData?.users]);
+  const task = tasksData?.tasks.find((t: Task) => t.id === taskId);
+  const milestone = msData?.milestones.find((m: Milestone) => m.id === task?.milestoneId);
+  const todos = useMemo(() => (todosData?.todos ?? []).filter((td: Todo) => td.taskId === taskId), [todosData?.todos, taskId]);
+  const entries = useMemo(() => (timeData?.timeEntries ?? []).filter((e: TimeEntry) => e.taskId === taskId), [timeData?.timeEntries, taskId]);
+  const userName = useMemo(() => new Map((orgUsersData?.users ?? []).map((u: OrgUser) => [u.id, u.name] as const)), [orgUsersData?.users]);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -95,7 +96,7 @@ export function WorkspaceTaskDetailPage() {
   const [timeBusy, setTimeBusy] = useState(false);
 
   const nextTodoOrder = useMemo(
-    () => (todos.length ? Math.max(...todos.map((td) => td.orderIndex)) + 1 : 0),
+    () => (todos.length ? Math.max(...todos.map((td: Todo) => td.orderIndex)) + 1 : 0),
     [todos],
   );
 
@@ -217,7 +218,7 @@ export function WorkspaceTaskDetailPage() {
         <p className="mb-2 text-sm text-slate-500">No todos on this task — add one below.</p>
       ) : (
         <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-          {todos.map((td) => (
+          {todos.map((td: Todo) => (
             <li key={td.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
               <span className="text-slate-900">
                 {td.title}{" "}
@@ -275,7 +276,7 @@ export function WorkspaceTaskDetailPage() {
         <p className="mb-2 text-sm text-slate-500">No time entries on this task — add one below.</p>
       ) : (
         <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-          {entries.map((te) => (
+          {entries.map((te: TimeEntry) => (
             <li key={te.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
               <span className="text-sm text-slate-700">
                 {te.durationMinutes ?? "—"} min · {userName.get(te.userId) ?? te.userId.slice(0, 8)}
@@ -327,6 +328,10 @@ export function WorkspaceTaskDetailPage() {
             {timeBusy ? "…" : "Add time entry"}
           </button>
         </div>
+      </div>
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <AuditHistory entityType="task" entityId={task.id} />
       </div>
     </WorkspaceDetailChrome>
   );

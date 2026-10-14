@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { AuditHistory } from "../../components/AuditHistory";
 import type { Procurement } from "../../workspace/purchasingTypes";
 
 type Supplier = { id: string; name: string; code: string | null; notes: string | null; version: number };
@@ -159,6 +160,10 @@ export function WorkspaceSupplierDetailPage() {
             {childBusy ? "…" : "Add purchasing"}
           </button>
         </div>
+      </div>
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <AuditHistory entityType="supplier" entityId={supplier.id} />
       </div>
     </WorkspaceDetailChrome>
   );
