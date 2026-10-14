@@ -29,6 +29,12 @@ function formatFieldName(field: string): string {
     .trim();
 }
 
+function displayEntityLabel(entry: { entityLabel: string | null; entityType: string; entityId: string }): string | null {
+  const label = entry.entityLabel?.trim();
+  if (label) return label;
+  return null;
+}
+
 function formatValue(value: unknown): React.ReactNode {
   if (value === null || value === undefined) {
     return "(empty)";
@@ -106,6 +112,7 @@ export function AuditHistory({
         <ul className="space-y-4">
           {data.entries.map((entry, idx) => {
             const Icon = actionIcons[entry.action];
+            const label = displayEntityLabel(entry);
             return (
               <li key={entry.id} className="relative flex gap-3 md:gap-4">
                 <div
@@ -121,6 +128,11 @@ export function AuditHistory({
                     <div>
                       <p className="font-medium text-slate-900">
                         {actionLabels[entry.action]}
+                        {label ? (
+                          <span className="ml-1 font-normal text-slate-600">
+                            "{label}"
+                          </span>
+                        ) : null}
                       </p>
                       <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
                         <User className="h-3 w-3" />

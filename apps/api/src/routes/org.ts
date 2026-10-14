@@ -188,7 +188,8 @@ app.patch("/org/profile", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "organization_profile", a.organizationId, diff);
+    const label = patch.displayName ?? before.displayName ?? "Organization";
+    await writeAudit(a, "update", "organization_profile", a.organizationId, diff, label);
   }
   
   const images = await db
@@ -257,7 +258,7 @@ app.post("/org/report-images", async (c) => {
     fileName: { after: img!.fileName },
     mimeType: { after: img!.mimeType },
     sortOrder: { after: img!.sortOrder },
-  });
+  }, img!.fileName);
 
   return c.json({
     image: {
@@ -326,7 +327,7 @@ app.patch("/org/report-images/:id", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "organization_report_image", id, diff);
+    await writeAudit(a, "update", "organization_report_image", id, diff, img.fileName);
   }
   
   return c.json({
@@ -362,7 +363,7 @@ app.delete("/org/report-images/:id", async (c) => {
     mimeType: { before: img.mimeType },
     sortOrder: { before: img.sortOrder },
     includeOnReports: { before: img.includeOnReports },
-  });
+  }, img.fileName);
   
   await deleteReportImageFile(a.organizationId, img.storageName);
   await db.delete(organizationReportImage).where(eq(organizationReportImage.id, id));
@@ -457,7 +458,7 @@ app.post("/org/users", async (c) => {
       email: { after: u.email },
       name: { after: u.name },
       globalRole: { after: u.globalRole },
-    });
+    }, u.name || u.email);
   }
   
   let projectsAdded = 0;
@@ -515,9 +516,9 @@ app.patch("/org/users/:userId", async (c) => {
   }
   
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "user", userId, diff);
+    await writeAudit(a, "update", "user", userId, diff, updated.name || before.name || before.email);
   }
-  
+
   return c.json({ user: updated });
 });
 
