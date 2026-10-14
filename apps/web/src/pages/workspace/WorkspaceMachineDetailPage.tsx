@@ -6,6 +6,7 @@ import { openMachineServiceReport } from "../../lib/machineServiceReport";
 import { downloadServiceReport } from "../../lib/serviceReportDownload";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { AuditHistory } from "../../components/AuditHistory";
 import { useMe } from "../../hooks/useMe";
 import { DeleteConfirmModal } from "../../components/DeleteConfirmModal";
 
@@ -417,6 +418,10 @@ export function WorkspaceMachineDetailPage() {
           await refresh();
         }}
       />
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <AuditHistory entityType="asset" entityId={assetId} />
+      </div>
     </WorkspaceDetailChrome>
   );
 }

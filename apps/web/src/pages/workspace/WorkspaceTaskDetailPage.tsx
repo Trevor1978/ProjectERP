@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { AuditHistory } from "../../components/AuditHistory";
 import { QuickCreateSelect } from "../../components/QuickCreateSelect";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 import { formatTaskEndIso } from "../../lib/workDays";
@@ -327,6 +328,10 @@ export function WorkspaceTaskDetailPage() {
             {timeBusy ? "…" : "Add time entry"}
           </button>
         </div>
+      </div>
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <AuditHistory entityType="task" entityId={task.id} />
       </div>
     </WorkspaceDetailChrome>
   );

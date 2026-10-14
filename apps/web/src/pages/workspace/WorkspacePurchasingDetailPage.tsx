@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { PurchasingDetailView } from "../../components/PurchasingDetailView";
+import { AuditHistory } from "../../components/AuditHistory";
 import type { Procurement, ProcurementLine } from "../../workspace/purchasingTypes";
 import {
   PROC_ALL_QUERY_KEY,
@@ -104,6 +105,10 @@ export function WorkspacePurchasingDetailPage() {
         onLineAdded={onLineAdded}
         onLineRemoved={onLineRemoved}
       />
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <AuditHistory entityType="procurement" entityId={row.id} />
+      </div>
     </WorkspaceDetailChrome>
   );
 }

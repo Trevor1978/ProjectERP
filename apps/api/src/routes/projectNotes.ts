@@ -182,7 +182,7 @@ app.post("/projects/:projectId/notes", async (c) => {
 
   await writeAudit(a, "project_note.create", "project_note", note!.id, {
     projectId,
-  });
+  }, note!.title);
 
   return c.json({
     note: noteDto(note!, [pageDto(page!)], []),
@@ -238,6 +238,18 @@ app.patch("/project-notes/:noteId", async (c) => {
     .where(eq(projectNote.id, loaded.note.id))
     .returning();
 
+  const diff: Record<string, unknown> = {};
+  if (body.data.title !== undefined && body.data.title !== loaded.note.title) {
+    diff.title = { before: loaded.note.title, after: body.data.title };
+  }
+  if (body.data.background !== undefined && body.data.background !== loaded.note.background) {
+    diff.background = { before: loaded.note.background, after: body.data.background };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    await writeAudit(a, "update", "project_note", loaded.note.id, diff, updated!.title);
+  }
+
   return c.json({ note: noteDto(updated!) });
 });
 
@@ -257,7 +269,7 @@ app.delete("/project-notes/:noteId", async (c) => {
   await db.delete(projectNote).where(eq(projectNote.id, loaded.note.id));
   await writeAudit(a, "project_note.delete", "project_note", loaded.note.id, {
     projectId: loaded.note.projectId,
-  });
+  }, loaded.note.title);
   return c.json({ ok: true });
 });
 

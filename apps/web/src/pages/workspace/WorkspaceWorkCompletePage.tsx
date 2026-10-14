@@ -304,7 +304,7 @@ export function WorkspaceWorkCompletePage() {
           <button
             type="button"
             disabled={parsing || !notes.trim()}
-            className="rounded-sm bg-tesla-text px-4 py-2 text-sm text-white disabled:opacity-50"
+            className="rounded-sm border border-blue-700 bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             onClick={() => void processWithAi()}
           >
             {parsing ? "Processing…" : "Process with AI"}

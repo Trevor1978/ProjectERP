@@ -55,7 +55,7 @@ export function LauncherPage() {
         Home
       </h1>
       <p className="mb-10 text-center text-sm text-slate-600">
-        Open a module — same screens as the sidebar under{" "}
+        Open a module — each links to the table screens under{" "}
         <Link
           to="/workspace/projects"
           className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-600"

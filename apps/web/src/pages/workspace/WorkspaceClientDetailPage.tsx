@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { useMe } from "../../hooks/useMe";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { AuditHistory } from "../../components/AuditHistory";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Project = { id: string; name: string; clientId: string; status: string; version: number };
@@ -156,6 +157,10 @@ export function WorkspaceClientDetailPage() {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <AuditHistory entityType="client" entityId={client.id} />
       </div>
     </WorkspaceDetailChrome>
   );
