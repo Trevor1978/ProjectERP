@@ -799,22 +799,34 @@ export const assetServiceLog = pgTable(
   (t) => [index("asl_asset").on(t.assetId)],
 );
 
-export const auditLog = pgTable("audit_log", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => randomUUID()),
-  organizationId: text("organization_id").references(() => organization.id, {
-    onDelete: "cascade",
-  }),
-  actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
-  action: text("action").notNull(),
-  entityType: text("entity_type").notNull(),
-  entityId: text("entity_id").notNull(),
-  diffJson: text("diff_json"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, {
+        onDelete: "cascade",
+      }),
+    actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    entityLabel: text("entity_label"),
+    diffJson: text("diff_json"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("audit_log_org_idx").on(t.organizationId),
+    index("audit_log_actor_idx").on(t.actorId),
+    index("audit_log_entity_idx").on(t.entityType, t.entityId),
+    index("audit_log_created_idx").on(t.createdAt),
+  ],
+);
 
 /** Web Push subscription for PWA notifications (one row per browser/device). */
 export const pushSubscription = pgTable(

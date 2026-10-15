@@ -80,7 +80,7 @@ export async function executeDeleteClient(a: AuthUser, clientId: string): Promis
     return false;
   }
   await db.delete(client).where(and(eq(client.id, clientId), eq(client.organizationId, a.organizationId)));
-  await writeAudit(a, "client.delete", "client", clientId, {});
+  await writeAudit(a, "client.delete", "client", clientId, {}, p.recordLabel);
   return true;
 }
 
@@ -119,7 +119,7 @@ export async function executeDeleteSupplier(a: AuthUser, supplierId: string): Pr
     return false;
   }
   await db.delete(supplier).where(and(eq(supplier.id, supplierId), eq(supplier.organizationId, a.organizationId)));
-  await writeAudit(a, "supplier.delete", "supplier", supplierId, {});
+  await writeAudit(a, "supplier.delete", "supplier", supplierId, {}, p.recordLabel);
   return true;
 }
 
@@ -202,7 +202,7 @@ export async function executeDeleteProject(a: AuthUser, projectId: string): Prom
   }
   await deleteCommentsForProjectTree(db, projectId);
   await db.delete(project).where(eq(project.id, projectId));
-  await writeAudit(a, "project.delete", "project", projectId, { name: pr.name });
+  await writeAudit(a, "project.delete", "project", projectId, { name: pr.name }, pr.name);
   return true;
 }
 
@@ -266,7 +266,7 @@ export async function executeDeleteMilestone(a: AuthUser, milestoneId: string): 
     tids.map((x) => x.id),
   );
   await db.delete(milestone).where(eq(milestone.id, milestoneId));
-  await writeAudit(a, "milestone.delete", "milestone", milestoneId, { name: cur[0]!.name });
+  await writeAudit(a, "milestone.delete", "milestone", milestoneId, { name: cur[0]!.name }, cur[0]!.name);
   return true;
 }
 
@@ -314,7 +314,7 @@ export async function executeDeleteTask(a: AuthUser, taskId: string): Promise<bo
   }
   await deleteCommentsForTasksAndTodos(db, [taskId]);
   await db.delete(task).where(eq(task.id, taskId));
-  await writeAudit(a, "task.delete", "task", taskId, { title: cur[0]!.title });
+  await writeAudit(a, "task.delete", "task", taskId, { title: cur[0]!.title }, cur[0]!.title);
   return true;
 }
 
@@ -366,7 +366,7 @@ export async function executeDeleteTodo(a: AuthUser, todoId: string): Promise<bo
   await deleteCommentsForTodo(db, todoId);
   await db.delete(todo).where(eq(todo.id, todoId));
   await syncTaskPercentFromTodos(taskId);
-  await writeAudit(a, "todo.delete", "todo", todoId, {});
+  await writeAudit(a, "todo.delete", "todo", todoId, {}, cur[0]!.title);
   return true;
 }
 
@@ -450,7 +450,7 @@ export async function executeDeleteProcurement(a: AuthUser, procurementId: strin
   }
   await deleteCommentsForProcurements(db, [procurementId]);
   await db.delete(procurementRequest).where(eq(procurementRequest.id, procurementId));
-  await writeAudit(a, "procurement.delete", "procurement", procurementId, { title: cur[0]!.title });
+  await writeAudit(a, "procurement.delete", "procurement", procurementId, { title: cur[0]!.title }, cur[0]!.title);
   return true;
 }
 
@@ -505,7 +505,7 @@ export async function executeDeleteProcurementLine(a: AuthUser, lineId: string):
   }
   const procurementId = cur[0]!.procurementId;
   await db.delete(procurementRequestLine).where(eq(procurementRequestLine.id, lineId));
-  await writeAudit(a, "procurement_line.delete", "procurement_request_line", lineId, {});
+  await writeAudit(a, "procurement_line.delete", "procurement_request_line", lineId, {}, cur[0]!.description || "Procurement Line");
   await syncProcurementStatusFromLineReceipts(procurementId);
   return true;
 }
@@ -568,7 +568,7 @@ export async function executeDeleteTimeEntry(a: AuthUser, entryId: string): Prom
   const taskId = cur[0]!.taskId;
   await db.delete(timeEntry).where(eq(timeEntry.id, entryId));
   await recalcTaskHours(taskId);
-  await writeAudit(a, "time.delete", "time_entry", entryId, {});
+  await writeAudit(a, "time.delete", "time_entry", entryId, {}, tk[0]!.title || cur[0]!.note || "Time Entry");
   return true;
 }
 
@@ -623,7 +623,7 @@ export async function executeDeleteAsset(
   await db
     .delete(asset)
     .where(and(eq(asset.id, assetId), eq(asset.organizationId, a.organizationId)));
-  await writeAudit(a, "asset.delete", "asset", assetId, {});
+  await writeAudit(a, "asset.delete", "asset", assetId, {}, p.recordLabel);
   return true;
 }
 
@@ -659,6 +659,6 @@ export async function executeDeleteServiceLog(
     return false;
   }
   await db.delete(assetServiceLog).where(eq(assetServiceLog.id, logId));
-  await writeAudit(a, "asset_service_log.delete", "asset_service_log", logId, {});
+  await writeAudit(a, "asset_service_log.delete", "asset_service_log", logId, {}, p.recordLabel);
   return true;
 }

@@ -142,7 +142,7 @@ app.patch("/org/profile", async (c) => {
   if (!p.success) {
     return c.json({ error: p.error.flatten() }, 400);
   }
-  await getOrCreateProfile(a.organizationId);
+  const before = await getOrCreateProfile(a.organizationId);
   const patch = p.data;
   const [row] = await db
     .update(organizationProfile)
@@ -161,6 +161,38 @@ app.patch("/org/profile", async (c) => {
     })
     .where(eq(organizationProfile.organizationId, a.organizationId))
     .returning();
+  
+  const diff: Record<string, unknown> = {};
+  if (patch.displayName !== undefined && patch.displayName !== before.displayName) {
+    diff.displayName = { before: before.displayName, after: patch.displayName };
+  }
+  if (patch.shippingAddress !== undefined && patch.shippingAddress !== before.shippingAddress) {
+    diff.shippingAddress = { before: before.shippingAddress, after: patch.shippingAddress };
+  }
+  if (patch.billingAddress !== undefined && patch.billingAddress !== before.billingAddress) {
+    diff.billingAddress = { before: before.billingAddress, after: patch.billingAddress };
+  }
+  if (patch.correspondenceAddress !== undefined && patch.correspondenceAddress !== before.correspondenceAddress) {
+    diff.correspondenceAddress = { before: before.correspondenceAddress, after: patch.correspondenceAddress };
+  }
+  if (patch.phone !== undefined && patch.phone !== before.phone) {
+    diff.phone = { before: before.phone, after: patch.phone };
+  }
+  if (patch.email !== undefined && patch.email !== before.email) {
+    diff.email = { before: before.email, after: patch.email };
+  }
+  if (patch.website !== undefined && patch.website !== before.website) {
+    diff.website = { before: before.website, after: patch.website };
+  }
+  if (patch.taxId !== undefined && patch.taxId !== before.taxId) {
+    diff.taxId = { before: before.taxId, after: patch.taxId };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    const label = patch.displayName ?? before.displayName ?? "Organization";
+    await writeAudit(a, "update", "organization_profile", a.organizationId, diff, label);
+  }
+  
   const images = await db
     .select()
     .from(organizationReportImage)
@@ -223,6 +255,12 @@ app.post("/org/report-images", async (c) => {
     })
     .returning();
 
+  await writeAudit(a, "create", "organization_report_image", img!.id, {
+    fileName: { after: img!.fileName },
+    mimeType: { after: img!.mimeType },
+    sortOrder: { after: img!.sortOrder },
+  }, img!.fileName);
+
   return c.json({
     image: {
       id: img!.id,
@@ -247,6 +285,21 @@ app.patch("/org/report-images/:id", async (c) => {
   }
   const id = c.req.param("id");
   const patchImg = p.data;
+  
+  const beforeRows = await db
+    .select()
+    .from(organizationReportImage)
+    .where(
+      and(
+        eq(organizationReportImage.id, id),
+        eq(organizationReportImage.organizationId, a.organizationId),
+      ),
+    );
+  const before = beforeRows[0];
+  if (!before) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  
   const [img] = await db
     .update(organizationReportImage)
     .set({
@@ -265,6 +318,19 @@ app.patch("/org/report-images/:id", async (c) => {
   if (!img) {
     return c.json({ error: "Not found" }, 404);
   }
+  
+  const diff: Record<string, unknown> = {};
+  if (patchImg.sortOrder !== undefined && patchImg.sortOrder !== before.sortOrder) {
+    diff.sortOrder = { before: before.sortOrder, after: patchImg.sortOrder };
+  }
+  if (patchImg.includeOnReports !== undefined && patchImg.includeOnReports !== before.includeOnReports) {
+    diff.includeOnReports = { before: before.includeOnReports, after: patchImg.includeOnReports };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    await writeAudit(a, "update", "organization_report_image", id, diff, img.fileName);
+  }
+  
   return c.json({
     image: {
       id: img.id,
@@ -292,6 +358,14 @@ app.delete("/org/report-images/:id", async (c) => {
   if (!img || img.organizationId !== a.organizationId) {
     return c.json({ error: "Not found" }, 404);
   }
+  
+  await writeAudit(a, "delete", "organization_report_image", id, {
+    fileName: { before: img.fileName },
+    mimeType: { before: img.mimeType },
+    sortOrder: { before: img.sortOrder },
+    includeOnReports: { before: img.includeOnReports },
+  }, img.fileName);
+  
   await deleteReportImageFile(a.organizationId, img.storageName);
   await db.delete(organizationReportImage).where(eq(organizationReportImage.id, id));
   return c.json({ ok: true });
@@ -380,6 +454,15 @@ app.post("/org/users", async (c) => {
       name: user.name,
       globalRole: user.globalRole,
     });
+  
+  if (u) {
+    await writeAudit(a, "create", "user", u.id, {
+      email: { after: u.email },
+      name: { after: u.name },
+      globalRole: { after: u.globalRole },
+    }, u.name || u.email);
+  }
+  
   let projectsAdded = 0;
   if (p.data.addToAllProjects && u) {
     projectsAdded = await addUserToAllOrgProjects(a.organizationId, u.id);
@@ -404,20 +487,20 @@ app.patch("/org/users/:userId", async (c) => {
   if (rows.length === 0) {
     return c.json({ error: "Not found" }, 404);
   }
+  const before = rows[0]!;
   if (userId === a.id && p.data.globalRole === "member") {
     return c.json(
       { error: "You cannot demote yourself from org admin" },
       400,
     );
   }
-  const cur = rows[0]!;
   const [updated] = await db
     .update(user)
     .set({
-      name: p.data.name ?? cur.name,
-      globalRole: p.data.globalRole ?? cur.globalRole,
+      name: p.data.name ?? before.name,
+      globalRole: p.data.globalRole ?? before.globalRole,
       dailyDigestEmailEnabled:
-        p.data.dailyDigestEmailEnabled ?? cur.dailyDigestEmailEnabled,
+        p.data.dailyDigestEmailEnabled ?? before.dailyDigestEmailEnabled,
       updatedAt: new Date(),
     })
     .where(eq(user.id, userId))
@@ -428,14 +511,35 @@ app.patch("/org/users/:userId", async (c) => {
       globalRole: user.globalRole,
       dailyDigestEmailEnabled: user.dailyDigestEmailEnabled,
     });
+
+  const diff: Record<string, unknown> = {};
+  if (p.data.name !== undefined && p.data.name !== before.name) {
+    diff.name = { before: before.name, after: p.data.name };
+  }
+  if (p.data.globalRole !== undefined && p.data.globalRole !== before.globalRole) {
+    diff.globalRole = { before: before.globalRole, after: p.data.globalRole };
+  }
   if (
     p.data.dailyDigestEmailEnabled !== undefined &&
-    p.data.dailyDigestEmailEnabled !== cur.dailyDigestEmailEnabled
+    p.data.dailyDigestEmailEnabled !== before.dailyDigestEmailEnabled
   ) {
-    await writeAudit(a, "user.update", "user", userId, {
-      dailyDigestEmailEnabled: p.data.dailyDigestEmailEnabled,
-    });
+    diff.dailyDigestEmailEnabled = {
+      before: before.dailyDigestEmailEnabled,
+      after: p.data.dailyDigestEmailEnabled,
+    };
   }
+
+  if (Object.keys(diff).length > 0) {
+    await writeAudit(
+      a,
+      "update",
+      "user",
+      userId,
+      diff,
+      updated.name || before.name || before.email,
+    );
+  }
+
   return c.json({ user: updated });
 });
 

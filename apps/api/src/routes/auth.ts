@@ -191,13 +191,31 @@ export const authApp = new Hono()
     if (!updated) {
       return c.json({ error: "User not found" }, 404);
     }
+    const profileDiff: Record<string, unknown> = {};
+    if (parsed.data.name.trim() !== a.name) {
+      profileDiff.name = { before: a.name, after: parsed.data.name.trim() };
+    }
+    if (email !== a.email) {
+      profileDiff.email = { before: a.email, after: email };
+    }
     if (
       parsed.data.dailyDigestEmailEnabled !== undefined &&
       parsed.data.dailyDigestEmailEnabled !== a.dailyDigestEmailEnabled
     ) {
-      await writeAudit(a, "user.update", "user", a.id, {
-        dailyDigestEmailEnabled: parsed.data.dailyDigestEmailEnabled,
-      });
+      profileDiff.dailyDigestEmailEnabled = {
+        before: a.dailyDigestEmailEnabled,
+        after: parsed.data.dailyDigestEmailEnabled,
+      };
+    }
+    if (Object.keys(profileDiff).length > 0) {
+      await writeAudit(
+        a,
+        "update",
+        "user",
+        a.id,
+        profileDiff,
+        updated.name,
+      );
     }
     return c.json({
       user: publicUser(updated, a.org),
