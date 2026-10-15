@@ -18,6 +18,7 @@ import {
   type DueItem,
 } from "./dueItems.js";
 import { createNotification } from "./notifications.js";
+import { digestUnsubscribeUrl } from "./digestUnsubscribe.js";
 import { sendResendEmail } from "./resend.js";
 
 export type DigestRunResult = {
@@ -118,10 +119,12 @@ async function sendDailyEmails(
   for (const items of byUser.values()) {
     if (items.length === 0) continue;
     const first = items[0]!;
+    if (!first.dailyDigestEmailEnabled) continue;
     const mail = buildDailyEmail({
       userName: first.userName,
       dateLabel: label,
       items,
+      unsubscribeUrl: digestUnsubscribeUrl(first.userId),
     });
     const result = await sendResendEmail({
       to: first.userEmail,
@@ -158,6 +161,7 @@ export async function sendTestDailyDigest(opts: {
     userName: opts.userName,
     dateLabel: dateLabel(todayYmd),
     items,
+    unsubscribeUrl: digestUnsubscribeUrl(opts.userId),
   });
   const result = await sendResendEmail({
     to: opts.userEmail,
@@ -192,6 +196,7 @@ async function sendWeeklyEmails(
   for (const items of byUser.values()) {
     if (items.length === 0) continue;
     const first = items[0]!;
+    if (!first.dailyDigestEmailEnabled) continue;
     const mail = buildWeeklyEmail({
       userName: first.userName,
       weekRangeLabel: range,

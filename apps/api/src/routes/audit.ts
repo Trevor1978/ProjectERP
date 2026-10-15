@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { db, auditLog, user } from "@project-erp/db";
-import { and, eq, desc, gte, lte, sql } from "drizzle-orm";
+import { and, eq, desc, gte, lte, or, sql } from "drizzle-orm";
 import { requireAuth, type AuthUser } from "../lib/session.js";
+import { auditEntryDto } from "../lib/auditNormalize.js";
 
 export const auditApp = new Hono();
 
@@ -10,15 +11,6 @@ auditApp.use("/*", requireAuth);
 /**
  * GET /api/audit/history
  * Fetch audit history for the organization with optional filters.
- * Query params:
- * - entityType: filter by entity type
- * - entityId: filter by specific entity
- * - userId: filter by user
- * - action: filter by action (create/update/delete)
- * - startDate: filter from date (ISO)
- * - endDate: filter to date (ISO)
- * - limit: max results (default 100)
- * - offset: pagination offset
  */
 auditApp.get("/audit/history", async (c) => {
   const reqUser = c.get("auth") as AuthUser;
@@ -44,14 +36,22 @@ auditApp.get("/audit/history", async (c) => {
   if (filterUserId) {
     conditions.push(eq(auditLog.actorId, filterUserId));
   }
-  if (action && (action === "create" || action === "update" || action === "delete")) {
-    conditions.push(eq(auditLog.action, action));
+  if (action === "create" || action === "delete" || action === "update") {
+    conditions.push(
+      or(eq(auditLog.action, action), sql`${auditLog.action} LIKE ${`%.${action}`}`)!,
+    );
   }
   if (startDate) {
-    conditions.push(gte(auditLog.createdAt, new Date(startDate)));
+    const d = new Date(startDate);
+    if (!Number.isNaN(d.getTime())) {
+      conditions.push(gte(auditLog.createdAt, d));
+    }
   }
   if (endDate) {
-    conditions.push(lte(auditLog.createdAt, new Date(endDate)));
+    const d = new Date(endDate);
+    if (!Number.isNaN(d.getTime())) {
+      conditions.push(lte(auditLog.createdAt, d));
+    }
   }
 
   const entries = await db
@@ -79,12 +79,8 @@ auditApp.get("/audit/history", async (c) => {
     .where(and(...conditions));
 
   return c.json({
-    entries: entries.map((e) => ({
-      ...e,
-      diff: e.diffJson ? JSON.parse(e.diffJson) : null,
-      diffJson: undefined,
-    })),
-    total: total[0]?.count ?? 0,
+    entries: entries.map((e) => auditEntryDto(e)),
+    total: Number(total[0]?.count ?? 0),
     limit,
     offset,
   });
@@ -107,6 +103,9 @@ auditApp.get("/audit/entity/:entityType/:entityId", async (c) => {
       actorId: auditLog.actorId,
       actorName: user.name,
       action: auditLog.action,
+      entityType: auditLog.entityType,
+      entityId: auditLog.entityId,
+      entityLabel: auditLog.entityLabel,
       diffJson: auditLog.diffJson,
       createdAt: auditLog.createdAt,
     })
@@ -122,10 +121,6 @@ auditApp.get("/audit/entity/:entityType/:entityId", async (c) => {
     .orderBy(desc(auditLog.createdAt));
 
   return c.json({
-    entries: entries.map((e) => ({
-      ...e,
-      diff: e.diffJson ? JSON.parse(e.diffJson) : null,
-      diffJson: undefined,
-    })),
+    entries: entries.map((e) => auditEntryDto(e)),
   });
 });

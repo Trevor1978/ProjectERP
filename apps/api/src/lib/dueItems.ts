@@ -24,6 +24,7 @@ export type DueItem = {
   userId: string;
   userEmail: string;
   userName: string;
+  dailyDigestEmailEnabled: boolean;
   bucket: "overdue" | "today" | "tomorrow" | "later";
 };
 
@@ -66,6 +67,7 @@ async function loadTodosInRange(
       userId: user.id,
       userEmail: user.email,
       userName: user.name,
+      dailyDigestEmailEnabled: user.dailyDigestEmailEnabled,
     })
     .from(todo)
     .innerJoin(user, eq(todo.assigneeId, user.id))
@@ -90,6 +92,7 @@ async function loadTodosInRange(
       userId: r.userId,
       userEmail: r.userEmail,
       userName: r.userName,
+      dailyDigestEmailEnabled: r.dailyDigestEmailEnabled,
       bucket: dayBucket(r.dueAt!, todayYmd, tz),
     }));
 }
@@ -109,6 +112,7 @@ async function loadProcurementInRange(
       userId: user.id,
       userEmail: user.email,
       userName: user.name,
+      dailyDigestEmailEnabled: user.dailyDigestEmailEnabled,
     })
     .from(procurementRequest)
     .innerJoin(user, eq(procurementRequest.createdById, user.id))
@@ -133,6 +137,7 @@ async function loadProcurementInRange(
       userId: r.userId,
       userEmail: r.userEmail,
       userName: r.userName,
+      dailyDigestEmailEnabled: r.dailyDigestEmailEnabled,
       bucket: dayBucket(r.needBy!, todayYmd, tz),
     }));
 }

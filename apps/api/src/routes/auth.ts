@@ -15,8 +15,32 @@ import {
   getSessionId,
   type AuthUser,
 } from "../lib/session.js";
+import { writeAudit } from "../lib/audit.js";
+import { verifyDigestUnsubscribeToken } from "../lib/digestUnsubscribe.js";
 import { sendTestDailyDigest } from "../lib/runDigests.js";
 import { sendTestPush } from "../lib/webPush.js";
+
+function publicUser(
+  u: {
+    id: string;
+    email: string;
+    name: string;
+    organizationId: string;
+    globalRole: "member" | "org_admin";
+    dailyDigestEmailEnabled: boolean;
+  },
+  org: AuthUser["org"],
+) {
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    organizationId: u.organizationId,
+    globalRole: u.globalRole,
+    dailyDigestEmailEnabled: u.dailyDigestEmailEnabled,
+    org,
+  };
+}
 
 function slugify(s: string) {
   return (
@@ -75,14 +99,7 @@ export const authApp = new Hono()
     });
     setSessionCookie(c, sid, secureFromEnv());
     return c.json({
-      user: {
-        id: u.id,
-        email: u.email,
-        name: u.name,
-        organizationId: u.organizationId,
-        globalRole: u.globalRole,
-        org: { id: org.id, name: org.name, slug: org.slug },
-      },
+      user: publicUser(u, { id: org.id, name: org.name, slug: org.slug }),
     });
   })
   .post("/login", async (c) => {
@@ -120,18 +137,11 @@ export const authApp = new Hono()
     });
     setSessionCookie(c, sid, secureFromEnv());
     return c.json({
-      user: {
-        id: u.id,
-        email: u.email,
-        name: u.name,
-        organizationId: u.organizationId,
-        globalRole: u.globalRole,
-        org: {
-          id: org[0]!.id,
-          name: org[0]!.name,
-          slug: org[0]!.slug,
-        },
-      },
+      user: publicUser(u, {
+        id: org[0]!.id,
+        name: org[0]!.name,
+        slug: org[0]!.slug,
+      }),
     });
   })
   .post("/logout", async (c) => {
@@ -160,28 +170,86 @@ export const authApp = new Hono()
     if (existing.length > 0) {
       return c.json({ error: "That email address is already in use" }, 409);
     }
+    const patch: {
+      name: string;
+      email: string;
+      updatedAt: Date;
+      dailyDigestEmailEnabled?: boolean;
+    } = {
+      name: parsed.data.name.trim(),
+      email,
+      updatedAt: new Date(),
+    };
+    if (parsed.data.dailyDigestEmailEnabled !== undefined) {
+      patch.dailyDigestEmailEnabled = parsed.data.dailyDigestEmailEnabled;
+    }
     const [updated] = await db
       .update(user)
-      .set({
-        name: parsed.data.name.trim(),
-        email,
-        updatedAt: new Date(),
-      })
+      .set(patch)
       .where(eq(user.id, a.id))
       .returning();
     if (!updated) {
       return c.json({ error: "User not found" }, 404);
     }
+    const profileDiff: Record<string, unknown> = {};
+    if (parsed.data.name.trim() !== a.name) {
+      profileDiff.name = { before: a.name, after: parsed.data.name.trim() };
+    }
+    if (email !== a.email) {
+      profileDiff.email = { before: a.email, after: email };
+    }
+    if (
+      parsed.data.dailyDigestEmailEnabled !== undefined &&
+      parsed.data.dailyDigestEmailEnabled !== a.dailyDigestEmailEnabled
+    ) {
+      profileDiff.dailyDigestEmailEnabled = {
+        before: a.dailyDigestEmailEnabled,
+        after: parsed.data.dailyDigestEmailEnabled,
+      };
+    }
+    if (Object.keys(profileDiff).length > 0) {
+      await writeAudit(
+        a,
+        "update",
+        "user",
+        a.id,
+        profileDiff,
+        updated.name,
+      );
+    }
     return c.json({
-      user: {
-        id: updated.id,
-        email: updated.email,
-        name: updated.name,
-        organizationId: updated.organizationId,
-        globalRole: updated.globalRole,
-        org: a.org,
-      },
+      user: publicUser(updated, a.org),
     });
+  })
+  .get("/digest-unsubscribe", async (c) => {
+    const token = c.req.query("token")?.trim() ?? "";
+    const userId = verifyDigestUnsubscribeToken(token);
+    const invalidHtml = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Unsubscribe</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:28rem;margin:2rem auto;padding:0 1rem;color:#0f172a">
+<h1 style="font-size:1.25rem">Link not valid</h1>
+<p style="color:#475569">This unsubscribe link is invalid or has expired. Sign in and update your profile to turn off daily digest emails.</p>
+</body></html>`;
+    if (!userId) {
+      return c.html(invalidHtml, 400);
+    }
+    const [updated] = await db
+      .update(user)
+      .set({ dailyDigestEmailEnabled: false, updatedAt: new Date() })
+      .where(eq(user.id, userId))
+      .returning({ id: user.id });
+    if (!updated) {
+      return c.html(invalidHtml, 404);
+    }
+    const okHtml = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Unsubscribed</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:28rem;margin:2rem auto;padding:0 1rem;color:#0f172a">
+<h1 style="font-size:1.25rem">You are unsubscribed</h1>
+<p style="color:#475569">Daily digest emails are turned off for your account. You can turn them back on anytime from your ProjectERP profile.</p>
+</body></html>`;
+    return c.html(okHtml, 200);
   })
   .post("/profile/test-daily-email", async (c) => {
     const a = c.get("auth") as AuthUser | null;

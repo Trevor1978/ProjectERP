@@ -4,6 +4,7 @@ export type User = {
   name: string;
   organizationId: string;
   globalRole: "member" | "org_admin";
+  dailyDigestEmailEnabled: boolean;
   org: { id: string; name: string; slug: string };
 };
 

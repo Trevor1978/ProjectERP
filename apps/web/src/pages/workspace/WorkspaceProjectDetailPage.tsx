@@ -174,8 +174,8 @@ export function WorkspaceProjectDetailPage() {
         </button>
       </div>
 
-      <div className="mt-8 border-t border-slate-200 pt-6">
-        <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
+      <div className="mt-8 min-w-0 border-t border-slate-200 pt-6">
+        <div className="-mx-1 mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-px [-webkit-overflow-scrolling:touch]">
           <button
             type="button"
             onClick={() => setActiveTab("milestones")}
@@ -300,7 +300,7 @@ export function WorkspaceProjectDetailPage() {
         )}
 
         {activeTab === "tasks" && (
-          <div>
+          <div className="min-w-0 overflow-x-auto">
             <p className="mb-3 text-sm text-slate-600">
               Tasks are the work items within milestones. The Save project button above only saves the top form.
             </p>
@@ -313,7 +313,7 @@ export function WorkspaceProjectDetailPage() {
         )}
 
         {activeTab === "todos" && (
-          <div>
+          <div className="min-w-0 overflow-x-auto">
             <p className="mb-3 text-sm text-slate-600">
               Todos are specific action items within tasks. The Save project button above only saves the top form.
             </p>
@@ -326,7 +326,7 @@ export function WorkspaceProjectDetailPage() {
         )}
 
         {activeTab === "purchasing" && (
-          <div>
+          <div className="min-w-0 overflow-x-auto">
             <p className="mb-3 text-sm text-slate-600">
               Purchasing lines track materials and services for this project. The Save project button above only saves the top form.
             </p>
@@ -339,7 +339,7 @@ export function WorkspaceProjectDetailPage() {
         )}
 
         {activeTab === "history" && (
-          <div>
+          <div className="min-w-0">
             <AuditHistory entityType="project" entityId={project.id} />
           </div>
         )}

@@ -35,10 +35,25 @@ function sectionText(title: string, items: DueItem[]): string {
   return `${title}\n${lines.join("\n")}\n`;
 }
 
+function unsubscribeFooterHtml(unsubscribeUrl: string | null | undefined): string {
+  if (!unsubscribeUrl) return "";
+  return (
+    `<p style="margin-top:24px;font-size:12px;color:#64748b">` +
+    `You receive this daily digest because it is enabled on your ProjectERP profile. ` +
+    `<a href="${escapeHtml(unsubscribeUrl)}">Unsubscribe from daily digest emails</a>.</p>`
+  );
+}
+
+function unsubscribeFooterText(unsubscribeUrl: string | null | undefined): string {
+  if (!unsubscribeUrl) return "";
+  return `\n\nUnsubscribe from daily digest emails: ${unsubscribeUrl}\n`;
+}
+
 export function buildDailyEmail(opts: {
   userName: string;
   dateLabel: string;
   items: DueItem[];
+  unsubscribeUrl?: string | null;
 }): { subject: string; html: string; text: string } {
   const overdue = opts.items.filter((i) => i.bucket === "overdue");
   const today = opts.items.filter((i) => i.bucket === "today");
@@ -51,6 +66,7 @@ export function buildDailyEmail(opts: {
     sectionHtml("Overdue", overdue),
     sectionHtml("Due today", today),
     sectionHtml("Due tomorrow", tomorrow),
+    unsubscribeFooterHtml(opts.unsubscribeUrl),
   ]
     .filter(Boolean)
     .join("\n");
@@ -63,6 +79,7 @@ export function buildDailyEmail(opts: {
     sectionText("Overdue", overdue),
     sectionText("Due today", today),
     sectionText("Due tomorrow", tomorrow),
+    unsubscribeFooterText(opts.unsubscribeUrl),
   ]
     .filter((s) => s !== "")
     .join("\n");
