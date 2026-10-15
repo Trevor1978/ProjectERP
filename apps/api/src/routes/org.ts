@@ -10,6 +10,7 @@ import {
   projectMember,
 } from "@project-erp/db";
 import { z } from "zod";
+import { writeAudit } from "../lib/audit.js";
 import { requireAuth, type AuthUser } from "../lib/session.js";
 import {
   deleteReportImageFile,
@@ -31,6 +32,7 @@ const invite = z.object({
 const userPatch = z.object({
   globalRole: z.enum(["member", "org_admin"]).optional(),
   name: z.string().min(1).max(255).optional(),
+  dailyDigestEmailEnabled: z.boolean().optional(),
 });
 
 const profilePatch = z.object({
@@ -328,6 +330,7 @@ app.get("/org/users", async (c) => {
       email: user.email,
       name: user.name,
       globalRole: user.globalRole,
+      dailyDigestEmailEnabled: user.dailyDigestEmailEnabled,
       createdAt: user.createdAt,
     })
     .from(user)
@@ -407,11 +410,14 @@ app.patch("/org/users/:userId", async (c) => {
       400,
     );
   }
+  const cur = rows[0]!;
   const [updated] = await db
     .update(user)
     .set({
-      name: p.data.name ?? rows[0]!.name,
-      globalRole: p.data.globalRole ?? rows[0]!.globalRole,
+      name: p.data.name ?? cur.name,
+      globalRole: p.data.globalRole ?? cur.globalRole,
+      dailyDigestEmailEnabled:
+        p.data.dailyDigestEmailEnabled ?? cur.dailyDigestEmailEnabled,
       updatedAt: new Date(),
     })
     .where(eq(user.id, userId))
@@ -420,7 +426,16 @@ app.patch("/org/users/:userId", async (c) => {
       email: user.email,
       name: user.name,
       globalRole: user.globalRole,
+      dailyDigestEmailEnabled: user.dailyDigestEmailEnabled,
     });
+  if (
+    p.data.dailyDigestEmailEnabled !== undefined &&
+    p.data.dailyDigestEmailEnabled !== cur.dailyDigestEmailEnabled
+  ) {
+    await writeAudit(a, "user.update", "user", userId, {
+      dailyDigestEmailEnabled: p.data.dailyDigestEmailEnabled,
+    });
+  }
   return c.json({ user: updated });
 });
 
