@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  cloneElement,
+  isValidElement,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,11 +27,13 @@ import { ColumnFilterInput } from "./ColumnFilterInput";
 import { buildCsvImportHandler } from "../lib/workspaceCsvImport";
 import { EntitySelect, EnumSelect, QuickCreateSelect } from "./QuickCreateSelect";
 import { formatTaskEndIso } from "../lib/workDays";
-import { useIsMobileTable } from "../hooks/useMediaQuery";
+import { useIsCompactTable } from "../hooks/useMediaQuery";
 import {
+  appendRowButtonLabel,
   isColumnHiddenOnTablet,
   primaryColumnIndex,
 } from "../lib/responsiveTableLayout";
+import { BottomSheet, MobileTableAppendForm } from "./BottomSheet";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Supplier = {
@@ -1881,10 +1892,12 @@ function CrudAppendRow({
   refreshSchedule,
   refreshTime,
   refreshProcurement,
+  onCreated,
 }: {
   tab: Tab;
   totalColumns: number;
   me: User | null;
+  onCreated?: () => void;
   clients: Client[];
   suppliers: Supplier[];
   projects: Project[];
@@ -2037,6 +2050,7 @@ function CrudAppendRow({
         setErr(null);
         setSaving(true);
         void Promise.resolve(onClick())
+          .then(() => onCreated?.())
           .catch((e: Error) => setErr(e.message))
           .finally(() => setSaving(false));
       }}
@@ -2599,8 +2613,9 @@ function FilterSortTable({
   extraToolbar?: ReactNode;
   onFilteredRowsChange?: (rows: TableRow[]) => void;
 }) {
-  const isMobile = useIsMobileTable();
+  const isCompact = useIsCompactTable();
   const primaryCol = primaryColumnIndex(layoutKey);
+  const [appendOpen, setAppendOpen] = useState(false);
 
   const columnClass = (idx: number, stickyFirst: boolean) => {
     const hiddenTablet = isColumnHiddenOnTablet(layoutKey, idx)
@@ -2776,8 +2791,8 @@ function FilterSortTable({
           </button>
         </div>
       )}
-      {isMobile ? (
-        <div className="space-y-3 md:hidden">
+      {isCompact ? (
+        <div className="space-y-3 lg:hidden">
           {paginatedRows.map((r) => (
             <article
               key={r.key}
@@ -2810,18 +2825,38 @@ function FilterSortTable({
               </details>
             </article>
           ))}
-          {appendRow && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2 text-xs text-slate-600">
-              Use desktop view to add rows inline, or widen the window.
-            </div>
-          )}
+          {appendRow ? (
+            <>
+              <button
+                type="button"
+                className="w-full rounded-lg border border-dashed border-blue-300 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-900 touch-manipulation hover:bg-blue-100"
+                onClick={() => setAppendOpen(true)}
+              >
+                {appendRowButtonLabel(layoutKey)}
+              </button>
+              {appendOpen ? (
+                <BottomSheet
+                  title={appendRowButtonLabel(layoutKey)}
+                  onClose={() => setAppendOpen(false)}
+                >
+                  <MobileTableAppendForm>
+                    {isValidElement(appendRow)
+                      ? cloneElement(appendRow, {
+                          onCreated: () => setAppendOpen(false),
+                        } as { onCreated?: () => void })
+                      : appendRow}
+                  </MobileTableAppendForm>
+                </BottomSheet>
+              ) : null}
+            </>
+          ) : null}
         </div>
       ) : null}
 
       <div
         className={
           "overflow-hidden rounded border border-slate-200 bg-white " +
-          (isMobile ? "hidden md:block" : "")
+          (isCompact ? "hidden lg:block" : "")
         }
       >
         <div className="overflow-x-auto">

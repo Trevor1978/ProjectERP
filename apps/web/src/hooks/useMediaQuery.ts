@@ -20,3 +20,8 @@ export function useMediaQuery(query: string): boolean {
 export function useIsMobileTable(): boolean {
   return useMediaQuery("(max-width: 767px)");
 }
+
+/** Phone + tablet: stacked cards and sheet-based add/edit (desktop table at lg+). */
+export function useIsCompactTable(): boolean {
+  return useMediaQuery("(max-width: 1023px)");
+}
