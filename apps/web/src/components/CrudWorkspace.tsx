@@ -18,6 +18,11 @@ import { ColumnFilterInput } from "./ColumnFilterInput";
 import { buildCsvImportHandler } from "../lib/workspaceCsvImport";
 import { EntitySelect, EnumSelect, QuickCreateSelect } from "./QuickCreateSelect";
 import { formatTaskEndIso } from "../lib/workDays";
+import { useIsMobileTable } from "../hooks/useMediaQuery";
+import {
+  isColumnHiddenOnTablet,
+  primaryColumnIndex,
+} from "../lib/responsiveTableLayout";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Supplier = {
@@ -529,7 +534,7 @@ export function CrudWorkspace({
     timeEntryUserId?: string,
     opts?: { openHref?: string },
   ) => (
-    <div className="flex min-w-max flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
+    <div className="flex max-w-[10rem] flex-wrap items-center justify-end gap-1 sm:max-w-none">
       {opts?.openHref ? (
         <Link
           to={opts.openHref}
@@ -538,7 +543,7 @@ export function CrudWorkspace({
           }}
           title="Open"
           aria-label="Open"
-          className="inline-flex h-10 w-10 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 touch-manipulation"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 touch-manipulation md:h-8 md:w-8 lg:h-10 lg:w-10"
         >
           <ExternalLink size={16} />
         </Link>
@@ -547,7 +552,7 @@ export function CrudWorkspace({
           type="button"
           title="Open"
           aria-label="Open"
-          className="inline-flex h-10 w-10 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 touch-manipulation"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 touch-manipulation md:h-8 md:w-8 lg:h-10 lg:w-10"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -561,7 +566,7 @@ export function CrudWorkspace({
         type="button"
         title="Edit"
         aria-label="Edit"
-        className="inline-flex h-10 w-10 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 touch-manipulation"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 touch-manipulation md:h-8 md:w-8 lg:h-10 lg:w-10"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -575,7 +580,7 @@ export function CrudWorkspace({
           type="button"
           title="Delete"
           aria-label="Delete"
-          className="inline-flex h-10 w-10 items-center justify-center rounded border border-red-200 bg-red-50 text-red-800 hover:bg-red-100 touch-manipulation"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-red-200 bg-red-50 text-red-800 hover:bg-red-100 touch-manipulation md:h-8 md:w-8 lg:h-10 lg:w-10"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1473,7 +1478,7 @@ export function CrudWorkspace({
     (active ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50");
 
   return (
-    <div className="space-y-6">
+    <div className={embedded ? "min-w-0 space-y-4" : "space-y-6"}>
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h1 className={embedded ? "text-lg font-semibold text-slate-800" : "text-2xl font-semibold"}>
           {LABEL[tab]}
@@ -1649,6 +1654,7 @@ export function CrudWorkspace({
       ) : (
         <FilterSortTable
           key={tab}
+          layoutKey={tab}
           dataHeaders={currentForTable.dataHeaders}
           rows={currentForTable.rows}
           leadingColumn={
@@ -2020,7 +2026,7 @@ function CrudAppendRow({
   if (!me) return null;
 
   const stickyActionsTd =
-    "lg:sticky right-0 z-[1] border-l border-slate-100 bg-slate-50 p-2 align-top lg:shadow-[inset_1px_0_0_0_rgb(241_245_249)]";
+    "md:sticky right-0 z-[4] min-w-[7.5rem] border-l border-slate-100 bg-slate-50 p-2 align-top md:shadow-[inset_1px_0_0_0_rgb(241_245_249)]";
 
   const createBtn = (onClick: () => void, disabled: boolean) => (
     <button
@@ -2577,6 +2583,7 @@ function CrudAppendRow({
 }
 
 function FilterSortTable({
+  layoutKey,
   dataHeaders,
   rows,
   appendRow,
@@ -2584,6 +2591,7 @@ function FilterSortTable({
   extraToolbar,
   onFilteredRowsChange,
 }: {
+  layoutKey?: string;
   dataHeaders: string[];
   rows: TableRow[];
   appendRow?: ReactNode;
@@ -2591,6 +2599,30 @@ function FilterSortTable({
   extraToolbar?: ReactNode;
   onFilteredRowsChange?: (rows: TableRow[]) => void;
 }) {
+  const isMobile = useIsMobileTable();
+  const primaryCol = primaryColumnIndex(layoutKey);
+
+  const columnClass = (idx: number, stickyFirst: boolean) => {
+    const hiddenTablet = isColumnHiddenOnTablet(layoutKey, idx)
+      ? "hidden lg:table-cell"
+      : "";
+    const sticky = stickyFirst
+      ? "sticky left-0 z-[2] border-r border-slate-100 bg-inherit lg:z-[3]"
+      : "";
+    const minW = stickyFirst ? "min-w-[8.5rem]" : "min-w-[5.5rem] lg:min-w-[6.5rem]";
+    return `${hiddenTablet} ${sticky} ${minW} max-w-[26rem] whitespace-normal break-words p-2 align-top`;
+  };
+
+  const headerColumnClass = (idx: number, stickyFirst: boolean) => {
+    const hiddenTablet = isColumnHiddenOnTablet(layoutKey, idx)
+      ? "hidden lg:table-cell"
+      : "";
+    const sticky = stickyFirst
+      ? "sticky left-0 z-[4] border-r border-slate-200 bg-slate-100"
+      : "";
+    return `p-0 font-medium ${hiddenTablet} ${sticky}`;
+  };
+
   const [q, setQ] = useState("");
   const [colFilters, setColFilters] = useState<Record<number, string[]>>({});
   const [colFilterInput, setColFilterInput] = useState<Record<number, string>>({});
@@ -2664,13 +2696,15 @@ function FilterSortTable({
   }
 
   const stickyActionsTh =
-    "lg:sticky right-0 z-[2] border-l border-slate-200 bg-slate-100 lg:shadow-[inset_1px_0_0_0_rgb(226_232_240)]";
+    "md:sticky right-0 z-[5] min-w-[7.5rem] border-l border-slate-200 bg-slate-100 md:shadow-[inset_1px_0_0_0_rgb(226_232_240)]";
+  const stickyActionsTd =
+    "md:sticky right-0 z-[4] min-w-[7.5rem] border-l border-slate-100 bg-inherit p-2 align-top md:shadow-[inset_1px_0_0_0_rgb(241_245_249)]";
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <input
-          className="border rounded px-2 py-1 text-sm min-w-64"
+          className="min-w-0 flex-1 rounded border px-2 py-1 text-sm sm:min-w-64 sm:flex-none"
           placeholder="Filter rows..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -2742,13 +2776,60 @@ function FilterSortTable({
           </button>
         </div>
       )}
-      <div className="overflow-hidden rounded border border-slate-200 bg-white">
+      {isMobile ? (
+        <div className="space-y-3 md:hidden">
+          {paginatedRows.map((r) => (
+            <article
+              key={r.key}
+              className={
+                "rounded-lg border border-slate-200 bg-white p-3 shadow-sm " +
+                (r.rowClassName ?? "")
+              }
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 text-sm font-medium text-slate-900">
+                  {r.cells[primaryCol] ?? r.cells[0]}
+                </div>
+                <div className="shrink-0">{r.action}</div>
+              </div>
+              <details className="mt-2 text-sm">
+                <summary className="cursor-pointer text-xs font-medium text-blue-700">
+                  More fields
+                </summary>
+                <dl className="mt-2 space-y-2">
+                  {dataHeaders.map((h, idx) => {
+                    if (idx === primaryCol) return null;
+                    return (
+                      <div key={`${r.key}-${idx}`}>
+                        <dt className="text-xs font-medium text-slate-500">{h}</dt>
+                        <dd className="mt-0.5 text-slate-900">{r.cells[idx]}</dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+              </details>
+            </article>
+          ))}
+          {appendRow && (
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2 text-xs text-slate-600">
+              Use desktop view to add rows inline, or widen the window.
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      <div
+        className={
+          "overflow-hidden rounded border border-slate-200 bg-white " +
+          (isMobile ? "hidden md:block" : "")
+        }
+      >
         <div className="overflow-x-auto">
-        <table className="w-full table-auto text-sm">
+        <table className="w-full min-w-[40rem] table-auto text-sm">
           <thead className="bg-slate-100 text-left">
             <tr>
               {leadingColumn ? (
-                <th scope="col" className="w-10 whitespace-nowrap px-2 py-2 text-left text-xs font-medium text-slate-600">
+                <th scope="col" className="sticky left-0 z-[4] w-10 whitespace-nowrap border-r border-slate-200 bg-slate-100 px-2 py-2 text-left text-xs font-medium text-slate-600">
                   {leadingColumn.label}
                 </th>
               ) : null}
@@ -2756,7 +2837,7 @@ function FilterSortTable({
                 <th
                   key={`${h}-${idx}`}
                   scope="col"
-                  className="p-0 font-medium"
+                  className={headerColumnClass(idx, idx === 0)}
                   aria-sort={sortCol === idx ? (desc ? "descending" : "ascending") : "none"}
                 >
                   <button
@@ -2801,7 +2882,14 @@ function FilterSortTable({
             <tr className="border-t bg-white">
               {leadingColumn ? <th className="p-1" /> : null}
               {dataHeaders.map((h, idx) => (
-                <th key={`f-${h}-${idx}`} className="p-1 font-normal">
+                <th
+                  key={`f-${h}-${idx}`}
+                  className={
+                    (isColumnHiddenOnTablet(layoutKey, idx) ? "hidden lg:table-cell " : "") +
+                    "p-1 font-normal " +
+                    (idx === 0 ? "sticky left-0 z-[4] bg-white" : "")
+                  }
+                >
                   <ColumnFilterInput
                     columnIndex={idx}
                     columnLabel={h}
@@ -2835,18 +2923,18 @@ function FilterSortTable({
           </thead>
           <tbody>
             {paginatedRows.map((r) => (
-              <tr key={r.key} className={"border-t " + (r.rowClassName ?? "")}>
+              <tr key={r.key} className={"border-t bg-white " + (r.rowClassName ?? "")}>
                 {leadingColumn ? (
-                  <td className="p-2 align-top">{leadingColumn.renderCell(r)}</td>
+                  <td className="sticky left-0 z-[3] border-r border-slate-100 bg-inherit p-2 align-top">
+                    {leadingColumn.renderCell(r)}
+                  </td>
                 ) : null}
                 {r.cells.map((c, ci) => (
-                  <td key={ci} className="max-w-[26rem] whitespace-normal break-words p-2 align-top">
+                  <td key={ci} className={columnClass(ci, ci === 0)}>
                     {c}
                   </td>
                 ))}
-                <td className="lg:sticky right-0 z-[1] border-l border-slate-100 bg-white p-2 align-top lg:shadow-[inset_1px_0_0_0_rgb(241_245_249)]">
-                  {r.action}
-                </td>
+                <td className={stickyActionsTd}>{r.action}</td>
               </tr>
             ))}
             {appendRow}

@@ -1,60 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
-import { Clock, User, Filter, Plus, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
-
-interface AuditEntry {
-  id: string;
-  actorId: string | null;
-  actorName: string | null;
-  action: "create" | "update" | "delete";
-  entityType: string;
-  entityId: string;
-  entityLabel: string | null;
-  diff: Record<string, unknown> | null;
-  createdAt: string;
-}
-
-function formatDate(isoDate: string): string {
-  const date = new Date(isoDate);
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function formatEntityType(type: string): string {
-  return type
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
-function displayEntityLabel(entry: { entityLabel: string | null; entityType: string; entityId: string }): string {
-  const label = entry.entityLabel?.trim();
-  if (label) return label;
-  const typeName = formatEntityType(entry.entityType);
-  const shortId = entry.entityId?.slice(0, 8);
-  return shortId ? `${typeName} ${shortId}` : typeName;
-}
-
-const actionIcons = {
-  create: Plus,
-  update: Edit,
-  delete: Trash2,
-};
-
-const actionColors = {
-  create: "text-green-700 bg-green-50 border-green-200",
-  update: "text-blue-700 bg-blue-50 border-blue-200",
-  delete: "text-red-700 bg-red-50 border-red-200",
-};
-
-const actionLabels = {
-  create: "Created",
-  update: "Updated",
-  delete: "Deleted",
-};
+import { toAuditEntryViewModel } from "../../lib/auditDisplay";
+import { AuditHistoryErrorBoundary } from "../../components/AuditHistoryErrorBoundary";
+import { AuditHistoryList } from "../../components/AuditHistoryList";
+import { Clock, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 
 const ENTITY_TYPES = [
   { value: "", label: "All Types" },
@@ -68,13 +18,13 @@ const ENTITY_TYPES = [
   { value: "procurement", label: "Purchasing" },
   { value: "procurement_line", label: "Purchasing Lines" },
   { value: "asset", label: "Machines" },
-  { value: "service_log", label: "Service History" },
+  { value: "asset_service_log", label: "Service History" },
   { value: "project_note", label: "A4 Notes" },
   { value: "organization", label: "Organization Settings" },
   { value: "user", label: "Users" },
 ];
 
-export function WorkspaceHistoryPage() {
+function WorkspaceHistoryPageInner() {
   const [entityType, setEntityType] = useState("");
   const [action, setAction] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -93,13 +43,29 @@ export function WorkspaceHistoryPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["audit-history", entityType, action, startDate, endDate, page],
-    queryFn: () =>
-      api<{
-        entries: AuditEntry[];
+    queryFn: async () => {
+      const res = await api<{
+        entries: {
+          id: string;
+          actorName: string | null;
+          action: string;
+          actionKind?: "create" | "update" | "delete";
+          entityType: string;
+          entityId: string;
+          entityLabel: string | null;
+          createdAt: string;
+          diff?: Record<string, unknown> | null;
+          fieldChanges?: { field: string; before: unknown; after: unknown }[];
+        }[];
         total: number;
         limit: number;
         offset: number;
-      }>(`/api/audit/history?${queryParams.toString()}`),
+      }>(`/api/audit/history?${queryParams.toString()}`);
+      return {
+        ...res,
+        entries: (res.entries ?? []).map((e) => toAuditEntryViewModel(e)),
+      };
+    },
   });
 
   const totalPages = data ? Math.ceil(data.total / limit) : 0;
@@ -204,52 +170,7 @@ export function WorkspaceHistoryPage() {
           ) : (
             <>
               <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                <ul className="divide-y divide-slate-100">
-                  {data.entries.map((entry) => {
-                    const Icon = actionIcons[entry.action];
-                    return (
-                      <li key={entry.id} className="p-4 hover:bg-slate-50">
-                        <div className="flex gap-3">
-                          <div
-                            className={
-                              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border " +
-                              actionColors[entry.action]
-                            }
-                          >
-                            <Icon className="h-5 w-5" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <div>
-                                <p className="text-sm font-medium text-slate-900">
-                                  {actionLabels[entry.action]} {formatEntityType(entry.entityType)}
-                                  <span className="ml-1 text-slate-600">
-                                    "{displayEntityLabel(entry)}"
-                                  </span>
-                                </p>
-                                <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
-                                  <User className="h-3 w-3" />
-                                  <span>{entry.actorName ?? "Unknown"}</span>
-                                  <span className="text-slate-400">·</span>
-                                  <Clock className="h-3 w-3" />
-                                  <span>{formatDate(entry.createdAt)}</span>
-                                </p>
-                              </div>
-                            </div>
-
-                            {entry.diff && entry.action === "update" && "fields" in entry.diff && (
-                              <div className="mt-2 rounded border border-slate-100 bg-slate-50 p-2 text-xs">
-                                <p className="mb-1 font-medium text-slate-700">
-                                  {Object.keys(entry.diff.fields as Record<string, unknown>).length} field(s) changed
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <AuditHistoryList entries={data.entries} variant="compact" showEntityType />
               </div>
 
               {totalPages > 1 && (
@@ -275,8 +196,7 @@ export function WorkspaceHistoryPage() {
                   <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm text-gray-700">
-                        Showing{" "}
-                        <span className="font-medium">{page * limit + 1}</span> to{" "}
+                        Showing <span className="font-medium">{page * limit + 1}</span> to{" "}
                         <span className="font-medium">
                           {Math.min((page + 1) * limit, data.total)}
                         </span>{" "}
@@ -319,5 +239,13 @@ export function WorkspaceHistoryPage() {
         </>
       )}
     </div>
+  );
+}
+
+export function WorkspaceHistoryPage() {
+  return (
+    <AuditHistoryErrorBoundary title="Organization history">
+      <WorkspaceHistoryPageInner />
+    </AuditHistoryErrorBoundary>
   );
 }

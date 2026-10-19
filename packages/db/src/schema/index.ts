@@ -78,6 +78,9 @@ export const user = pgTable(
     })
       .notNull()
       .default("member"),
+    dailyDigestEmailEnabled: boolean("daily_digest_email_enabled")
+      .notNull()
+      .default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -10,8 +10,8 @@ import {
   projectMember,
 } from "@project-erp/db";
 import { z } from "zod";
-import { requireAuth, type AuthUser } from "../lib/session.js";
 import { writeAudit } from "../lib/audit.js";
+import { requireAuth, type AuthUser } from "../lib/session.js";
 import {
   deleteReportImageFile,
   isAllowedReportImageMime,
@@ -32,6 +32,7 @@ const invite = z.object({
 const userPatch = z.object({
   globalRole: z.enum(["member", "org_admin"]).optional(),
   name: z.string().min(1).max(255).optional(),
+  dailyDigestEmailEnabled: z.boolean().optional(),
 });
 
 const profilePatch = z.object({
@@ -403,6 +404,7 @@ app.get("/org/users", async (c) => {
       email: user.email,
       name: user.name,
       globalRole: user.globalRole,
+      dailyDigestEmailEnabled: user.dailyDigestEmailEnabled,
       createdAt: user.createdAt,
     })
     .from(user)
@@ -497,6 +499,8 @@ app.patch("/org/users/:userId", async (c) => {
     .set({
       name: p.data.name ?? before.name,
       globalRole: p.data.globalRole ?? before.globalRole,
+      dailyDigestEmailEnabled:
+        p.data.dailyDigestEmailEnabled ?? before.dailyDigestEmailEnabled,
       updatedAt: new Date(),
     })
     .where(eq(user.id, userId))
@@ -505,8 +509,9 @@ app.patch("/org/users/:userId", async (c) => {
       email: user.email,
       name: user.name,
       globalRole: user.globalRole,
+      dailyDigestEmailEnabled: user.dailyDigestEmailEnabled,
     });
-  
+
   const diff: Record<string, unknown> = {};
   if (p.data.name !== undefined && p.data.name !== before.name) {
     diff.name = { before: before.name, after: p.data.name };
@@ -514,9 +519,25 @@ app.patch("/org/users/:userId", async (c) => {
   if (p.data.globalRole !== undefined && p.data.globalRole !== before.globalRole) {
     diff.globalRole = { before: before.globalRole, after: p.data.globalRole };
   }
-  
+  if (
+    p.data.dailyDigestEmailEnabled !== undefined &&
+    p.data.dailyDigestEmailEnabled !== before.dailyDigestEmailEnabled
+  ) {
+    diff.dailyDigestEmailEnabled = {
+      before: before.dailyDigestEmailEnabled,
+      after: p.data.dailyDigestEmailEnabled,
+    };
+  }
+
   if (Object.keys(diff).length > 0) {
-    await writeAudit(a, "update", "user", userId, diff, updated.name || before.name || before.email);
+    await writeAudit(
+      a,
+      "update",
+      "user",
+      userId,
+      diff,
+      updated.name || before.name || before.email,
+    );
   }
 
   return c.json({ user: updated });
