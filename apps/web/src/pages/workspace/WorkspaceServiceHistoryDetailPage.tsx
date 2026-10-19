@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { downloadServiceReport } from "../../lib/serviceReportDownload";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { AuditHistory } from "../../components/AuditHistory";
 import { DeleteConfirmModal } from "../../components/DeleteConfirmModal";
 
 const inputClass =
@@ -279,6 +280,10 @@ export function WorkspaceServiceHistoryDetailPage() {
           nav("/workspace/service-history");
         }}
       />
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <AuditHistory entityType="asset_service_log" entityId={log.id} />
+      </div>
     </WorkspaceDetailChrome>
   );
 }

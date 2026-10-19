@@ -23,6 +23,7 @@ type OrgUser = {
   email: string;
   name: string;
   globalRole: "member" | "org_admin";
+  dailyDigestEmailEnabled: boolean;
   projectCount: number;
 };
 
@@ -197,6 +198,22 @@ export function WorkspaceOrganizationPage() {
       await qc.invalidateQueries({ queryKey: ["org-users"] });
     } catch (e) {
       setPeopleErr(e instanceof Error ? e.message : "Failed to grant access");
+    } finally {
+      setPeopleBusyId(null);
+    }
+  };
+
+  const setUserDigest = async (u: OrgUser, dailyDigestEmailEnabled: boolean) => {
+    setPeopleErr(null);
+    setPeopleBusyId(u.id);
+    try {
+      await api(`/api/org/users/${u.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ dailyDigestEmailEnabled }),
+      });
+      await qc.invalidateQueries({ queryKey: ["org-users"] });
+    } catch (e) {
+      setPeopleErr(e instanceof Error ? e.message : "Failed to update digest setting");
     } finally {
       setPeopleBusyId(null);
     }
@@ -443,7 +460,22 @@ export function WorkspaceOrganizationPage() {
                         {u.projectCount === 1 ? "" : "s"}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label
+                        className="flex items-center gap-1.5 text-xs text-tesla-text-secondary"
+                        title="Daily digest email"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 shrink-0"
+                          checked={u.dailyDigestEmailEnabled}
+                          disabled={peopleBusyId === u.id}
+                          onChange={(e) =>
+                            void setUserDigest(u, e.target.checked)
+                          }
+                        />
+                        Digest email
+                      </label>
                       {u.globalRole !== "org_admin" ? (
                         <button
                           type="button"

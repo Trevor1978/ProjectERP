@@ -120,6 +120,20 @@
       "when": 1779400000000,
       "tag": "0016_procurement_document_refs",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779500000000,
+      "tag": "0017_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779600000000,
+      "tag": "0018_user_daily_digest_email",
+      "breakpoints": true
     }
   ]
 }

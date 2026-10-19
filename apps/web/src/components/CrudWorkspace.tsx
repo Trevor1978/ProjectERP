@@ -18,6 +18,11 @@ import { ColumnFilterInput } from "./ColumnFilterInput";
 import { buildCsvImportHandler } from "../lib/workspaceCsvImport";
 import { EntitySelect, EnumSelect, QuickCreateSelect } from "./QuickCreateSelect";
 import { formatTaskEndIso } from "../lib/workDays";
+import { useIsMobileTable } from "../hooks/useMediaQuery";
+import {
+  isColumnHiddenOnTablet,
+  primaryColumnIndex,
+} from "../lib/responsiveTableLayout";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Supplier = {
@@ -219,7 +224,7 @@ function deleteExecutePath(tab: Tab, id: string): string {
   }
 }
 
-const newRowInputClass = "w-full min-w-[6rem] rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-sm placeholder:text-slate-400";
+const newRowInputClass = "w-full min-w-[6rem] rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-sm placeholder:text-slate-500";
 
 /** Narrow workspace table rows when `?projectId=` / `?taskId=` / `?milestoneId=` / `?supplierId=` are present. */
 function filterWorkspaceRowsByUrlParams(
@@ -529,7 +534,7 @@ export function CrudWorkspace({
     timeEntryUserId?: string,
     opts?: { openHref?: string },
   ) => (
-    <div className="flex min-w-max flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
+    <div className="flex max-w-[10rem] flex-wrap items-center justify-end gap-1 sm:max-w-none">
       {opts?.openHref ? (
         <Link
           to={opts.openHref}
@@ -538,51 +543,51 @@ export function CrudWorkspace({
           }}
           title="Open"
           aria-label="Open"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 touch-manipulation md:h-8 md:w-8 lg:h-10 lg:w-10"
         >
-          <ExternalLink size={14} />
+          <ExternalLink size={16} />
         </Link>
       ) : (
         <button
           type="button"
           title="Open"
           aria-label="Open"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-800 bg-slate-900 text-white hover:bg-slate-800 touch-manipulation md:h-8 md:w-8 lg:h-10 lg:w-10"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             setEditTarget({ tab: t, id });
           }}
         >
-          <ExternalLink size={14} />
+          <ExternalLink size={16} />
         </button>
       )}
       <button
         type="button"
         title="Edit"
         aria-label="Edit"
-        className="inline-flex h-7 w-7 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 touch-manipulation md:h-8 md:w-8 lg:h-10 lg:w-10"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setEditTarget({ tab: t, id });
         }}
       >
-        <Pencil size={14} />
+        <Pencil size={16} />
       </button>
       {canShowDeleteForRow(t, timeEntryUserId) && (
         <button
           type="button"
           title="Delete"
           aria-label="Delete"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-red-200 bg-red-50 text-red-800 hover:bg-red-100 touch-manipulation md:h-8 md:w-8 lg:h-10 lg:w-10"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             setDeleteTarget({ tab: t, id, label });
           }}
         >
-          <X size={14} />
+          <X size={16} />
         </button>
       )}
     </div>
@@ -1109,7 +1114,17 @@ export function CrudWorkspace({
           </span>,
           <InlineNumberNullable
             key="min"
-            value={te.durationMinutes}
+            value={(() => {
+              if (te.durationMinutes !== null) return te.durationMinutes;
+              if (te.startedAt && te.endedAt) {
+                const start = new Date(te.startedAt).getTime();
+                const end = new Date(te.endedAt).getTime();
+                if (!isNaN(start) && !isNaN(end) && end > start) {
+                  return Math.round((end - start) / 60000);
+                }
+              }
+              return null;
+            })()}
             int
             onSave={(v) =>
               api("/api/time-entries/" + te.id, {
@@ -1463,7 +1478,7 @@ export function CrudWorkspace({
     (active ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50");
 
   return (
-    <div className="space-y-6">
+    <div className={embedded ? "min-w-0 space-y-4" : "space-y-6"}>
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h1 className={embedded ? "text-lg font-semibold text-slate-800" : "text-2xl font-semibold"}>
           {LABEL[tab]}
@@ -1639,6 +1654,7 @@ export function CrudWorkspace({
       ) : (
         <FilterSortTable
           key={tab}
+          layoutKey={tab}
           dataHeaders={currentForTable.dataHeaders}
           rows={currentForTable.rows}
           leadingColumn={
@@ -2010,13 +2026,13 @@ function CrudAppendRow({
   if (!me) return null;
 
   const stickyActionsTd =
-    "sticky right-0 z-[1] border-l border-slate-100 bg-slate-50 p-2 align-top shadow-[inset_1px_0_0_0_rgb(241_245_249)]";
+    "md:sticky right-0 z-[4] min-w-[7.5rem] border-l border-slate-100 bg-slate-50 p-2 align-top md:shadow-[inset_1px_0_0_0_rgb(241_245_249)]";
 
   const createBtn = (onClick: () => void, disabled: boolean) => (
     <button
       type="button"
       disabled={disabled || saving}
-      className="rounded border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+      className="rounded border border-blue-700 bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       onClick={() => {
         setErr(null);
         setSaving(true);
@@ -2567,6 +2583,7 @@ function CrudAppendRow({
 }
 
 function FilterSortTable({
+  layoutKey,
   dataHeaders,
   rows,
   appendRow,
@@ -2574,6 +2591,7 @@ function FilterSortTable({
   extraToolbar,
   onFilteredRowsChange,
 }: {
+  layoutKey?: string;
   dataHeaders: string[];
   rows: TableRow[];
   appendRow?: ReactNode;
@@ -2581,6 +2599,30 @@ function FilterSortTable({
   extraToolbar?: ReactNode;
   onFilteredRowsChange?: (rows: TableRow[]) => void;
 }) {
+  const isMobile = useIsMobileTable();
+  const primaryCol = primaryColumnIndex(layoutKey);
+
+  const columnClass = (idx: number, stickyFirst: boolean) => {
+    const hiddenTablet = isColumnHiddenOnTablet(layoutKey, idx)
+      ? "hidden lg:table-cell"
+      : "";
+    const sticky = stickyFirst
+      ? "sticky left-0 z-[2] border-r border-slate-100 bg-inherit lg:z-[3]"
+      : "";
+    const minW = stickyFirst ? "min-w-[8.5rem]" : "min-w-[5.5rem] lg:min-w-[6.5rem]";
+    return `${hiddenTablet} ${sticky} ${minW} max-w-[26rem] whitespace-normal break-words p-2 align-top`;
+  };
+
+  const headerColumnClass = (idx: number, stickyFirst: boolean) => {
+    const hiddenTablet = isColumnHiddenOnTablet(layoutKey, idx)
+      ? "hidden lg:table-cell"
+      : "";
+    const sticky = stickyFirst
+      ? "sticky left-0 z-[4] border-r border-slate-200 bg-slate-100"
+      : "";
+    return `p-0 font-medium ${hiddenTablet} ${sticky}`;
+  };
+
   const [q, setQ] = useState("");
   const [colFilters, setColFilters] = useState<Record<number, string[]>>({});
   const [colFilterInput, setColFilterInput] = useState<Record<number, string>>({});
@@ -2654,13 +2696,15 @@ function FilterSortTable({
   }
 
   const stickyActionsTh =
-    "sticky right-0 z-[2] border-l border-slate-200 bg-slate-100 shadow-[inset_1px_0_0_0_rgb(226_232_240)]";
+    "md:sticky right-0 z-[5] min-w-[7.5rem] border-l border-slate-200 bg-slate-100 md:shadow-[inset_1px_0_0_0_rgb(226_232_240)]";
+  const stickyActionsTd =
+    "md:sticky right-0 z-[4] min-w-[7.5rem] border-l border-slate-100 bg-inherit p-2 align-top md:shadow-[inset_1px_0_0_0_rgb(241_245_249)]";
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <input
-          className="border rounded px-2 py-1 text-sm min-w-64"
+          className="min-w-0 flex-1 rounded border px-2 py-1 text-sm sm:min-w-64 sm:flex-none"
           placeholder="Filter rows..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -2732,13 +2776,60 @@ function FilterSortTable({
           </button>
         </div>
       )}
-      <div className="overflow-hidden rounded border border-slate-200 bg-white">
+      {isMobile ? (
+        <div className="space-y-3 md:hidden">
+          {paginatedRows.map((r) => (
+            <article
+              key={r.key}
+              className={
+                "rounded-lg border border-slate-200 bg-white p-3 shadow-sm " +
+                (r.rowClassName ?? "")
+              }
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 text-sm font-medium text-slate-900">
+                  {r.cells[primaryCol] ?? r.cells[0]}
+                </div>
+                <div className="shrink-0">{r.action}</div>
+              </div>
+              <details className="mt-2 text-sm">
+                <summary className="cursor-pointer text-xs font-medium text-blue-700">
+                  More fields
+                </summary>
+                <dl className="mt-2 space-y-2">
+                  {dataHeaders.map((h, idx) => {
+                    if (idx === primaryCol) return null;
+                    return (
+                      <div key={`${r.key}-${idx}`}>
+                        <dt className="text-xs font-medium text-slate-500">{h}</dt>
+                        <dd className="mt-0.5 text-slate-900">{r.cells[idx]}</dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+              </details>
+            </article>
+          ))}
+          {appendRow && (
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2 text-xs text-slate-600">
+              Use desktop view to add rows inline, or widen the window.
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      <div
+        className={
+          "overflow-hidden rounded border border-slate-200 bg-white " +
+          (isMobile ? "hidden md:block" : "")
+        }
+      >
         <div className="overflow-x-auto">
-        <table className="w-full table-auto text-sm">
+        <table className="w-full min-w-[40rem] table-auto text-sm">
           <thead className="bg-slate-100 text-left">
             <tr>
               {leadingColumn ? (
-                <th scope="col" className="w-10 whitespace-nowrap px-2 py-2 text-left text-xs font-medium text-slate-600">
+                <th scope="col" className="sticky left-0 z-[4] w-10 whitespace-nowrap border-r border-slate-200 bg-slate-100 px-2 py-2 text-left text-xs font-medium text-slate-600">
                   {leadingColumn.label}
                 </th>
               ) : null}
@@ -2746,7 +2837,7 @@ function FilterSortTable({
                 <th
                   key={`${h}-${idx}`}
                   scope="col"
-                  className="p-0 font-medium"
+                  className={headerColumnClass(idx, idx === 0)}
                   aria-sort={sortCol === idx ? (desc ? "descending" : "ascending") : "none"}
                 >
                   <button
@@ -2791,7 +2882,14 @@ function FilterSortTable({
             <tr className="border-t bg-white">
               {leadingColumn ? <th className="p-1" /> : null}
               {dataHeaders.map((h, idx) => (
-                <th key={`f-${h}-${idx}`} className="p-1 font-normal">
+                <th
+                  key={`f-${h}-${idx}`}
+                  className={
+                    (isColumnHiddenOnTablet(layoutKey, idx) ? "hidden lg:table-cell " : "") +
+                    "p-1 font-normal " +
+                    (idx === 0 ? "sticky left-0 z-[4] bg-white" : "")
+                  }
+                >
                   <ColumnFilterInput
                     columnIndex={idx}
                     columnLabel={h}
@@ -2825,18 +2923,18 @@ function FilterSortTable({
           </thead>
           <tbody>
             {paginatedRows.map((r) => (
-              <tr key={r.key} className={"border-t " + (r.rowClassName ?? "")}>
+              <tr key={r.key} className={"border-t bg-white " + (r.rowClassName ?? "")}>
                 {leadingColumn ? (
-                  <td className="p-2 align-top">{leadingColumn.renderCell(r)}</td>
+                  <td className="sticky left-0 z-[3] border-r border-slate-100 bg-inherit p-2 align-top">
+                    {leadingColumn.renderCell(r)}
+                  </td>
                 ) : null}
                 {r.cells.map((c, ci) => (
-                  <td key={ci} className="max-w-[26rem] whitespace-normal break-words p-2 align-top">
+                  <td key={ci} className={columnClass(ci, ci === 0)}>
                     {c}
                   </td>
                 ))}
-                <td className="sticky right-0 z-[1] border-l border-slate-100 bg-white p-2 align-top shadow-[inset_1px_0_0_0_rgb(241_245_249)]">
-                  {r.action}
-                </td>
+                <td className={stickyActionsTd}>{r.action}</td>
               </tr>
             ))}
             {appendRow}
@@ -3454,6 +3552,17 @@ function TaskEditModal({
   );
 }
 
+function formatTodoStatus(status: string): string {
+  return status
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function formatTodoPriority(priority: string): string {
+  return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
 function TodoEditModal({
   todo,
   taskLabel,
@@ -3468,6 +3577,7 @@ function TodoEditModal({
   onSaved: () => Promise<void>;
 }) {
   const [title, setTitle] = useState(todo.title);
+  const [description, setDescription] = useState(todo.description ?? "");
   const [status, setStatus] = useState(todo.status);
   const [dueAt, setDueAt] = useState(isoToLocal(todo.dueAt));
   const [priority, setPriority] = useState(todo.priority);
@@ -3477,6 +3587,7 @@ function TodoEditModal({
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     setTitle(todo.title);
+    setDescription(todo.description ?? "");
     setStatus(todo.status);
     setDueAt(isoToLocal(todo.dueAt));
     setPriority(todo.priority);
@@ -3488,7 +3599,14 @@ function TodoEditModal({
       title="Edit todo"
       onClose={onClose}
       footer={
-        <div className="mt-4">
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
           <button
             type="button"
             className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
@@ -3500,6 +3618,7 @@ function TodoEditModal({
                 method: "PATCH",
                 body: JSON.stringify({
                   title: title.trim(),
+                  description: description.trim() || null,
                   status,
                   dueAt: localToIso(dueAt),
                   priority,
@@ -3519,29 +3638,47 @@ function TodoEditModal({
       }
     >
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
-      <p className="mb-2 text-sm text-slate-600">Task: {taskLabel}</p>
-      <label className="block text-sm font-medium">Title</label>
-      <input className="mb-2 w-full rounded border px-2 py-1" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <p className="mb-3 text-sm text-slate-600">Task: {taskLabel}</p>
+      <label className="block text-sm font-medium">
+        Title <span className="text-red-600">*</span>
+      </label>
+      <input className="mb-3 w-full rounded border px-2 py-1.5" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <label className="block text-sm font-medium">Description</label>
+      <textarea
+        className="mb-3 w-full rounded border px-2 py-1.5"
+        rows={3}
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Additional details..."
+      />
       <label className="block text-sm font-medium">Status</label>
-      <EnumSelect
+      <select
+        className="mb-3 w-full rounded border px-2 py-1.5"
         value={status}
-        options={TODO_STATUS.map((s) => ({ value: s, label: s }))}
-        onSave={(v) => setStatus(v as Todo["status"])}
-        className="mb-2 w-full rounded border px-2 py-1"
-      />
-      <label className="block text-sm font-medium">Due</label>
-      <input type="datetime-local" className="mb-2 w-full rounded border px-2 py-1" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+        onChange={(e) => setStatus(e.target.value as Todo["status"])}
+      >
+        {TODO_STATUS.map((s) => (
+          <option key={s} value={s}>
+            {formatTodoStatus(s)}
+          </option>
+        ))}
+      </select>
       <label className="block text-sm font-medium">Priority</label>
-      <EnumSelect
+      <select
+        className="mb-3 w-full rounded border px-2 py-1.5"
         value={priority}
-        options={TODO_PRIORITY.map((s) => ({ value: s, label: s }))}
-        onSave={(v) => setPriority(v as Todo["priority"])}
-        className="mb-2 w-full rounded border px-2 py-1"
-      />
-      <label className="block text-sm font-medium">Order</label>
-      <input type="number" className="mb-2 w-full rounded border px-2 py-1" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
+        onChange={(e) => setPriority(e.target.value as Todo["priority"])}
+      >
+        {TODO_PRIORITY.map((p) => (
+          <option key={p} value={p}>
+            {formatTodoPriority(p)}
+          </option>
+        ))}
+      </select>
+      <label className="block text-sm font-medium">Due</label>
+      <input type="datetime-local" className="mb-3 w-full rounded border px-2 py-1.5" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
       <label className="block text-sm font-medium">Assignee</label>
-      <select className="w-full rounded border px-2 py-1" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+      <select className="mb-3 w-full rounded border px-2 py-1.5" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
         <option value="">(unassigned)</option>
         {orgUsers.map((u) => (
           <option key={u.id} value={u.id}>
@@ -3549,6 +3686,8 @@ function TodoEditModal({
           </option>
         ))}
       </select>
+      <label className="block text-sm font-medium">Order</label>
+      <input type="number" className="w-full rounded border px-2 py-1.5" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
     </ModalShell>
   );
 }

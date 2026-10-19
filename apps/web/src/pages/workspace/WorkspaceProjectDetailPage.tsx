@@ -6,6 +6,7 @@ import { ProjectItemsPanel } from "../../components/ProjectItemsPanel";
 import { CrudWorkspace } from "../../components/CrudWorkspace";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { QuickCreateSelect } from "../../components/QuickCreateSelect";
+import { AuditHistory } from "../../components/AuditHistory";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
 type Project = {
@@ -58,6 +59,7 @@ export function WorkspaceProjectDetailPage() {
   const [err, setErr] = useState<string | null>(null);
   const [newMilestoneName, setNewMilestoneName] = useState("");
   const [childBusy, setChildBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState<"milestones" | "tasks" | "todos" | "purchasing" | "history">("milestones");
 
   const nextMilestoneOrder = useMemo(
     () => (milestones.length ? Math.max(...milestones.map((m) => m.orderIndex)) + 1 : 0),
@@ -106,14 +108,14 @@ export function WorkspaceProjectDetailPage() {
       </p>
 
       {err && <p className="text-sm text-red-600">{err}</p>}
-      <div className="mb-6 grid max-w-2xl gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-6 grid max-w-2xl gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <div>
           <label className="block text-sm font-medium text-slate-700">Name</label>
-          <input className="mt-1 w-full rounded border px-2 py-1.5" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="mt-1 w-full min-w-0 rounded border px-2 py-1.5" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700">Code</label>
-          <input className="mt-1 w-full rounded border px-2 py-1.5" value={code} onChange={(e) => setCode(e.target.value)} />
+          <input className="mt-1 w-full min-w-0 rounded border px-2 py-1.5" value={code} onChange={(e) => setCode(e.target.value)} />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700">Customer</label>
@@ -121,12 +123,12 @@ export function WorkspaceProjectDetailPage() {
             entity="client"
             value={clientId}
             onChange={setClientId}
-            className="mt-1 w-full rounded border px-2 py-1.5"
+            className="mt-1 w-full min-w-0 rounded border px-2 py-1.5"
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700">Status</label>
-          <select className="mt-1 w-full rounded border px-2 py-1.5" value={status} onChange={(e) => setStatus(e.target.value as Project["status"])}>
+          <select className="mt-1 w-full min-w-0 rounded border px-2 py-1.5" value={status} onChange={(e) => setStatus(e.target.value as Project["status"])}>
             {STATUS_OPTS.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -135,13 +137,13 @@ export function WorkspaceProjectDetailPage() {
           </select>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
+          <div className="min-w-0">
             <label className="block text-sm font-medium text-slate-700">Start</label>
-            <input type="datetime-local" className="mt-1 w-full rounded border px-2 py-1.5" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
+            <input type="datetime-local" className="mt-1 w-full min-w-0 rounded border px-2 py-1.5 text-sm" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
           </div>
-          <div>
+          <div className="min-w-0">
             <label className="block text-sm font-medium text-slate-700">End</label>
-            <input type="datetime-local" className="mt-1 w-full rounded border px-2 py-1.5" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
+            <input type="datetime-local" className="mt-1 w-full min-w-0 rounded border px-2 py-1.5 text-sm" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
           </div>
         </div>
         <button
@@ -172,83 +174,175 @@ export function WorkspaceProjectDetailPage() {
         </button>
       </div>
 
-      <h2 className="mb-2 text-lg font-semibold text-slate-800">Milestones</h2>
-      {milestones.length === 0 ? (
-        <p className="mb-2 text-sm text-slate-500">No milestones yet — add one below.</p>
-      ) : (
-        <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-          {milestones.map((m) => (
-            <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
-              <span className="font-medium text-slate-900">{m.name}</span>
-              <Link to={`/workspace/milestones/${m.id}`} className="text-sm font-medium text-blue-700 underline">
-                Open
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="max-w-xl rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-3">
-        <p className="mb-2 text-sm font-medium text-slate-700">Add milestone</p>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-[12rem] flex-1">
-            <label className="block text-xs font-medium text-slate-600">Name</label>
-            <input
-              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
-              value={newMilestoneName}
-              onChange={(e) => setNewMilestoneName(e.target.value)}
-              placeholder="Milestone name"
-            />
-          </div>
+      <div className="mt-8 min-w-0 border-t border-slate-200 pt-6">
+        <div className="-mx-1 mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-px [-webkit-overflow-scrolling:touch]">
           <button
             type="button"
-            disabled={childBusy || !newMilestoneName.trim()}
-            className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-            onClick={() => {
-              setErr(null);
-              setChildBusy(true);
-              void api("/api/milestones", {
-                method: "POST",
-                body: JSON.stringify({
-                  projectId: project.id,
-                  name: newMilestoneName.trim(),
-                  orderIndex: nextMilestoneOrder,
-                }),
-              })
-                .then(async () => {
-                  setNewMilestoneName("");
-                  await refresh();
-                })
-                .catch((e: Error) => setErr(e.message))
-                .finally(() => setChildBusy(false));
-            }}
+            onClick={() => setActiveTab("milestones")}
+            className={
+              "whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors " +
+              (activeTab === "milestones"
+                ? "border-b-2 border-slate-900 text-slate-900"
+                : "text-slate-600 hover:text-slate-900")
+            }
           >
-            {childBusy ? "…" : "Add milestone"}
+            Milestones
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("tasks")}
+            className={
+              "whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors " +
+              (activeTab === "tasks"
+                ? "border-b-2 border-slate-900 text-slate-900"
+                : "text-slate-600 hover:text-slate-900")
+            }
+          >
+            Tasks
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("todos")}
+            className={
+              "whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors " +
+              (activeTab === "todos"
+                ? "border-b-2 border-slate-900 text-slate-900"
+                : "text-slate-600 hover:text-slate-900")
+            }
+          >
+            Todos
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("purchasing")}
+            className={
+              "whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors " +
+              (activeTab === "purchasing"
+                ? "border-b-2 border-slate-900 text-slate-900"
+                : "text-slate-600 hover:text-slate-900")
+            }
+          >
+            Purchasing
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("history")}
+            className={
+              "whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors " +
+              (activeTab === "history"
+                ? "border-b-2 border-slate-900 text-slate-900"
+                : "text-slate-600 hover:text-slate-900")
+            }
+          >
+            History
           </button>
         </div>
-      </div>
 
-      <div className="mt-8 border-t border-slate-200 pt-6">
-        <CrudWorkspace
-          fixedTab="tasks"
-          fixedProjectId={project.id}
-          embedded
-        />
-      </div>
+        {activeTab === "milestones" && (
+          <div>
+            <p className="mb-3 text-sm text-slate-600">
+              Milestones organize your project into phases. The Save project button above only saves the top form — milestones are managed separately below.
+            </p>
+            {milestones.length === 0 ? (
+              <p className="mb-2 text-sm text-slate-500">No milestones yet — add one below.</p>
+            ) : (
+              <ul className="mb-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+                {milestones.map((m) => (
+                  <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
+                    <span className="font-medium text-slate-900">{m.name}</span>
+                    <Link to={`/workspace/milestones/${m.id}`} className="text-sm font-medium text-blue-700 underline">
+                      Open
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="max-w-xl rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-3">
+              <p className="mb-2 text-sm font-medium text-slate-700">Add milestone</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[12rem] flex-1">
+                  <label className="block text-xs font-medium text-slate-600">Name</label>
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+                    value={newMilestoneName}
+                    onChange={(e) => setNewMilestoneName(e.target.value)}
+                    placeholder="Milestone name"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={childBusy || !newMilestoneName.trim()}
+                  className="rounded border bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+                  onClick={() => {
+                    setErr(null);
+                    setChildBusy(true);
+                    void api("/api/milestones", {
+                      method: "POST",
+                      body: JSON.stringify({
+                        projectId: project.id,
+                        name: newMilestoneName.trim(),
+                        orderIndex: nextMilestoneOrder,
+                      }),
+                    })
+                      .then(async () => {
+                        setNewMilestoneName("");
+                        await refresh();
+                      })
+                      .catch((e: Error) => setErr(e.message))
+                      .finally(() => setChildBusy(false));
+                  }}
+                >
+                  {childBusy ? "…" : "Add milestone"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-      <div className="mt-8 border-t border-slate-200 pt-6">
-        <CrudWorkspace
-          fixedTab="todos"
-          fixedProjectId={project.id}
-          embedded
-        />
-      </div>
+        {activeTab === "tasks" && (
+          <div className="min-w-0 overflow-x-auto">
+            <p className="mb-3 text-sm text-slate-600">
+              Tasks are the work items within milestones. The Save project button above only saves the top form.
+            </p>
+            <CrudWorkspace
+              fixedTab="tasks"
+              fixedProjectId={project.id}
+              embedded
+            />
+          </div>
+        )}
 
-      <div className="mt-8 border-t border-slate-200 pt-6">
-        <CrudWorkspace
-          fixedTab="procurementLines"
-          fixedProjectId={project.id}
-          embedded
-        />
+        {activeTab === "todos" && (
+          <div className="min-w-0 overflow-x-auto">
+            <p className="mb-3 text-sm text-slate-600">
+              Todos are specific action items within tasks. The Save project button above only saves the top form.
+            </p>
+            <CrudWorkspace
+              fixedTab="todos"
+              fixedProjectId={project.id}
+              embedded
+            />
+          </div>
+        )}
+
+        {activeTab === "purchasing" && (
+          <div className="min-w-0 overflow-x-auto">
+            <p className="mb-3 text-sm text-slate-600">
+              Purchasing lines track materials and services for this project. The Save project button above only saves the top form.
+            </p>
+            <CrudWorkspace
+              fixedTab="procurementLines"
+              fixedProjectId={project.id}
+              embedded
+            />
+          </div>
+        )}
+
+        {activeTab === "history" && (
+          <div className="min-w-0">
+            <AuditHistory entityType="project" entityId={project.id} />
+          </div>
+        )}
       </div>
 
       <ProjectItemsPanel projectId={project.id} />

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
+import { AuditHistory } from "../../components/AuditHistory";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
 type Task = { id: string; title: string; version: number };
@@ -172,6 +173,10 @@ export function WorkspaceTodoDetailPage() {
         >
           Save todo
         </button>
+      </div>
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <AuditHistory entityType="todo" entityId={todo.id} />
       </div>
     </WorkspaceDetailChrome>
   );

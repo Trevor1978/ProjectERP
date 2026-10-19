@@ -120,6 +120,7 @@ app.post("/time-entries", async (c) => {
     "time_entry",
     row?.id ?? "",
     { taskId: p.data.taskId },
+    t[0]!.title || "Time Entry",
   );
   return c.json({ timeEntry: row });
 });
@@ -167,6 +168,26 @@ app.patch("/time-entries/:id", async (c) => {
     })
     .where(eq(timeEntry.id, id))
     .returning();
+  
+  const before = cur[0]!;
+  const diff: Record<string, unknown> = {};
+  if (p.data.startedAt !== undefined && p.data.startedAt !== before.startedAt) {
+    diff.startedAt = { before: before.startedAt, after: p.data.startedAt };
+  }
+  if (p.data.endedAt !== undefined && p.data.endedAt !== before.endedAt) {
+    diff.endedAt = { before: before.endedAt, after: p.data.endedAt };
+  }
+  if (p.data.durationMinutes !== undefined && p.data.durationMinutes !== before.durationMinutes) {
+    diff.durationMinutes = { before: before.durationMinutes, after: p.data.durationMinutes };
+  }
+  if (p.data.note !== undefined && p.data.note !== before.note) {
+    diff.note = { before: before.note, after: p.data.note };
+  }
+  
+  if (Object.keys(diff).length > 0) {
+    await writeAudit(a, "update", "time_entry", id, diff, tk[0]!.title || "Time Entry");
+  }
+  
   const all2 = await db
     .select()
     .from(timeEntry)
@@ -243,6 +264,14 @@ app.post("/user-rates", async (c) => {
     .insert(userRate)
     .values({ userId: b.userId, hourlyRate: b.hourlyRate })
     .returning();
+  
+  if (r) {
+    await writeAudit(a, "create", "user_rate", r.id, {
+      userId: { after: r.userId },
+      hourlyRate: { after: r.hourlyRate },
+    }, u[0]!.name || u[0]!.email || "User Rate");
+  }
+  
   return c.json({ userRate: r });
 });
 

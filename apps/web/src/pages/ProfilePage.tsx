@@ -36,6 +36,8 @@ export function ProfilePage() {
   const [browserSubscribed, setBrowserSubscribed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [digestEnabled, setDigestEnabled] = useState(true);
+  const [digestBusy, setDigestBusy] = useState(false);
 
   const pushSupported = isPushSupported();
   const { data: pushStatus, refetch: refetchPushStatus } = useQuery({
@@ -53,6 +55,7 @@ export function ProfilePage() {
     if (!user) return;
     setName(user.name);
     setEmail(user.email);
+    setDigestEnabled(user.dailyDigestEmailEnabled);
   }, [user]);
 
   async function saveProfile(): Promise<User> {
@@ -78,6 +81,35 @@ export function ProfilePage() {
       setError(e instanceof Error ? e.message : "Unable to save profile");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDigestToggle(enabled: boolean) {
+    setDigestBusy(true);
+    setError(null);
+    setMessage(null);
+    const prev = digestEnabled;
+    setDigestEnabled(enabled);
+    try {
+      await api<{ user: User }>("/api/auth/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: name.trim() || user!.name,
+          email: email.trim() || user!.email,
+          dailyDigestEmailEnabled: enabled,
+        }),
+      });
+      await qc.invalidateQueries({ queryKey: ["me"] });
+      setMessage(
+        enabled
+          ? "Daily digest emails enabled."
+          : "Daily digest emails disabled.",
+      );
+    } catch (e) {
+      setDigestEnabled(prev);
+      setError(e instanceof Error ? e.message : "Unable to update digest setting");
+    } finally {
+      setDigestBusy(false);
     }
   }
 
@@ -284,6 +316,32 @@ export function ProfilePage() {
             </div>
           </div>
         )}
+      </section>
+
+      <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">Daily digest email</h2>
+        <p className="text-sm text-slate-600">
+          A summary of overdue items and items due today or tomorrow, sent around
+          7:00 each morning in your organization&apos;s timezone. Monday
+          digests also include the weekly due-item summary.
+        </p>
+        <label className="flex cursor-pointer items-start gap-3 rounded border border-slate-200 bg-slate-50 px-3 py-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0"
+            checked={digestEnabled}
+            disabled={digestBusy || saving || testing}
+            onChange={(e) => void handleDigestToggle(e.target.checked)}
+          />
+          <span className="text-sm text-slate-800">
+            <span className="font-medium">Send daily digest emails</span>
+            <span className="mt-0.5 block text-slate-600">
+              {digestEnabled
+                ? "You will receive scheduled digest emails at your account email."
+                : "Scheduled digest emails are off. You can still send a test below."}
+            </span>
+          </span>
+        </label>
       </section>
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">

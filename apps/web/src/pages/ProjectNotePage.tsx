@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { AuditHistory } from "../components/AuditHistory";
 import {
   ArrowLeft,
   Ellipsis,
@@ -1250,6 +1251,12 @@ export function ProjectNotePage() {
           </div>
         </div>
       ) : null}
+
+      {noteId && (
+        <div className="no-print mx-auto w-full max-w-4xl bg-white p-6 shadow-sm">
+          <AuditHistory entityType="project_note" entityId={noteId} />
+        </div>
+      )}
     </div>
   );
 }

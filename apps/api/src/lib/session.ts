@@ -15,6 +15,7 @@ export type AuthUser = {
   name: string;
   organizationId: string;
   globalRole: "member" | "org_admin";
+  dailyDigestEmailEnabled: boolean;
   org: { id: string; name: string; slug: string };
 };
 
@@ -86,6 +87,7 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
     name: uu.name,
     organizationId: uu.organizationId,
     globalRole: uu.globalRole,
+    dailyDigestEmailEnabled: uu.dailyDigestEmailEnabled,
     org: {
       id: o[0]!.id,
       name: o[0]!.name,

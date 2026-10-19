@@ -74,6 +74,7 @@ async function main() {
       name: "Seed Admin",
       passwordHash: await argon2.hash("password12"),
       globalRole: "org_admin",
+      dailyDigestEmailEnabled: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
