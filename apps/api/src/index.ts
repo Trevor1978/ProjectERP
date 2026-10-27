@@ -16,6 +16,11 @@ import { internalApp } from "./routes/internal.js";
 import { workCompleteApp } from "./routes/workComplete.js";
 import { projectNotesApp } from "./routes/projectNotes.js";
 import { auditApp } from "./routes/audit.js";
+import { serviceTokensApp } from "./routes/serviceTokens.js";
+import {
+  denyServiceAccount,
+  serviceTokenAccessLogMiddleware,
+} from "./lib/serviceTokenMiddleware.js";
 
 const port = Number(process.env.PORT) || 3001;
 const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:5173";
@@ -32,6 +37,7 @@ app.use(
   }),
 );
 app.use("/*", authMiddleware);
+app.use("/*", serviceTokenAccessLogMiddleware);
 app.get("/api/push/config", (c) =>
   c.json({
     enabled: isWebPushConfigured(),
@@ -41,11 +47,12 @@ app.get("/api/push/config", (c) =>
 app.get("/api/health", (c) => c.json({ ok: true, service: "project-erp-api" }));
 app.route("/api/auth", authApp);
 /** Same handler as POST /api/procurement/import-dbf — root path avoids 404 with some nginx / nested-route setups. */
-app.post("/api/bom-dbf-import", handleProcurementImportDbf);
+app.post("/api/bom-dbf-import", denyServiceAccount, handleProcurementImportDbf);
 app.route("/api", workApp);
 app.route("/api", timeApp);
 app.route("/api", procurementApp);
 app.route("/api", procurementAiApp);
+app.route("/api/org", serviceTokensApp);
 app.route("/api", orgApp);
 app.route("/api", extraApp);
 app.route("/api", projectItemsApp);

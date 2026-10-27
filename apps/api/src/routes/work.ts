@@ -43,6 +43,7 @@ import {
   taskDependencyCreate,
 } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
+import { enforceServiceWorkScopes } from "../lib/serviceTokenMiddleware.js";
 import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
 import { syncTaskPercentFromTodos } from "../lib/deriveTaskPercent.js";
@@ -50,10 +51,10 @@ import { resolveTaskEndAt } from "../lib/workDays.js";
 
 const app = new Hono();
 
-app.use("/*", requireAuth);
+app.use("/*", requireAuth, enforceServiceWorkScopes);
 
 async function visibleProjectIds(a: AuthUser): Promise<string[]> {
-  if (a.globalRole === "org_admin") {
+  if (a.accountKind === "service" || a.globalRole === "org_admin") {
     const prows = await db
       .select({ id: project.id })
       .from(project)
@@ -69,7 +70,7 @@ async function visibleProjectIds(a: AuthUser): Promise<string[]> {
 
 app.get("/projects", async (c) => {
   const a = c.get("auth") as AuthUser;
-  if (a.globalRole === "org_admin") {
+  if (a.accountKind === "service" || a.globalRole === "org_admin") {
     const prows = await db
       .select()
       .from(project)
@@ -409,6 +410,7 @@ app.patch("/projects/:projectId", async (c) => {
       and(eq(projectMember.projectId, id), eq(projectMember.userId, a.id)),
     );
   const canEdit =
+    a.accountKind === "service" ||
     a.globalRole === "org_admin" ||
     m[0]?.role === "pm" ||
     m[0]?.role === "admin";
@@ -467,6 +469,7 @@ app.get("/projects/:projectId/schedule", async (c) => {
       and(eq(projectMember.projectId, id), eq(projectMember.userId, a.id)),
     );
   const canEditProject =
+    a.accountKind === "service" ||
     a.globalRole === "org_admin" ||
     mship[0]?.role === "pm" ||
     mship[0]?.role === "admin";
@@ -501,7 +504,7 @@ app.post("/projects/:projectId/members", async (c) => {
   if ("error" in pr) {
     return c.json({ error: pr.error }, pr.status);
   }
-  if (a.globalRole !== "org_admin") {
+  if (a.accountKind !== "service" && a.globalRole !== "org_admin") {
     const m = await db
       .select()
       .from(projectMember)
@@ -555,7 +558,7 @@ app.delete("/projects/:projectId/members/:memberId", async (c) => {
   if ("error" in pr) {
     return c.json({ error: pr.error }, pr.status);
   }
-  if (a.globalRole !== "org_admin") {
+  if (a.accountKind !== "service" && a.globalRole !== "org_admin") {
     const me = await db
       .select()
       .from(projectMember)

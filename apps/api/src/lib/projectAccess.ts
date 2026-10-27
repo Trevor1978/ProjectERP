@@ -18,7 +18,9 @@ export async function getProjectForUser(
       ),
     );
   if (p.length === 0) return null;
-  if (auth.globalRole === "org_admin") return p[0]!;
+  if (auth.globalRole === "org_admin" || auth.accountKind === "service") {
+    return p[0]!;
+  }
 
   const m = await db
     .select()
@@ -49,7 +51,7 @@ export async function canEditProjectDestructive(
   auth: AuthUser,
   projectId: string,
 ): Promise<boolean> {
-  if (auth.globalRole === "org_admin") {
+  if (auth.globalRole === "org_admin" || auth.accountKind === "service") {
     return true;
   }
   const m = await db

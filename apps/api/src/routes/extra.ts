@@ -30,6 +30,7 @@ import {
   assetServiceLogPatch,
 } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
+import { denyServiceAccount } from "../lib/serviceTokenMiddleware.js";
 import { requireProject } from "../lib/projectAccess.js";
 import {
   executeDeleteAsset,
@@ -46,7 +47,7 @@ import { isWebPushConfigured } from "../lib/webPush.js";
 
 const app = new Hono();
 
-app.use("/*", requireAuth);
+app.use("/*", requireAuth, denyServiceAccount);
 
 /* --- Project budget (light financials) --- */
 app.get("/projects/:projectId/budget", async (c) => {

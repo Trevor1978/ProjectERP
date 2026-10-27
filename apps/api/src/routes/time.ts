@@ -10,6 +10,7 @@ import {
 } from "@project-erp/db";
 import { timeEntryCreate, timeEntryPatch } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
+import { denyServiceAccount } from "../lib/serviceTokenMiddleware.js";
 import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
 import {
@@ -18,7 +19,7 @@ import {
 } from "../lib/deleteResource.js";
 
 const app = new Hono();
-app.use("/*", requireAuth);
+app.use("/*", requireAuth, denyServiceAccount);
 
 app.get("/time-entries", async (c) => {
   const a = c.get("auth") as AuthUser;

@@ -27,6 +27,17 @@ type OrgUser = {
   projectCount: number;
 };
 
+type ServiceTokenRow = {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  scopes: string[];
+  expiresAt: string | null;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
 function fieldsFromProfile(p: OrgProfile): ProfileFields {
   return {
     displayName: p.displayName ?? "",
@@ -46,6 +57,17 @@ export function WorkspaceOrganizationPage() {
   const isAdmin = meData?.user?.globalRole === "org_admin";
   const { data, isLoading, error } = useOrgProfile();
   const profile = data?.profile;
+
+  const { data: tokensData, isLoading: tokensLoading } = useQuery({
+    queryKey: ["org-service-tokens"],
+    queryFn: () => api<{ tokens: ServiceTokenRow[] }>("/api/org/service-tokens"),
+    enabled: isAdmin,
+  });
+
+  const [tokenName, setTokenName] = useState("");
+  const [tokenBusy, setTokenBusy] = useState(false);
+  const [newTokenSecret, setNewTokenSecret] = useState<string | null>(null);
+  const [tokenErr, setTokenErr] = useState<string | null>(null);
 
   const { data: usersData, isLoading: usersLoading } = useQuery({
     queryKey: ["org-users"],
@@ -148,6 +170,42 @@ export function WorkspaceOrganizationPage() {
     if (!window.confirm(`Remove "${img.fileName}" from report images?`)) return;
     await api(`/api/org/report-images/${img.id}`, { method: "DELETE", body: "{}" });
     await qc.invalidateQueries({ queryKey: ORG_PROFILE_QUERY_KEY });
+  };
+
+  const createServiceToken = async () => {
+    setTokenErr(null);
+    setNewTokenSecret(null);
+    setTokenBusy(true);
+    try {
+      const res = await api<{ secret: string }>("/api/org/service-tokens", {
+        method: "POST",
+        body: JSON.stringify({
+          name: tokenName.trim(),
+          scopes: ["work:read", "work:write"],
+          expiresInDays: 90,
+        }),
+      });
+      setNewTokenSecret(res.secret);
+      setTokenName("");
+      await qc.invalidateQueries({ queryKey: ["org-service-tokens"] });
+    } catch (e) {
+      setTokenErr(e instanceof Error ? e.message : "Failed to create token");
+    } finally {
+      setTokenBusy(false);
+    }
+  };
+
+  const revokeServiceToken = async (id: string) => {
+    if (!window.confirm("Revoke this token? Automation using it will stop immediately.")) {
+      return;
+    }
+    setTokenErr(null);
+    try {
+      await api(`/api/org/service-tokens/${id}/revoke`, { method: "POST", body: "{}" });
+      await qc.invalidateQueries({ queryKey: ["org-service-tokens"] });
+    } catch (e) {
+      setTokenErr(e instanceof Error ? e.message : "Revoke failed");
+    }
   };
 
   const inviteUser = async () => {
@@ -363,6 +421,72 @@ export function WorkspaceOrganizationPage() {
           </div>
         </div>
       </section>
+
+      {isAdmin && (
+        <section className="mb-8 rounded-lg border border-tesla-border bg-white p-4 shadow-sm">
+          <h2 className="mb-1 text-sm font-semibold text-tesla-text">API tokens</h2>
+          <p className="mb-3 text-xs text-tesla-text-secondary">
+            Scoped bearer tokens for automation (projects, milestones, tasks, todos). The secret is
+            shown once at creation. See docs/SERVICE_API_TOKENS.md in the repo.
+          </p>
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <div className="min-w-[12rem] flex-1">
+              <label className="block text-xs font-medium text-tesla-text-secondary">Label</label>
+              <input
+                className="mt-1 w-full rounded-sm border border-tesla-border px-2 py-1.5 text-sm"
+                value={tokenName}
+                placeholder="Automation bot"
+                onChange={(e) => setTokenName(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              disabled={tokenBusy || !tokenName.trim()}
+              className="rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              onClick={() => void createServiceToken()}
+            >
+              {tokenBusy ? "Creating…" : "Create token"}
+            </button>
+          </div>
+          {newTokenSecret && (
+            <div className="mb-3 rounded-sm border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              <p className="font-medium">Copy this token now — it will not be shown again.</p>
+              <code className="mt-2 block break-all text-xs">{newTokenSecret}</code>
+            </div>
+          )}
+          {tokenErr && <p className="mb-2 text-sm text-red-600">{tokenErr}</p>}
+          {tokensLoading ? (
+            <p className="text-sm text-tesla-text-secondary">Loading tokens…</p>
+          ) : (
+            <ul className="divide-y divide-tesla-border text-sm">
+              {(tokensData?.tokens ?? []).map((t) => (
+                <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <div>
+                    <span className="font-medium">{t.name}</span>
+                    <span className="ml-2 text-xs text-tesla-text-secondary">
+                      {t.tokenPrefix}…
+                      {t.revokedAt ? " · revoked" : ""}
+                      {t.lastUsedAt ? ` · last used ${new Date(t.lastUsedAt).toLocaleString()}` : ""}
+                    </span>
+                  </div>
+                  {!t.revokedAt && (
+                    <button
+                      type="button"
+                      className="text-xs text-red-700 underline"
+                      onClick={() => void revokeServiceToken(t.id)}
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </li>
+              ))}
+              {(tokensData?.tokens ?? []).length === 0 && (
+                <li className="py-2 text-tesla-text-secondary">No tokens yet.</li>
+              )}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="mb-8 rounded-lg border border-tesla-border bg-white p-4 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold text-tesla-text">People</h2>

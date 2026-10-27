@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, asc, and, count, max } from "drizzle-orm";
+import { eq, asc, and, count, max, ne } from "drizzle-orm";
 import argon2 from "argon2";
 import {
   db,
@@ -12,6 +12,7 @@ import {
 import { z } from "zod";
 import { writeAudit } from "../lib/audit.js";
 import { requireAuth, type AuthUser } from "../lib/session.js";
+import { denyServiceAccount } from "../lib/serviceTokenMiddleware.js";
 import {
   deleteReportImageFile,
   isAllowedReportImageMime,
@@ -52,7 +53,7 @@ const imagePatch = z.object({
 });
 
 const app = new Hono();
-app.use("/*", requireAuth);
+app.use("/*", requireAuth, denyServiceAccount);
 
 function requireOrgAdmin(a: AuthUser) {
   return a.globalRole === "org_admin";
@@ -408,7 +409,12 @@ app.get("/org/users", async (c) => {
       createdAt: user.createdAt,
     })
     .from(user)
-    .where(eq(user.organizationId, a.organizationId));
+    .where(
+      and(
+        eq(user.organizationId, a.organizationId),
+        ne(user.accountKind, "service"),
+      ),
+    );
 
   const withCounts = await Promise.all(
     rows.map(async (u) => {

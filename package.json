@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "concurrently -n web,api -c blue,green \"pnpm --filter @project-erp/web dev\" \"pnpm --filter @project-erp/api dev\"",
-    "test": "pnpm run build",
+    "test": "pnpm run build && pnpm --filter @project-erp/api test",
     "test:e2e": "playwright test",
     "test:smoke": "bash scripts/e2e-smoke.sh",
     "test:push": "bash scripts/test-web-push-api.sh",

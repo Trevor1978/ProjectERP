@@ -15,6 +15,7 @@ import {
   projectNotePageCreate,
 } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
+import { denyServiceAccount } from "../lib/serviceTokenMiddleware.js";
 import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
 import {
@@ -28,7 +29,7 @@ import {
 const EMPTY_PAGE = '{"objects":[],"strokes":[]}';
 
 const app = new Hono();
-app.use("/*", requireAuth);
+app.use("/*", requireAuth, denyServiceAccount);
 
 async function visibleProjectIds(a: AuthUser): Promise<string[]> {
   if (a.globalRole === "org_admin") {

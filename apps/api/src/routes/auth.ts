@@ -16,6 +16,7 @@ import {
   type AuthUser,
 } from "../lib/session.js";
 import { writeAudit } from "../lib/audit.js";
+import { denyServiceAccount } from "../lib/serviceTokenMiddleware.js";
 import { verifyDigestUnsubscribeToken } from "../lib/digestUnsubscribe.js";
 import { sendTestDailyDigest } from "../lib/runDigests.js";
 import { sendTestPush } from "../lib/webPush.js";
@@ -28,6 +29,7 @@ function publicUser(
     organizationId: string;
     globalRole: "member" | "org_admin";
     dailyDigestEmailEnabled: boolean;
+    accountKind?: "human" | "service";
   },
   org: AuthUser["org"],
 ) {
@@ -38,6 +40,7 @@ function publicUser(
     organizationId: u.organizationId,
     globalRole: u.globalRole,
     dailyDigestEmailEnabled: u.dailyDigestEmailEnabled,
+    accountKind: u.accountKind ?? "human",
     org,
   };
 }
@@ -54,6 +57,7 @@ function slugify(s: string) {
 const secureFromEnv = () => process.env.NODE_ENV === "production";
 
 export const authApp = new Hono()
+  .use("/*", denyServiceAccount)
   .post("/register", async (c) => {
     const body = registerBody.safeParse(await c.req.json());
     if (!body.success) {
@@ -116,6 +120,9 @@ export const authApp = new Hono()
       return c.json({ error: "Invalid email or password" }, 401);
     }
     const u = rows[0]!;
+    if (u.accountKind === "service") {
+      return c.json({ error: "Invalid email or password" }, 401);
+    }
     const ok = await argon2.verify(u.passwordHash, password);
     if (!ok) {
       return c.json({ error: "Invalid email or password" }, 401);

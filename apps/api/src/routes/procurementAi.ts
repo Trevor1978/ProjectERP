@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { db, project, projectMember, supplier } from "@project-erp/db";
 import { procurementAiConfirm } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
+import { denyServiceAccount } from "../lib/serviceTokenMiddleware.js";
 import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
 import {
@@ -17,7 +18,7 @@ import {
 } from "../lib/applyProcurementDocument.js";
 
 const app = new Hono();
-app.use("/*", requireAuth);
+app.use("/*", requireAuth, denyServiceAccount);
 
 const ALLOWED_MIME = new Set([
   "application/pdf",
