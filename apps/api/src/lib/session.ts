@@ -3,6 +3,12 @@ import { randomBytes } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import { eq, and, gt } from "drizzle-orm";
 import { db, session, user, organization } from "@project-erp/db";
+import {
+  authenticateServiceToken,
+  getBearerToken,
+  isServiceTokenFormat,
+} from "./serviceToken.js";
+import type { ServiceTokenAuth } from "./serviceToken.js";
 
 type UserRow = typeof user.$inferSelect;
 
@@ -16,6 +22,7 @@ export type AuthUser = {
   organizationId: string;
   globalRole: "member" | "org_admin";
   dailyDigestEmailEnabled: boolean;
+  accountKind: "human" | "service";
   org: { id: string; name: string; slug: string };
 };
 
@@ -50,8 +57,28 @@ export function getSessionId(c: Context): string | undefined {
 }
 
 export const authMiddleware: MiddlewareHandler = async (c, next) => {
-  const id = getSessionId(c);
   c.set("auth", null);
+  c.set("serviceToken", null);
+
+  const bearer = getBearerToken(c);
+  if (bearer && isServiceTokenFormat(bearer)) {
+    const result = await authenticateServiceToken(bearer);
+    if ("auth" in result) {
+      c.set("auth", result.auth);
+      c.set("serviceToken", result.serviceToken);
+      await next();
+      return;
+    }
+    if (result.error === "rate_limited") {
+      return c.json({ error: "Too many requests" }, 429);
+    }
+    if (result.error === "expired") {
+      return c.json({ error: "Token expired" }, 401);
+    }
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const id = getSessionId(c);
   if (!id) {
     await next();
     return;
@@ -81,6 +108,10 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
     return;
   }
   const uu = u[0]! as UserRow;
+  if (uu.accountKind === "service") {
+    await next();
+    return;
+  }
   c.set("auth", {
     id: uu.id,
     email: uu.email,
@@ -88,6 +119,7 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
     organizationId: uu.organizationId,
     globalRole: uu.globalRole,
     dailyDigestEmailEnabled: uu.dailyDigestEmailEnabled,
+    accountKind: uu.accountKind,
     org: {
       id: o[0]!.id,
       name: o[0]!.name,
@@ -96,6 +128,8 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
   } satisfies AuthUser);
   await next();
 };
+
+export type { ServiceTokenAuth };
 
 export const requireAuth: MiddlewareHandler = async (c, next) => {
   const a = c.get("auth");

@@ -75,6 +75,7 @@ async function main() {
       passwordHash: await argon2.hash("password12"),
       globalRole: "org_admin",
       dailyDigestEmailEnabled: true,
+      accountKind: "human",
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -93,6 +94,7 @@ async function main() {
       name: `Seed User ${i + 1}`,
       passwordHash: await argon2.hash("password12"),
       globalRole: "member",
+      accountKind: "human",
       createdAt: new Date(),
       updatedAt: new Date(),
     });

@@ -3,12 +3,13 @@ import { and, asc, eq } from "drizzle-orm";
 import { db, projectItem, procurementRequestLine } from "@project-erp/db";
 import { projectItemCreate, projectItemPatch } from "@project-erp/validators";
 import { requireAuth, type AuthUser } from "../lib/session.js";
+import { denyServiceAccount } from "../lib/serviceTokenMiddleware.js";
 import { requireProject } from "../lib/projectAccess.js";
 import { syncProjectItemStatus } from "../lib/syncProjectItemStatus.js";
 import { effectiveOrderedQty } from "../lib/procurementReceipt.js";
 
 const app = new Hono();
-app.use("/*", requireAuth);
+app.use("/*", requireAuth, denyServiceAccount);
 
 function itemSummary(
   item: typeof projectItem.$inferSelect,

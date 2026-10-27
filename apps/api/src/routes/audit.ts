@@ -2,11 +2,12 @@ import { Hono } from "hono";
 import { db, auditLog, user } from "@project-erp/db";
 import { and, eq, desc, gte, lte, or, sql } from "drizzle-orm";
 import { requireAuth, type AuthUser } from "../lib/session.js";
+import { denyServiceAccount } from "../lib/serviceTokenMiddleware.js";
 import { auditEntryDto } from "../lib/auditNormalize.js";
 
 export const auditApp = new Hono();
 
-auditApp.use("/*", requireAuth);
+auditApp.use("/*", requireAuth, denyServiceAccount);
 
 /**
  * GET /api/audit/history

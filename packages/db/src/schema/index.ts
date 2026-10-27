@@ -81,6 +81,11 @@ export const user = pgTable(
     dailyDigestEmailEnabled: boolean("daily_digest_email_enabled")
       .notNull()
       .default(true),
+    accountKind: text("account_kind", {
+      enum: ["human", "service"],
+    })
+      .notNull()
+      .default("human"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -797,6 +802,71 @@ export const assetServiceLog = pgTable(
       .defaultNow(),
   },
   (t) => [index("asl_asset").on(t.assetId)],
+);
+
+export const apiAccessToken = pgTable(
+  "api_access_token",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    serviceUserId: text("service_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    tokenPrefix: text("token_prefix").notNull(),
+    /** JSON array of scope strings, e.g. ["work:read","work:write"] */
+    scopes: text("scopes").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdById: text("created_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("api_access_token_hash_idx").on(t.tokenHash),
+    index("api_access_token_org_idx").on(t.organizationId),
+    index("api_access_token_service_user_idx").on(t.serviceUserId),
+  ],
+);
+
+export const apiAccessLog = pgTable(
+  "api_access_log",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    tokenId: text("token_id")
+      .notNull()
+      .references(() => apiAccessToken.id, { onDelete: "cascade" }),
+    serviceUserId: text("service_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    method: text("method").notNull(),
+    path: text("path").notNull(),
+    statusCode: integer("status_code").notNull(),
+    entityType: text("entity_type"),
+    entityId: text("entity_id"),
+    sourceIp: text("source_ip"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("api_access_log_org_created_idx").on(t.organizationId, t.createdAt),
+    index("api_access_log_token_idx").on(t.tokenId),
+  ],
 );
 
 export const auditLog = pgTable(
