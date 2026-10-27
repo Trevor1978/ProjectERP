@@ -23,8 +23,10 @@ type Task = {
   useDerivedPercent: boolean;
   orderIndex: number;
   assigneeId: string | null;
+  assetId: string | null;
   version: number;
 };
+type Asset = { id: string; name: string };
 type Todo = {
   id: string;
   taskId: string;
@@ -72,6 +74,10 @@ export function WorkspaceTaskDetailPage() {
     queryKey: ["org-users"],
     queryFn: () => api<{ users: OrgUser[] }>("/api/org/users"),
   });
+  const { data: assetsData } = useQuery({
+    queryKey: ["assets"],
+    queryFn: () => api<{ assets: Asset[] }>("/api/assets"),
+  });
 
   const task = tasksData?.tasks.find((t: Task) => t.id === taskId);
   const milestone = msData?.milestones.find((m: Milestone) => m.id === task?.milestoneId);
@@ -88,6 +94,7 @@ export function WorkspaceTaskDetailPage() {
     return iso ? isoToLocal(iso) : "";
   }, [startAt, estDays]);
   const [orderIndex, setOrderIndex] = useState("0");
+  const [assetId, setAssetId] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [newTodoTitle, setNewTodoTitle] = useState("");
@@ -107,7 +114,10 @@ export function WorkspaceTaskDetailPage() {
     setStartAt(isoToLocal(task.startAt));
     setEstDays(task.estDays == null ? "" : String(task.estDays));
     setOrderIndex(String(task.orderIndex));
+    setAssetId(task.assetId ?? "");
   }, [task]);
+
+  const assets = assetsData?.assets ?? [];
 
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ["tasks-all"] });
@@ -186,6 +196,24 @@ export function WorkspaceTaskDetailPage() {
           <label className="block text-sm font-medium">Order</label>
           <input type="number" className="mt-1 w-full max-w-xs rounded border px-2 py-1.5" value={orderIndex} onChange={(e) => setOrderIndex(e.target.value)} />
         </div>
+        <div>
+          <label className="block text-sm font-medium">Machine</label>
+          <select
+            className="mt-1 w-full max-w-md rounded border px-2 py-1.5"
+            value={assetId}
+            onChange={(e) => setAssetId(e.target.value)}
+          >
+            <option value="">(none)</option>
+            {assets.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-500">
+            Todos on this task inherit this machine unless they specify their own.
+          </p>
+        </div>
         <button
           type="button"
           disabled={saving || !title.trim()}
@@ -201,6 +229,7 @@ export function WorkspaceTaskDetailPage() {
                 startAt: localToIso(startAt),
                 estDays: estDays.trim() ? Number(estDays) : null,
                 orderIndex: Number(orderIndex) || 0,
+                assetId: assetId || null,
                 version: task.version,
               }),
             })

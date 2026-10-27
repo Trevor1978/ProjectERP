@@ -11,6 +11,7 @@ import {
   task,
   taskDependency,
   todo,
+  asset,
 } from "@project-erp/db";
 import {
   executeDeleteClient,
@@ -48,6 +49,8 @@ import { requireProject } from "../lib/projectAccess.js";
 import { writeAudit } from "../lib/audit.js";
 import { syncTaskPercentFromTodos } from "../lib/deriveTaskPercent.js";
 import { resolveTaskEndAt } from "../lib/workDays.js";
+import { listOutstandingWorkForAsset } from "../lib/assetOutstandingWork.js";
+import { requireOrgAsset } from "../lib/workAsset.js";
 
 const app = new Hono();
 
@@ -201,6 +204,33 @@ app.get("/todos", async (c) => {
     .where(inArray(todo.taskId, tids))
     .orderBy(asc(todo.orderIndex), asc(todo.createdAt));
   return c.json({ todos: rows });
+});
+
+/** Minimal machine list for linking work items (service tokens: id + name only). */
+app.get("/machines", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const rows = await db
+    .select({ id: asset.id, name: asset.name })
+    .from(asset)
+    .where(eq(asset.organizationId, a.organizationId))
+    .orderBy(asc(asset.name));
+  return c.json({ machines: rows });
+});
+
+app.get("/assets/:assetId/outstanding-work", async (c) => {
+  const a = c.get("auth") as AuthUser;
+  const assetId = c.req.param("assetId");
+  const ok = await requireOrgAsset(a, assetId);
+  if (!ok.ok) {
+    return c.json({ error: ok.error }, ok.status);
+  }
+  const pids = await visibleProjectIds(a);
+  const work = await listOutstandingWorkForAsset(
+    a.organizationId,
+    assetId,
+    pids,
+  );
+  return c.json(work);
 });
 
 app.post("/clients", async (c) => {
@@ -691,6 +721,12 @@ app.post("/tasks", async (c) => {
   if (m[0]!.projectId !== p.data.projectId) {
     return c.json({ error: "Milestone not in project" }, 400);
   }
+  if (p.data.assetId) {
+    const assetOk = await requireOrgAsset(a, p.data.assetId);
+    if (!assetOk.ok) {
+      return c.json({ error: assetOk.error }, assetOk.status);
+    }
+  }
   const startAt = p.data.startAt ?? null;
   const estDays = p.data.estDays ?? null;
   const endAt = resolveTaskEndAt(startAt, estDays);
@@ -709,6 +745,7 @@ app.post("/tasks", async (c) => {
       useDerivedPercent: p.data.useDerivedPercent,
       orderIndex: p.data.orderIndex,
       assigneeId: p.data.assigneeId ?? null,
+      assetId: p.data.assetId ?? null,
     })
     .returning();
   if (p.data.useDerivedPercent) {
@@ -753,6 +790,12 @@ app.patch("/tasks/:id", async (c) => {
       return c.json({ error: "Milestone not in project" }, 400);
     }
   }
+  if (p.data.assetId) {
+    const assetOk = await requireOrgAsset(a, p.data.assetId);
+    if (!assetOk.ok) {
+      return c.json({ error: assetOk.error }, assetOk.status);
+    }
+  }
   const startAt =
     p.data.startAt === undefined ? cur[0]!.startAt : p.data.startAt;
   const estDays =
@@ -784,6 +827,8 @@ app.patch("/tasks/:id", async (c) => {
         p.data.assigneeId === undefined
           ? cur[0]!.assigneeId
           : p.data.assigneeId,
+      assetId:
+        p.data.assetId === undefined ? cur[0]!.assetId : p.data.assetId,
       version: (cur[0]!.version ?? 0) + 1,
       updatedAt: new Date(),
     })
@@ -824,6 +869,9 @@ app.patch("/tasks/:id", async (c) => {
   }
   if (p.data.assigneeId !== undefined && p.data.assigneeId !== before.assigneeId) {
     diff.assigneeId = { before: before.assigneeId, after: p.data.assigneeId };
+  }
+  if (p.data.assetId !== undefined && p.data.assetId !== before.assetId) {
+    diff.assetId = { before: before.assetId, after: p.data.assetId };
   }
   
   if (Object.keys(diff).length > 0) {
@@ -930,6 +978,12 @@ app.post("/todos", async (c) => {
   if ("error" in pr) {
     return c.json({ error: pr.error }, pr.status);
   }
+  if (p.data.assetId) {
+    const assetOk = await requireOrgAsset(a, p.data.assetId);
+    if (!assetOk.ok) {
+      return c.json({ error: assetOk.error }, assetOk.status);
+    }
+  }
   const [row] = await db
     .insert(todo)
     .values({
@@ -942,6 +996,7 @@ app.post("/todos", async (c) => {
       orderIndex: p.data.orderIndex,
       assigneeId:
         p.data.assigneeId === undefined ? a.id : p.data.assigneeId,
+      assetId: p.data.assetId ?? null,
     })
     .returning();
   await syncTaskPercentFromTodos(t[0]!.id);
@@ -974,6 +1029,12 @@ app.patch("/todos/:id", async (c) => {
   if (p.data.version !== undefined && p.data.version !== cur[0]!.version) {
     return c.json({ error: "Version conflict" }, 409);
   }
+  if (p.data.assetId) {
+    const assetOk = await requireOrgAsset(a, p.data.assetId);
+    if (!assetOk.ok) {
+      return c.json({ error: assetOk.error }, assetOk.status);
+    }
+  }
   const [row] = await db
     .update(todo)
     .set({
@@ -990,6 +1051,8 @@ app.patch("/todos/:id", async (c) => {
         p.data.assigneeId === undefined
           ? cur[0]!.assigneeId
           : p.data.assigneeId,
+      assetId:
+        p.data.assetId === undefined ? cur[0]!.assetId : p.data.assetId,
       version: (cur[0]!.version ?? 0) + 1,
       updatedAt: new Date(),
     })
@@ -1019,6 +1082,9 @@ app.patch("/todos/:id", async (c) => {
   }
   if (p.data.assigneeId !== undefined && p.data.assigneeId !== before.assigneeId) {
     diff.assigneeId = { before: before.assigneeId, after: p.data.assigneeId };
+  }
+  if (p.data.assetId !== undefined && p.data.assetId !== before.assetId) {
+    diff.assetId = { before: before.assetId, after: p.data.assetId };
   }
   
   if (Object.keys(diff).length > 0) {
