@@ -1,0 +1,16 @@
+{
+  "name": "Project ERP",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/db-up.sh",
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "export DATABASE_URL=\"postgres://projecterp:projecterp@127.0.0.1:15432/projecterp\" SAP_ECHO_MODE=true PORT=3001 && pnpm dev",
+      "description": "Runs the API (Hono on :3001) and web (Vite on :5173) dev servers via `pnpm dev`."
+    }
+  ],
+  "ports": [
+    { "name": "web", "port": 5173 },
+    { "name": "api", "port": 3001 }
+  ]
+}
