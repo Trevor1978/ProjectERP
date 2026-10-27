@@ -253,6 +253,9 @@ export const task = pgTable(
     assigneeId: text("assignee_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    assetId: text("asset_id").references(() => asset.id, {
+      onDelete: "set null",
+    }),
     version: integer("version").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -261,7 +264,10 @@ export const task = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("task_project").on(t.projectId)],
+  (t) => [
+    index("task_project").on(t.projectId),
+    index("task_asset").on(t.assetId),
+  ],
 );
 
 export const taskDependency = pgTable(
@@ -313,6 +319,9 @@ export const todo = pgTable(
     assigneeId: text("assignee_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    assetId: text("asset_id").references(() => asset.id, {
+      onDelete: "set null",
+    }),
     version: integer("version").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -321,7 +330,10 @@ export const todo = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("todo_task").on(t.taskId)],
+  (t) => [
+    index("todo_task").on(t.taskId),
+    index("todo_asset").on(t.assetId),
+  ],
 );
 
 export const timeEntry = pgTable("time_entry", {

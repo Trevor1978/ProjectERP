@@ -6,8 +6,8 @@ Scoped bearer tokens let automation (e.g. an assistant acting on an org admin’
 
 | Scope | Allows |
 |--------|--------|
-| `work:read` | `GET` on projects, milestones, tasks, todos, project members, schedules, delete-previews |
-| `work:write` | `work:read` plus `POST` / `PATCH` / `DELETE` on those resources, task dependencies, and project membership |
+| `work:read` | `GET` on projects, milestones, tasks, todos, project members, schedules, delete-previews, `GET /api/machines` (id + name only), `GET /api/assets/:id/outstanding-work` |
+| `work:write` | `work:read` plus `POST` / `PATCH` / `DELETE` on those resources, task dependencies, and project membership. Task/todo bodies may include optional `assetId` (machine) when creating or updating work items. |
 
 Tokens **cannot** access auth, org user management, procurement, time, notes, audit history, or other admin routes.
 
@@ -60,6 +60,24 @@ curl -sS 'https://projecterp-test.pureautomation.com.au/api/projects' \
   -H 'Authorization: Bearer pe_at_REPLACE_WITH_YOUR_TOKEN'
 ```
 
+Link a todo to a machine and list outstanding work on that machine:
+
+```bash
+# Set machine on a todo (inherits from task when assetId omitted or null on the todo)
+curl -sS -X PATCH 'https://projecterp-test.pureautomation.com.au/api/todos/TODO_ID' \
+  -H 'Authorization: Bearer pe_at_REPLACE_WITH_YOUR_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"assetId":"ASSET_ID","version":0}'
+
+# Outstanding tasks (incomplete, direct machine link) and todos (not done/cancelled)
+curl -sS 'https://projecterp-test.pureautomation.com.au/api/assets/ASSET_ID/outstanding-work' \
+  -H 'Authorization: Bearer pe_at_REPLACE_WITH_YOUR_TOKEN'
+
+# Minimal machine list for linking (id + name; no create/update)
+curl -sS 'https://projecterp-test.pureautomation.com.au/api/machines' \
+  -H 'Authorization: Bearer pe_at_REPLACE_WITH_YOUR_TOKEN'
+```
+
 ## Rotation and revocation
 
 - **Revoke:** `POST /api/org/service-tokens/:id/revoke` (org admin, session auth).
@@ -72,7 +90,7 @@ curl -sS 'https://projecterp-test.pureautomation.com.au/api/projects' \
 
 ## Database migration
 
-Deploy includes migration `0019_service_api_tokens.sql` (`user.account_kind`, `api_access_token`, `api_access_log`). Run `pnpm db:migrate` (see `scripts/deploy-production.sh`).
+Deploy includes migration `0019_service_api_tokens.sql` (`user.account_kind`, `api_access_token`, `api_access_log`) and `0020_task_todo_asset.sql` (optional `task.asset_id` / `todo.asset_id` machine links). Run `pnpm db:migrate` (see `scripts/deploy-production.sh`).
 
 ## Deploy: test vs live
 

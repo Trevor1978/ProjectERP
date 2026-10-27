@@ -54,6 +54,8 @@ export function serviceTokenAllowsWorkRoute(
     /^\/api\/milestones\/[^/]+\/delete-preview$/,
     /^\/api\/tasks\/[^/]+\/delete-preview$/,
     /^\/api\/todos\/[^/]+\/delete-preview$/,
+    /^\/api\/machines$/,
+    /^\/api\/assets\/[^/]+\/outstanding-work$/,
   ];
 
   const writePatterns: RegExp[] = [
@@ -103,6 +105,7 @@ export function inferAccessLogEntity(path: string): {
     { re: /^\/api\/tasks\/([^/]+)/, type: "task", idGroup: 1 },
     { re: /^\/api\/todos\/([^/]+)/, type: "todo", idGroup: 1 },
     { re: /^\/api\/task-dependencies\/([^/]+)/, type: "task_dependency", idGroup: 1 },
+    { re: /^\/api\/assets\/([^/]+)\/outstanding-work/, type: "asset", idGroup: 1 },
   ];
   for (const rule of rules) {
     const m = p.match(rule.re);
