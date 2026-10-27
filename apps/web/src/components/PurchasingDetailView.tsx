@@ -10,6 +10,8 @@ import { useDebouncedPatch } from "../hooks/useDebouncedPatch";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
 import { Link } from "react-router-dom";
 import { QuickCreateSelect } from "./QuickCreateSelect";
+import { useIsCompactTable } from "../hooks/useMediaQuery";
+import { BottomSheet } from "./BottomSheet";
 import type { Procurement, ProcurementLine } from "../workspace/purchasingTypes";
 import type { OrgProfile } from "../workspace/orgProfileTypes";
 import { PROC_STATUS } from "../workspace/purchasingTypes";
@@ -32,6 +34,7 @@ function PurchasingDetailLineRow({
   fullyReceivedOverride,
   onLineSaved,
   onRemoved,
+  stacked = false,
 }: {
   line: ProcurementLine;
   procStatus: Procurement["status"];
@@ -39,6 +42,7 @@ function PurchasingDetailLineRow({
   fullyReceivedOverride: boolean;
   onLineSaved: (line: ProcurementLine) => void;
   onRemoved: (lineId: string) => void;
+  stacked?: boolean;
 }) {
   const [partNumber, setPartNumber] = useState(line.partNumber ?? "");
   const [description, setDescription] = useState(line.description);
@@ -110,9 +114,16 @@ function PurchasingDetailLineRow({
     { needBy, fullyReceivedOverride, procStatus },
   );
 
+  const cellClass = stacked ? "block w-full py-2" : "py-1 pr-2";
+  const fieldLabel = (text: string) =>
+    stacked ? (
+      <span className="mb-1 block text-xs font-medium text-tesla-text-secondary">{text}</span>
+    ) : null;
+
   return (
-    <tr className={`border-b align-top ${rowClass}`}>
-      <td className="py-1 pr-2">
+    <tr className={`border-b align-top ${rowClass} ${stacked ? "block rounded-lg border border-tesla-border p-3 shadow-sm" : ""}`}>
+      <td className={cellClass}>
+        {fieldLabel("Part #")}
         <input
           className="w-full min-w-[6rem] rounded border border-tesla-border px-2 py-1"
           value={partNumber}
@@ -120,7 +131,8 @@ function PurchasingDetailLineRow({
           placeholder="Part #"
         />
       </td>
-      <td className="py-1 pr-2">
+      <td className={cellClass}>
+        {fieldLabel("Description")}
         {err && <p className="mb-1 text-xs text-red-600">{err}</p>}
         <textarea
           className="w-full min-w-[12rem] rounded border border-tesla-border px-2 py-1"
@@ -129,7 +141,8 @@ function PurchasingDetailLineRow({
           onChange={(e) => setDescription(e.target.value)}
         />
       </td>
-      <td className="py-1 pr-2">
+      <td className={cellClass}>
+        {fieldLabel("Project")}
         <QuickCreateSelect
           entity="project"
           value={projectId}
@@ -137,36 +150,44 @@ function PurchasingDetailLineRow({
           className="w-full min-w-[8rem] rounded border border-tesla-border px-2 py-1"
         />
       </td>
-      <td className="py-1 pr-2">
+      <td className={cellClass}>
+        {fieldLabel("Est unit price")}
         <input
           type="number"
-          className="w-24 rounded border border-tesla-border px-2 py-1"
+          className={`rounded border border-tesla-border px-2 py-1 ${stacked ? "w-full" : "w-24"}`}
           value={estUnitPrice}
           onChange={(e) => setEstUnitPrice(e.target.value)}
         />
       </td>
-      <td className="py-1 pr-2">
-        <input className="w-20 rounded border border-tesla-border px-2 py-1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-      </td>
-      <td className="py-1 pr-2">
+      <td className={cellClass}>
+        {fieldLabel("Qty")}
         <input
-          className="w-20 rounded border border-tesla-border px-2 py-1 tabular-nums"
+          className={`rounded border border-tesla-border px-2 py-1 ${stacked ? "w-full" : "w-20"}`}
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+        />
+      </td>
+      <td className={cellClass}>
+        {fieldLabel("Ordered")}
+        <input
+          className={`rounded border border-tesla-border px-2 py-1 tabular-nums ${stacked ? "w-full" : "w-20"}`}
           value={orderedQty}
           onChange={(e) => setOrderedQty(e.target.value)}
           placeholder="—"
         />
       </td>
-      <td className="py-1 pr-2">
+      <td className={cellClass}>
+        {fieldLabel("Received")}
         <input
           type="number"
           min={0}
           step={1}
-          className="w-20 rounded border border-tesla-border px-2 py-1"
+          className={`rounded border border-tesla-border px-2 py-1 ${stacked ? "w-full" : "w-20"}`}
           value={receivedQty}
           onChange={(e) => setReceivedQty(e.target.value)}
         />
       </td>
-      <td className="py-1 whitespace-nowrap">
+      <td className={stacked ? "block w-full pt-2" : "py-1 whitespace-nowrap"}>
         <button
           type="button"
           className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-50"
@@ -244,6 +265,8 @@ export function PurchasingDetailView({
   const [fullyReceivedOverride, setFullyReceivedOverride] = useState(row.fullyReceivedOverride ?? false);
   const [lineAdding, setLineAdding] = useState(false);
   const [lineErr, setLineErr] = useState<string | null>(null);
+  const [addLineOpen, setAddLineOpen] = useState(false);
+  const isCompact = useIsCompactTable();
 
   const supplier = suppliers.find((s) => s.id === row.supplierId);
   const totals = useMemo(() => calcProcurementTotals(lines), [lines]);
@@ -332,7 +355,11 @@ export function PurchasingDetailView({
     setNewOrder(lines.length ? String(Math.max(...lines.map((l) => l.orderIndex)) + 1) : "0");
   }, [lines]);
   useEffect(() => {
-    if (projects.length && !projects.some((p) => p.id === newProjectId)) {
+    if (!newProjectId && projects[0]?.id) {
+      setNewProjectId(projects[0].id);
+      return;
+    }
+    if (projects.length && newProjectId && !projects.some((p) => p.id === newProjectId)) {
       setNewProjectId(projects[0]!.id);
     }
   }, [projects, newProjectId]);
@@ -385,6 +412,113 @@ export function PurchasingDetailView({
     setNewDesc(item.description);
     setNewQty(item.quantity);
   }
+
+  function resetNewLineFields() {
+    setNewPart("");
+    setNewDesc("");
+    setNewQty("1");
+    setNewOrderedQty("");
+    setNewEst("");
+    setNewReceivedQty("0");
+    setNewProjectItemId("");
+  }
+
+  function submitAddLine() {
+    setLineErr(null);
+    setLineAdding(true);
+    void api<{ line: ProcurementLine }>("/api/procurement-lines", {
+      method: "POST",
+      body: JSON.stringify({
+        procurementId: row.id,
+        projectId: newProjectId,
+        projectItemId: newProjectItemId || null,
+        createProjectItem: !newProjectItemId,
+        partNumber: newPart.trim() || null,
+        description: newDesc.trim(),
+        quantity: newQty || "1",
+        orderedQty: newOrderedQty.trim() || null,
+        estUnitPrice: newEst.trim() ? Number(newEst) : null,
+        orderIndex: Number(newOrder) || 0,
+        receivedQty: Math.max(0, Math.trunc(Number(newReceivedQty) || 0)),
+      }),
+    })
+      .then((res) => {
+        resetNewLineFields();
+        onLineAdded(res.line);
+        setAddLineOpen(false);
+      })
+      .catch((e: Error) => setLineErr(e.message))
+      .finally(() => setLineAdding(false));
+  }
+
+  const addLineFields = (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div>
+        <label className="block text-xs font-medium text-tesla-text-secondary">Project</label>
+        <QuickCreateSelect
+          entity="project"
+          value={newProjectId}
+          onChange={setNewProjectId}
+          className="w-full rounded-sm border border-tesla-border px-2 py-1"
+        />
+      </div>
+      <div className="sm:col-span-2 lg:col-span-3">
+        <label htmlFor="link-project-item" className="block text-xs font-medium text-tesla-text-secondary">
+          Link to project item (optional)
+        </label>
+        <select
+          id="link-project-item"
+          className="w-full rounded-sm border border-tesla-border px-2 py-1"
+          value={newProjectItemId}
+          onChange={(e) => applyProjectItem(e.target.value)}
+        >
+          <option value="">New line — create project item automatically</option>
+          {projectItemsForAdd.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.partNumber ? `${i.partNumber} · ` : ""}
+              {i.description} ({projectItemStatusLabel(i.status)}, qty {i.quantity})
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-tesla-text-secondary">Part #</label>
+        <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newPart} onChange={(e) => setNewPart(e.target.value)} />
+      </div>
+      <div className="sm:col-span-2 lg:col-span-3">
+        <label className="block text-xs font-medium text-tesla-text-secondary">Description</label>
+        <textarea className="w-full rounded-sm border border-tesla-border px-2 py-1" rows={2} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-tesla-text-secondary">Qty</label>
+        <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-tesla-text-secondary">Ordered</label>
+        <input
+          className="w-full rounded-sm border border-tesla-border px-2 py-1"
+          value={newOrderedQty}
+          onChange={(e) => setNewOrderedQty(e.target.value)}
+          placeholder="Optional"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-tesla-text-secondary">Est unit price</label>
+        <input type="number" className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newEst} onChange={(e) => setNewEst(e.target.value)} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-tesla-text-secondary">Received</label>
+        <input
+          type="number"
+          min={0}
+          step={1}
+          className="w-full rounded-sm border border-tesla-border px-2 py-1"
+          value={newReceivedQty}
+          onChange={(e) => setNewReceivedQty(e.target.value)}
+        />
+      </div>
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-6xl rounded-lg border border-tesla-border bg-white p-4 shadow-sm">
@@ -540,8 +674,14 @@ export function PurchasingDetailView({
         Changes save automatically. Green = received, amber = partial, red = overdue. Use{" "}
         <strong>RFQ / PO report</strong> above to open the order in a new tab (Print → Save as PDF when ready).
       </p>
-      <div className="mb-4 overflow-x-auto rounded-sm border border-tesla-border">
-        <table className="w-full min-w-[42rem] border-collapse text-sm">
+      <div
+        className={
+          isCompact
+            ? "mb-4 space-y-3 [&_table]:block [&_tbody]:block [&_thead]:hidden"
+            : "mb-4 overflow-x-auto rounded-sm border border-tesla-border"
+        }
+      >
+        <table className={`w-full border-collapse text-sm ${isCompact ? "" : "min-w-[42rem]"}`}>
           <thead>
             <tr className="border-b bg-tesla-muted text-left">
               <th className="px-2 py-2 font-medium">Part #</th>
@@ -556,8 +696,8 @@ export function PurchasingDetailView({
           </thead>
           <tbody>
             {lines.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-2 py-3 text-tesla-text-secondary">
+              <tr className={isCompact ? "block rounded-lg border border-dashed border-tesla-border p-3 text-tesla-text-secondary" : ""}>
+                <td colSpan={8} className={isCompact ? "block" : "px-2 py-3 text-tesla-text-secondary"}>
                   No lines yet — add one below.
                 </td>
               </tr>
@@ -571,6 +711,7 @@ export function PurchasingDetailView({
                   fullyReceivedOverride={fullyReceivedOverride}
                   onLineSaved={onLineSaved}
                   onRemoved={onLineRemoved}
+                  stacked={isCompact}
                 />
               ))
             )}
@@ -579,114 +720,45 @@ export function PurchasingDetailView({
       </div>
 
       {lineErr && <p className="mb-2 text-sm text-red-600">{lineErr}</p>}
-      <div className="rounded-sm border border-dashed border-tesla-border bg-tesla-muted/30 p-3">
-        <p className="mb-2 text-sm font-medium text-tesla-text">Add line</p>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label className="block text-xs font-medium text-tesla-text-secondary">Project</label>
-            <QuickCreateSelect
-              entity="project"
-              value={newProjectId}
-              onChange={setNewProjectId}
-              className="w-full rounded-sm border border-tesla-border px-2 py-1"
-            />
-          </div>
-          <div className="sm:col-span-2 lg:col-span-3">
-            <label htmlFor="link-project-item" className="block text-xs font-medium text-tesla-text-secondary">
-              Link to project item (optional)
-            </label>
-            <select
-              id="link-project-item"
-              className="w-full rounded-sm border border-tesla-border px-2 py-1"
-              value={newProjectItemId}
-              onChange={(e) => applyProjectItem(e.target.value)}
-            >
-              <option value="">New line — create project item automatically</option>
-              {projectItemsForAdd.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.partNumber ? `${i.partNumber} · ` : ""}
-                  {i.description} ({projectItemStatusLabel(i.status)}, qty {i.quantity})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-tesla-text-secondary">Part #</label>
-            <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newPart} onChange={(e) => setNewPart(e.target.value)} />
-          </div>
-          <div className="sm:col-span-2 lg:col-span-3">
-            <label className="block text-xs font-medium text-tesla-text-secondary">Description</label>
-            <textarea className="w-full rounded-sm border border-tesla-border px-2 py-1" rows={2} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-tesla-text-secondary">Qty</label>
-            <input className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newQty} onChange={(e) => setNewQty(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-tesla-text-secondary">Ordered</label>
-            <input
-              className="w-full rounded-sm border border-tesla-border px-2 py-1"
-              value={newOrderedQty}
-              onChange={(e) => setNewOrderedQty(e.target.value)}
-              placeholder="Optional"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-tesla-text-secondary">Est unit price</label>
-            <input type="number" className="w-full rounded-sm border border-tesla-border px-2 py-1" value={newEst} onChange={(e) => setNewEst(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-tesla-text-secondary">Received</label>
-            <input
-              type="number"
-              min={0}
-              step={1}
-              className="w-full rounded-sm border border-tesla-border px-2 py-1"
-              value={newReceivedQty}
-              onChange={(e) => setNewReceivedQty(e.target.value)}
-            />
-          </div>
+      {isCompact ? (
+        <>
+          <button
+            type="button"
+            data-testid="purchasing-add-line"
+            className="w-full rounded-lg border border-dashed border-tesla-border bg-tesla-muted/50 px-4 py-3 text-sm font-medium text-tesla-text touch-manipulation"
+            onClick={() => setAddLineOpen(true)}
+          >
+            Add line
+          </button>
+          {addLineOpen ? (
+            <BottomSheet title="Add line" onClose={() => setAddLineOpen(false)}>
+              {addLineFields}
+              <button
+                type="button"
+                className="mt-4 w-full rounded-sm bg-tesla-text px-3 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                disabled={lineAdding || !newDesc.trim() || !newProjectId}
+                onClick={submitAddLine}
+              >
+                {lineAdding ? "Adding…" : "Save line"}
+              </button>
+            </BottomSheet>
+          ) : null}
+        </>
+      ) : (
+        <div className="rounded-sm border border-dashed border-tesla-border bg-tesla-muted/30 p-3">
+          <p className="mb-2 text-sm font-medium text-tesla-text">Add line</p>
+          {addLineFields}
+          <button
+            type="button"
+            data-testid="purchasing-add-line"
+            className="mt-2 rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            disabled={lineAdding || !newDesc.trim() || !newProjectId}
+            onClick={submitAddLine}
+          >
+            Add line
+          </button>
         </div>
-        <button
-          type="button"
-          className="mt-2 rounded-sm bg-tesla-text px-3 py-1.5 text-sm text-white disabled:opacity-50"
-          disabled={lineAdding || !newDesc.trim() || !newProjectId}
-          onClick={() => {
-            setLineErr(null);
-            setLineAdding(true);
-            void api<{ line: ProcurementLine }>("/api/procurement-lines", {
-              method: "POST",
-              body: JSON.stringify({
-                procurementId: row.id,
-                projectId: newProjectId,
-                projectItemId: newProjectItemId || null,
-                createProjectItem: !newProjectItemId,
-                partNumber: newPart.trim() || null,
-                description: newDesc.trim(),
-                quantity: newQty || "1",
-                orderedQty: newOrderedQty.trim() || null,
-                estUnitPrice: newEst.trim() ? Number(newEst) : null,
-                orderIndex: Number(newOrder) || 0,
-                receivedQty: Math.max(0, Math.trunc(Number(newReceivedQty) || 0)),
-              }),
-            })
-              .then((res) => {
-                setNewPart("");
-                setNewDesc("");
-                setNewQty("1");
-                setNewOrderedQty("");
-                setNewEst("");
-                setNewReceivedQty("0");
-                setNewProjectItemId("");
-                onLineAdded(res.line);
-              })
-              .catch((e: Error) => setLineErr(e.message))
-              .finally(() => setLineAdding(false));
-          }}
-        >
-          Add line
-        </button>
-      </div>
+      )}
     </div>
   );
 }

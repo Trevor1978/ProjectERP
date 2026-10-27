@@ -33,3 +33,20 @@ export function primaryColumnIndex(layoutKey: string | undefined): number {
   if (!layoutKey) return 0;
   return MOBILE_PRIMARY_COLUMN[layoutKey] ?? 0;
 }
+
+const APPEND_LABELS: Record<string, string> = {
+  customers: "Add customer",
+  suppliers: "Add supplier",
+  projects: "Add project",
+  milestones: "Add milestone",
+  tasks: "Add task",
+  todos: "Add todo",
+  timeEntries: "Add time entry",
+  procurement: "Add purchasing record",
+  procurementLines: "Add line",
+};
+
+export function appendRowButtonLabel(layoutKey: string | undefined): string {
+  if (!layoutKey) return "Add row";
+  return APPEND_LABELS[layoutKey] ?? "Add row";
+}
