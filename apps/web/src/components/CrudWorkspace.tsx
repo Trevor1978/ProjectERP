@@ -18,11 +18,17 @@ import { ColumnFilterInput } from "./ColumnFilterInput";
 import { buildCsvImportHandler } from "../lib/workspaceCsvImport";
 import { EntitySelect, EnumSelect, QuickCreateSelect } from "./QuickCreateSelect";
 import { formatTaskEndIso } from "../lib/workDays";
-import { useIsMobileTable } from "../hooks/useMediaQuery";
 import {
   isColumnHiddenOnTablet,
   primaryColumnIndex,
 } from "../lib/responsiveTableLayout";
+import {
+  StackedList,
+  StackedListRow,
+  StackedListHeading,
+  StackedMetaGrid,
+  StackedMetaItem,
+} from "./StackedDataList";
 
 type Client = { id: string; name: string; code: string | null; version: number };
 type Supplier = {
@@ -1815,7 +1821,7 @@ export function CrudWorkspace({
         />
       )}
       <p className="text-xs text-slate-500">
-        Use the dashed <strong>new row</strong> at the bottom of each table to create records, click a cell to edit inline, or use <strong>Edit</strong> for all fields in a form. Time entries: you can only change your own unless you are an org admin.
+        Each row shows fields in a stacked layout. Use the dashed <strong>new row</strong> at the bottom to create records, edit values in the row, or use <strong>Edit</strong> for the full form. Time entries: you can only change your own unless you are an org admin.
       </p>
 
       {editTarget && (
@@ -2599,7 +2605,6 @@ function FilterSortTable({
   extraToolbar?: ReactNode;
   onFilteredRowsChange?: (rows: TableRow[]) => void;
 }) {
-  const isMobile = useIsMobileTable();
   const primaryCol = primaryColumnIndex(layoutKey);
 
   const columnClass = (idx: number, stickyFirst: boolean) => {
@@ -2724,7 +2729,35 @@ function FilterSortTable({
             ))}
           </select>
         </label>
-        <span className="text-xs text-slate-400">Click column headers to sort</span>
+        <label className="flex items-center gap-1.5 text-sm text-slate-600">
+          <span className="text-xs">Sort by</span>
+          <select
+            className="max-w-[12rem] rounded border px-2 py-1 text-sm"
+            value={sortCol ?? -1}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (v < 0) return;
+              setSortCol(v);
+            }}
+          >
+            <option value={-1} disabled>
+              Column…
+            </option>
+            {dataHeaders.map((h, idx) => (
+              <option key={`sort-${h}-${idx}`} value={idx}>
+                {h}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="rounded border bg-white px-2 py-1 text-xs"
+            onClick={() => setDesc((d) => !d)}
+            title="Toggle sort direction"
+          >
+            {desc ? "↓ Desc" : "↑ Asc"}
+          </button>
+        </label>
         {extraToolbar}
       </div>
       {Object.keys(colFilters).length > 0 && (
@@ -2776,171 +2809,86 @@ function FilterSortTable({
           </button>
         </div>
       )}
-      {isMobile ? (
-        <div className="space-y-3 md:hidden">
-          {paginatedRows.map((r) => (
-            <article
-              key={r.key}
-              className={
-                "rounded-lg border border-slate-200 bg-white p-3 shadow-sm " +
-                (r.rowClassName ?? "")
-              }
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1 text-sm font-medium text-slate-900">
-                  {r.cells[primaryCol] ?? r.cells[0]}
-                </div>
-                <div className="shrink-0">{r.action}</div>
-              </div>
-              <details className="mt-2 text-sm">
-                <summary className="cursor-pointer text-xs font-medium text-blue-700">
-                  More fields
-                </summary>
-                <dl className="mt-2 space-y-2">
-                  {dataHeaders.map((h, idx) => {
-                    if (idx === primaryCol) return null;
-                    return (
-                      <div key={`${r.key}-${idx}`}>
-                        <dt className="text-xs font-medium text-slate-500">{h}</dt>
-                        <dd className="mt-0.5 text-slate-900">{r.cells[idx]}</dd>
-                      </div>
-                    );
-                  })}
-                </dl>
-              </details>
-            </article>
-          ))}
-          {appendRow && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2 text-xs text-slate-600">
-              Use desktop view to add rows inline, or widen the window.
+      <div className="rounded border border-slate-200 bg-white">
+        <div className="grid gap-2 border-b border-slate-200 bg-slate-50 p-2 sm:grid-cols-2 lg:grid-cols-3">
+          {leadingColumn ? (
+            <p className="col-span-full text-xs font-medium text-slate-500">
+              {leadingColumn.label} filters apply in row view below.
+            </p>
+          ) : null}
+          {dataHeaders.map((h, idx) => (
+            <div key={`f-${h}-${idx}`} className="min-w-0">
+              <p className="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                {h}
+              </p>
+              <ColumnFilterInput
+                columnIndex={idx}
+                columnLabel={h}
+                rows={rows}
+                value={colFilterInput[idx] ?? ""}
+                selectedValues={colFilters[idx] ?? []}
+                onChangeValue={(v) =>
+                  setColFilterInput((prev) => ({ ...prev, [idx]: v }))
+                }
+                onAddValue={(v) => {
+                  const trimmed = v.trim();
+                  if (!trimmed) return;
+                  setColFilters((prev) => {
+                    const current = prev[idx] ?? [];
+                    if (
+                      current.some(
+                        (x) => x.trim().toLowerCase() === trimmed.toLowerCase(),
+                      )
+                    ) {
+                      return prev;
+                    }
+                    return { ...prev, [idx]: [...current, trimmed] };
+                  });
+                  setColFilterInput((prev) => ({ ...prev, [idx]: "" }));
+                }}
+              />
             </div>
-          )}
+          ))}
         </div>
-      ) : null}
-
-      <div
-        className={
-          "overflow-hidden rounded border border-slate-200 bg-white " +
-          (isMobile ? "hidden md:block" : "")
-        }
-      >
-        <div className="overflow-x-auto">
-        <table className="w-full min-w-[40rem] table-auto text-sm">
-          <thead className="bg-slate-100 text-left">
-            <tr>
-              {leadingColumn ? (
-                <th scope="col" className="sticky left-0 z-[4] w-10 whitespace-nowrap border-r border-slate-200 bg-slate-100 px-2 py-2 text-left text-xs font-medium text-slate-600">
-                  {leadingColumn.label}
-                </th>
-              ) : null}
-              {dataHeaders.map((h, idx) => (
-                <th
-                  key={`${h}-${idx}`}
-                  scope="col"
-                  className={headerColumnClass(idx, idx === 0)}
-                  aria-sort={sortCol === idx ? (desc ? "descending" : "ascending") : "none"}
-                >
-                  <button
-                    type="button"
-                    className={
-                      "flex w-full min-w-[4.5rem] items-center justify-between gap-1 px-2 py-2 text-left hover:bg-slate-200/90 " +
-                      (sortCol === idx ? "text-slate-900" : "text-slate-700")
-                    }
-                    onClick={() => onHeaderClick(idx)}
-                  >
-                    <span className="whitespace-normal leading-snug">{h}</span>
-                    <span
-                      className={
-                        "inline-flex shrink-0 flex-col items-center justify-center leading-none " +
-                        (sortCol === idx ? "text-slate-900" : "text-slate-400")
-                      }
-                      aria-hidden
-                    >
-                      <span
-                        className={
-                          sortCol === idx && !desc ? "font-semibold" : sortCol === idx ? "opacity-35" : "opacity-45"
-                        }
-                      >
-                        ↑
+        <StackedList>
+          {paginatedRows.map((r) => (
+            <StackedListRow key={r.key} className={r.rowClassName ?? ""}>
+              <StackedListHeading
+                title={
+                  <div className="min-w-0 text-slate-900">
+                    {leadingColumn ? (
+                      <span className="mr-2 inline-block align-middle">
+                        {leadingColumn.renderCell(r)}
                       </span>
-                      <span
-                        className={
-                          "-mt-px " +
-                          (sortCol === idx && desc ? "font-semibold" : sortCol === idx ? "opacity-35" : "opacity-45")
-                        }
-                      >
-                        ↓
-                      </span>
-                    </span>
-                  </button>
-                </th>
-              ))}
-              <th scope="col" className={"p-2 " + stickyActionsTh}>
-                Actions
-              </th>
-            </tr>
-            <tr className="border-t bg-white">
-              {leadingColumn ? <th className="p-1" /> : null}
-              {dataHeaders.map((h, idx) => (
-                <th
-                  key={`f-${h}-${idx}`}
-                  className={
-                    (isColumnHiddenOnTablet(layoutKey, idx) ? "hidden lg:table-cell " : "") +
-                    "p-1 font-normal " +
-                    (idx === 0 ? "sticky left-0 z-[4] bg-white" : "")
-                  }
-                >
-                  <ColumnFilterInput
-                    columnIndex={idx}
-                    columnLabel={h}
-                    rows={rows}
-                    value={colFilterInput[idx] ?? ""}
-                    selectedValues={colFilters[idx] ?? []}
-                    onChangeValue={(v) =>
-                      setColFilterInput((prev) => ({ ...prev, [idx]: v }))
-                    }
-                    onAddValue={(v) => {
-                      const trimmed = v.trim();
-                      if (!trimmed) return;
-                      setColFilters((prev) => {
-                        const current = prev[idx] ?? [];
-                        if (
-                          current.some(
-                            (x) => x.trim().toLowerCase() === trimmed.toLowerCase(),
-                          )
-                        ) {
-                          return prev;
-                        }
-                        return { ...prev, [idx]: [...current, trimmed] };
-                      });
-                      setColFilterInput((prev) => ({ ...prev, [idx]: "" }));
-                    }}
-                  />
-                </th>
-              ))}
-              <th className={"p-1 " + stickyActionsTh} />
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedRows.map((r) => (
-              <tr key={r.key} className={"border-t bg-white " + (r.rowClassName ?? "")}>
-                {leadingColumn ? (
-                  <td className="sticky left-0 z-[3] border-r border-slate-100 bg-inherit p-2 align-top">
-                    {leadingColumn.renderCell(r)}
-                  </td>
-                ) : null}
-                {r.cells.map((c, ci) => (
-                  <td key={ci} className={columnClass(ci, ci === 0)}>
-                    {c}
-                  </td>
-                ))}
-                <td className={stickyActionsTd}>{r.action}</td>
-              </tr>
-            ))}
-            {appendRow}
-          </tbody>
-        </table>
-        </div>
+                    ) : null}
+                    {r.cells[primaryCol] ?? r.cells[0]}
+                  </div>
+                }
+                actions={r.action}
+              />
+              <StackedMetaGrid>
+                {dataHeaders.map((h, idx) => {
+                  if (idx === primaryCol) return null;
+                  return (
+                    <StackedMetaItem key={`${r.key}-meta-${idx}`} label={h}>
+                      {r.cells[idx]}
+                    </StackedMetaItem>
+                  );
+                })}
+              </StackedMetaGrid>
+            </StackedListRow>
+          ))}
+        </StackedList>
+        {appendRow ? (
+          <div className="border-t border-dashed border-slate-300 bg-slate-50/80">
+            <p className="px-3 pt-2 text-xs font-medium text-slate-600">New row</p>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[20rem] text-sm">
+                <tbody>{appendRow}</tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
       {pageSize !== "all" && total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           <span className="text-xs text-slate-600">

@@ -10,6 +10,8 @@ import { AuditHistory } from "../../components/AuditHistory";
 import { useMe } from "../../hooks/useMe";
 import { DeleteConfirmModal } from "../../components/DeleteConfirmModal";
 import { MachineOutstandingWorkList } from "../../components/MachineOutstandingWorkList";
+import { ServiceLogStackedList } from "../../components/ServiceLogStackedList";
+import { StackedListShell } from "../../components/StackedDataList";
 
 type Asset = {
   id: string;
@@ -284,99 +286,63 @@ export function WorkspaceMachineDetailPage() {
       {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
 
       <h3 className="mb-2 text-sm font-semibold text-tesla-text">Service history</h3>
-      <div className="mb-6 overflow-hidden rounded-sm border border-tesla-border">
-        <table className="w-full text-sm">
-          <thead className="bg-tesla-muted text-left">
-            <tr>
-              <th className="px-2 py-2 font-medium">Date</th>
-              <th className="px-2 py-2 font-medium">Title</th>
-              <th className="px-2 py-2 font-medium">Work performed</th>
-              <th className="px-2 py-2 font-medium">Technician</th>
-              <th className="px-2 py-2 font-medium">Reports</th>
-              <th className="px-2 py-2 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-2 py-3 text-tesla-text-secondary">
-                  No service entries yet.
-                </td>
-              </tr>
-            ) : (
-              logs.map((l) => (
-                <tr key={l.id} className="border-t border-tesla-border align-top">
-                  <td className="px-2 py-2 whitespace-nowrap">{new Date(l.performedAt).toLocaleString()}</td>
-                  <td className="px-2 py-2 font-medium">
-                    <Link
-                      to={`/workspace/service-history/${l.id}`}
-                      className="underline-offset-2 hover:underline"
-                    >
-                      {l.title}
-                    </Link>
-                  </td>
-                  <td className="px-2 py-2 text-tesla-text-secondary">{l.description ?? "—"}</td>
-                  <td className="px-2 py-2">{l.technicianName ?? "—"}</td>
-                  <td className="px-2 py-2">
-                    <div className="flex flex-wrap gap-2">
-                      {l.reportMarkdownStorage ? (
-                        <button
-                          type="button"
-                          className="text-blue-700 underline"
-                          onClick={() => {
-                            setDlErr(null);
-                            void downloadServiceReport(l.id, "md", l.version).catch(
-                              (e: Error) => setDlErr(e.message),
-                            );
-                          }}
-                        >
-                          MD
-                        </button>
-                      ) : null}
-                      {l.reportMarkdownStorage ? (
-                        <button
-                          type="button"
-                          className="text-blue-700 underline"
-                          onClick={() => {
-                            setDlErr(null);
-                            void downloadServiceReport(l.id, "pdf", l.version).catch(
-                              (e: Error) => setDlErr(e.message),
-                            );
-                          }}
-                        >
-                          PDF
-                        </button>
-                      ) : null}
-                      {!l.reportMarkdownStorage ? (
-                        <span className="text-tesla-text-secondary">—</span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-2 py-2">
-                    <div className="flex flex-wrap gap-2">
-                      <Link
-                        to={`/workspace/service-history/${l.id}`}
-                        className="text-blue-700 underline"
-                      >
-                        Edit
-                      </Link>
-                      <button
-                        type="button"
-                        className="text-red-700 underline"
-                        onClick={() =>
-                          setDeleteLog({ id: l.id, label: l.title })
-                        }
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <StackedListShell className="mb-6">
+        <ServiceLogStackedList
+          logs={logs}
+          reports={(l) => (
+            <div className="flex flex-wrap gap-2">
+              {l.reportMarkdownStorage ? (
+                <button
+                  type="button"
+                  className="text-blue-700 underline"
+                  onClick={() => {
+                    setDlErr(null);
+                    void downloadServiceReport(l.id, "md", l.version).catch(
+                      (e: Error) => setDlErr(e.message),
+                    );
+                  }}
+                >
+                  MD
+                </button>
+              ) : null}
+              {l.reportMarkdownStorage ? (
+                <button
+                  type="button"
+                  className="text-blue-700 underline"
+                  onClick={() => {
+                    setDlErr(null);
+                    void downloadServiceReport(l.id, "pdf", l.version).catch(
+                      (e: Error) => setDlErr(e.message),
+                    );
+                  }}
+                >
+                  PDF
+                </button>
+              ) : null}
+              {!l.reportMarkdownStorage ? (
+                <span className="text-tesla-text-secondary">—</span>
+              ) : null}
+            </div>
+          )}
+          actions={(l) => (
+            <div className="flex flex-wrap gap-2 text-sm">
+              <Link
+                to={`/workspace/service-history/${l.id}`}
+                className="text-blue-700 underline"
+              >
+                Edit
+              </Link>
+              <button
+                type="button"
+                className="text-red-700 underline"
+                onClick={() => setDeleteLog({ id: l.id, label: l.title })}
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        />
+      </StackedListShell>
 
       <div className="max-w-xl rounded-sm border border-dashed border-tesla-border bg-tesla-muted/30 p-3">
         <p className="mb-2 text-sm font-medium text-tesla-text">Log service work</p>

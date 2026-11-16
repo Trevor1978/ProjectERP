@@ -6,6 +6,13 @@ import { QuickCreateSelect } from "../../components/QuickCreateSelect";
 import { FileDropZone } from "../../components/FileDropZone";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { PROC_STATUS, type Procurement } from "../../workspace/purchasingTypes";
+import {
+  StackedList,
+  StackedListHeading,
+  StackedListRow,
+  StackedMetaField,
+  StackedMetaGrid,
+} from "../../components/StackedDataList";
 
 type ProcStatus = (typeof PROC_STATUS)[number];
 
@@ -625,27 +632,31 @@ export function WorkspacePurchasingAiImportPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-            <table className="w-full min-w-[64rem] border-collapse text-sm">
-              <thead>
-                <tr className="border-b bg-slate-50 text-left">
-                  <th className="px-2 py-2 font-medium">Part #</th>
-                  <th className="px-2 py-2 font-medium">Description</th>
-                  <th className="px-2 py-2 font-medium">Qty</th>
-                  <th className="px-2 py-2 font-medium">Ordered</th>
-                  {isDelivery && (
-                    <th className="px-2 py-2 font-medium">Delivered</th>
-                  )}
-                  <th className="px-2 py-2 font-medium">Unit</th>
-                  <th className="px-2 py-2 font-medium">Price</th>
-                  <th className="px-2 py-2 font-medium">Project</th>
-                  <th className="px-2 py-2 font-medium" />
-                </tr>
-              </thead>
-              <tbody>
-                {draft.lines.map((line, idx) => (
-                  <tr key={idx} className="border-b border-slate-100 align-top">
-                    <td className="p-1.5">
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <StackedList>
+              {draft.lines.map((line, idx) => (
+                <StackedListRow key={idx}>
+                  <StackedListHeading
+                    title={
+                      <span className="text-slate-700">
+                        Line {idx + 1}
+                        {line.description.trim()
+                          ? ` · ${line.description.trim().slice(0, 60)}`
+                          : ""}
+                      </span>
+                    }
+                    actions={
+                      <button
+                        type="button"
+                        className="text-xs text-red-600 hover:underline"
+                        onClick={() => removeLine(idx)}
+                      >
+                        Remove
+                      </button>
+                    }
+                  />
+                  <StackedMetaGrid>
+                    <StackedMetaField label="Part #">
                       <input
                         className={cellInput}
                         value={line.partNumber ?? ""}
@@ -655,33 +666,33 @@ export function WorkspacePurchasingAiImportPage() {
                           })
                         }
                       />
-                    </td>
-                    <td className="p-1.5">
+                    </StackedMetaField>
+                    <StackedMetaField label="Description" className="sm:col-span-2">
                       <input
-                        className={`${cellInput} min-w-[10rem]`}
+                        className={cellInput}
                         value={line.description}
                         onChange={(e) =>
                           patchLine(idx, { description: e.target.value })
                         }
                       />
-                      {updating && (
+                      {updating ? (
                         <p className="mt-0.5 text-xs text-slate-500">
                           {line.matchedLineId ? "Updates existing line" : "New line"}
                         </p>
-                      )}
-                    </td>
-                    <td className="p-1.5">
+                      ) : null}
+                    </StackedMetaField>
+                    <StackedMetaField label="Qty">
                       <input
-                        className={`${cellInput} w-16`}
+                        className={cellInput}
                         value={line.quantity}
                         onChange={(e) =>
                           patchLine(idx, { quantity: e.target.value })
                         }
                       />
-                    </td>
-                    <td className="p-1.5">
+                    </StackedMetaField>
+                    <StackedMetaField label="Ordered">
                       <input
-                        className={`${cellInput} w-16`}
+                        className={cellInput}
                         value={line.orderedQty ?? ""}
                         onChange={(e) =>
                           patchLine(idx, {
@@ -689,11 +700,11 @@ export function WorkspacePurchasingAiImportPage() {
                           })
                         }
                       />
-                    </td>
-                    {isDelivery && (
-                      <td className="p-1.5">
+                    </StackedMetaField>
+                    {isDelivery ? (
+                      <StackedMetaField label="Delivered">
                         <input
-                          className={`${cellInput} w-16`}
+                          className={cellInput}
                           value={line.deliveredQty ?? ""}
                           onChange={(e) =>
                             patchLine(idx, {
@@ -701,20 +712,20 @@ export function WorkspacePurchasingAiImportPage() {
                             })
                           }
                         />
-                      </td>
-                    )}
-                    <td className="p-1.5">
+                      </StackedMetaField>
+                    ) : null}
+                    <StackedMetaField label="Unit">
                       <input
-                        className={`${cellInput} w-14`}
+                        className={cellInput}
                         value={line.unit ?? ""}
                         onChange={(e) =>
                           patchLine(idx, { unit: e.target.value || null })
                         }
                       />
-                    </td>
-                    <td className="p-1.5">
+                    </StackedMetaField>
+                    <StackedMetaField label="Price">
                       <input
-                        className={`${cellInput} w-20`}
+                        className={cellInput}
                         value={line.estUnitPrice ?? ""}
                         onChange={(e) =>
                           patchLine(idx, {
@@ -722,8 +733,8 @@ export function WorkspacePurchasingAiImportPage() {
                           })
                         }
                       />
-                    </td>
-                    <td className="p-1.5 min-w-[10rem]">
+                    </StackedMetaField>
+                    <StackedMetaField label="Project" className="sm:col-span-2">
                       <QuickCreateSelect
                         entity="project"
                         value={line.projectId ?? ""}
@@ -732,23 +743,14 @@ export function WorkspacePurchasingAiImportPage() {
                         }
                         className="w-full rounded border border-slate-200 px-1.5 py-1 text-sm"
                       />
-                      {!line.projectId && (
+                      {!line.projectId ? (
                         <p className="mt-0.5 text-xs text-red-600">Required</p>
-                      )}
-                    </td>
-                    <td className="p-1.5">
-                      <button
-                        type="button"
-                        className="text-xs text-red-600 hover:underline"
-                        onClick={() => removeLine(idx)}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      ) : null}
+                    </StackedMetaField>
+                  </StackedMetaGrid>
+                </StackedListRow>
+              ))}
+            </StackedList>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

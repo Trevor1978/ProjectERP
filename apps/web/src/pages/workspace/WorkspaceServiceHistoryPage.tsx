@@ -5,6 +5,8 @@ import { api } from "../../lib/api";
 import { localToIso } from "../../workspace/workspaceDates";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { DeleteConfirmModal } from "../../components/DeleteConfirmModal";
+import { ServiceLogStackedList } from "../../components/ServiceLogStackedList";
+import { StackedListShell } from "../../components/StackedDataList";
 
 type Asset = { id: string; name: string; site: string };
 type ServiceLog = {
@@ -152,72 +154,30 @@ export function WorkspaceServiceHistoryPage() {
         </button>
       </div>
 
-      {isLoading ? (
-        <p className="text-tesla-text-secondary">Loading…</p>
-      ) : logs.length === 0 ? (
-        <p className="text-tesla-text-secondary">No service history yet.</p>
-      ) : (
-        <div className="overflow-hidden rounded-sm border border-tesla-border">
-          <table className="w-full text-sm">
-            <thead className="bg-tesla-muted text-left">
-              <tr>
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 font-medium">Machine</th>
-                <th className="px-3 py-2 font-medium">Title</th>
-                <th className="px-3 py-2 font-medium">Technician</th>
-                <th className="px-3 py-2 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((l) => (
-                <tr key={l.id} className="border-t border-tesla-border hover:bg-tesla-muted/50">
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {new Date(l.performedAt).toLocaleString()}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Link
-                      to={`/workspace/machines/${l.assetId}`}
-                      className="underline-offset-2 hover:underline"
-                    >
-                      {l.assetName ?? l.assetId}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2">
-                    <Link
-                      to={`/workspace/service-history/${l.id}`}
-                      className="font-medium underline-offset-2 hover:underline"
-                    >
-                      {l.title}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-tesla-text-secondary">
-                    {l.technicianName ?? "—"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-2">
-                      <Link
-                        to={`/workspace/service-history/${l.id}`}
-                        className="text-blue-700 underline"
-                      >
-                        Edit
-                      </Link>
-                      <button
-                        type="button"
-                        className="text-red-700 underline"
-                        onClick={() =>
-                          setDeleteTarget({ id: l.id, label: l.title })
-                        }
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <StackedListShell>
+        <ServiceLogStackedList
+          logs={logs}
+          loading={isLoading}
+          showMachine
+          actions={(l) => (
+            <div className="flex flex-wrap gap-2 text-sm">
+              <Link
+                to={`/workspace/service-history/${l.id}`}
+                className="text-blue-700 underline"
+              >
+                Edit
+              </Link>
+              <button
+                type="button"
+                className="text-red-700 underline"
+                onClick={() => setDeleteTarget({ id: l.id, label: l.title })}
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        />
+      </StackedListShell>
 
       <DeleteConfirmModal
         open={Boolean(deleteTarget)}
