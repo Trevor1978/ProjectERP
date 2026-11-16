@@ -9,6 +9,7 @@ import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { AuditHistory } from "../../components/AuditHistory";
 import { useMe } from "../../hooks/useMe";
 import { DeleteConfirmModal } from "../../components/DeleteConfirmModal";
+import { MachineOutstandingWorkList } from "../../components/MachineOutstandingWorkList";
 
 type Asset = {
   id: string;
@@ -255,92 +256,12 @@ export function WorkspaceMachineDetailPage() {
       <p className="mb-2 text-xs text-tesla-text-secondary">
         Open tasks and todos linked to this machine (todos may inherit the task machine).
       </p>
-      <div className="mb-6 overflow-hidden rounded-sm border border-tesla-border">
-        {outstandingLoading ? (
-          <p className="px-2 py-3 text-sm text-tesla-text-secondary">Loading…</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-tesla-muted text-left">
-              <tr>
-                <th className="px-2 py-2 font-medium">Type</th>
-                <th className="px-2 py-2 font-medium">Title</th>
-                <th className="px-2 py-2 font-medium">Project</th>
-                <th className="px-2 py-2 font-medium">Assignee</th>
-                <th className="px-2 py-2 font-medium">Status</th>
-                <th className="px-2 py-2 font-medium">Due / end</th>
-                <th className="px-2 py-2 font-medium">Link</th>
-              </tr>
-            </thead>
-            <tbody>
-              {outstandingTasks.length === 0 && outstandingTodos.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-2 py-3 text-tesla-text-secondary">
-                    No outstanding tasks or todos on this machine.
-                  </td>
-                </tr>
-              ) : (
-                <>
-                  {outstandingTasks.map((t) => (
-                    <tr key={`task-${t.id}`} className="border-t border-tesla-border align-top">
-                      <td className="px-2 py-2">Task</td>
-                      <td className="px-2 py-2 font-medium">
-                        <Link
-                          to={`/workspace/tasks/${t.id}`}
-                          className="underline-offset-2 hover:underline"
-                        >
-                          {t.title}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-2">
-                        <Link
-                          to={`/workspace/projects/${t.projectId}`}
-                          className="text-blue-700 underline"
-                        >
-                          {t.projectName}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-2">{t.assigneeName ?? "—"}</td>
-                      <td className="px-2 py-2">{Math.round(t.percentComplete)}%</td>
-                      <td className="px-2 py-2 whitespace-nowrap">
-                        {t.endAt ? new Date(t.endAt).toLocaleString() : "—"}
-                      </td>
-                      <td className="px-2 py-2 text-tesla-text-secondary">Task</td>
-                    </tr>
-                  ))}
-                  {outstandingTodos.map((td) => (
-                    <tr key={`todo-${td.id}`} className="border-t border-tesla-border align-top">
-                      <td className="px-2 py-2">Todo</td>
-                      <td className="px-2 py-2 font-medium">
-                        <Link
-                          to={`/workspace/todos/${td.id}`}
-                          className="underline-offset-2 hover:underline"
-                        >
-                          {td.title}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-2">
-                        <Link
-                          to={`/workspace/projects/${td.projectId}`}
-                          className="text-blue-700 underline"
-                        >
-                          {td.projectName}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-2">{td.assigneeName ?? "—"}</td>
-                      <td className="px-2 py-2">{td.status}</td>
-                      <td className="px-2 py-2 whitespace-nowrap">
-                        {td.dueAt ? new Date(td.dueAt).toLocaleString() : "—"}
-                      </td>
-                      <td className="px-2 py-2 text-tesla-text-secondary">
-                        {td.linkSource === "task" ? "Inherited" : "Todo"}
-                      </td>
-                    </tr>
-                  ))}
-                </>
-              )}
-            </tbody>
-          </table>
-        )}
+      <div className="mb-6 overflow-hidden rounded-sm border border-tesla-border bg-white">
+        <MachineOutstandingWorkList
+          tasks={outstandingTasks}
+          todos={outstandingTodos}
+          loading={outstandingLoading}
+        />
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
