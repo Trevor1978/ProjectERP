@@ -6,7 +6,12 @@ import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { AuditHistory } from "../../components/AuditHistory";
 import { isoToLocal, localToIso } from "../../workspace/workspaceDates";
 
-type Task = { id: string; title: string; version: number };
+type Task = {
+  id: string;
+  title: string;
+  assetId: string | null;
+  version: number;
+};
 type Todo = {
   id: string;
   taskId: string;
@@ -17,8 +22,10 @@ type Todo = {
   priority: "low" | "normal" | "high" | "urgent";
   orderIndex: number;
   assigneeId: string | null;
+  assetId: string | null;
   version: number;
 };
+type Asset = { id: string; name: string };
 type OrgUser = { id: string; name: string };
 
 const TODO_STATUS = ["backlog", "in_progress", "blocked", "testing", "done", "cancelled"] as const;
@@ -39,6 +46,10 @@ export function WorkspaceTodoDetailPage() {
     queryKey: ["org-users"],
     queryFn: () => api<{ users: OrgUser[] }>("/api/org/users"),
   });
+  const { data: assetsData } = useQuery({
+    queryKey: ["assets"],
+    queryFn: () => api<{ assets: Asset[] }>("/api/assets"),
+  });
 
   const todo = todosData?.todos.find((t) => t.id === todoId);
   const task = tasksData?.tasks.find((t) => t.id === todo?.taskId);
@@ -50,6 +61,8 @@ export function WorkspaceTodoDetailPage() {
   const [dueAt, setDueAt] = useState("");
   const [orderIndex, setOrderIndex] = useState("0");
   const [assigneeId, setAssigneeId] = useState("");
+  const [machineMode, setMachineMode] = useState<"inherit" | "custom">("inherit");
+  const [assetId, setAssetId] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -62,7 +75,18 @@ export function WorkspaceTodoDetailPage() {
     setDueAt(isoToLocal(todo.dueAt));
     setOrderIndex(String(todo.orderIndex));
     setAssigneeId(todo.assigneeId ?? "");
+    if (todo.assetId) {
+      setMachineMode("custom");
+      setAssetId(todo.assetId);
+    } else {
+      setMachineMode("inherit");
+      setAssetId("");
+    }
   }, [todo]);
+
+  const assets = assetsData?.assets ?? [];
+  const taskMachineName =
+    task?.assetId ? assets.find((a) => a.id === task.assetId)?.name : null;
 
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ["todos-all"] });
@@ -146,6 +170,34 @@ export function WorkspaceTodoDetailPage() {
             ))}
           </select>
         </div>
+        <div>
+          <label className="block text-sm font-medium">Machine</label>
+          <select
+            className="mt-1 w-full rounded border px-2 py-1.5"
+            value={machineMode === "inherit" ? "inherit" : assetId}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "inherit") {
+                setMachineMode("inherit");
+                setAssetId("");
+              } else {
+                setMachineMode("custom");
+                setAssetId(v);
+              }
+            }}
+          >
+            <option value="inherit">
+              {taskMachineName
+                ? `Inherit from task (${taskMachineName})`
+                : "Inherit from task (none)"}
+            </option>
+            {assets.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
           type="button"
           disabled={saving || !title.trim()}
@@ -163,6 +215,7 @@ export function WorkspaceTodoDetailPage() {
                 dueAt: localToIso(dueAt),
                 orderIndex: Number(orderIndex) || 0,
                 assigneeId: assigneeId || null,
+                assetId: machineMode === "inherit" ? null : assetId || null,
                 version: todo.version,
               }),
             })

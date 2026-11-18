@@ -5,6 +5,15 @@ import { api } from "../../lib/api";
 import { useMe } from "../../hooks/useMe";
 import { WorkspaceDetailChrome } from "./WorkspaceDetailChrome";
 import { DeleteConfirmModal } from "../../components/DeleteConfirmModal";
+import {
+  StackedList,
+  StackedListEmpty,
+  StackedListHeading,
+  StackedListRow,
+  StackedMetaGrid,
+  StackedMetaItem,
+  StackedListShell,
+} from "../../components/StackedDataList";
 
 type Asset = {
   id: string;
@@ -151,61 +160,51 @@ export function WorkspaceMachinesPage() {
         </p>
       )}
 
-      {isLoading ? (
-        <p className="text-tesla-text-secondary">Loading…</p>
-      ) : assets.length === 0 ? (
-        <p className="text-tesla-text-secondary">No machines yet.</p>
-      ) : (
-        <div className="overflow-hidden rounded-sm border border-tesla-border">
-          <table className="w-full text-sm">
-            <thead className="bg-tesla-muted text-left">
-              <tr>
-                <th className="px-3 py-2 font-medium">Name</th>
-                <th className="px-3 py-2 font-medium">Customer</th>
-                <th className="px-3 py-2 font-medium">Site</th>
-                <th className="px-3 py-2 font-medium">Line</th>
-                <th className="px-3 py-2 font-medium">Serial</th>
-                {isAdmin ? (
-                  <th className="px-3 py-2 font-medium">Actions</th>
-                ) : null}
-              </tr>
-            </thead>
-            <tbody>
-              {assets.map((a) => (
-                <tr key={a.id} className="border-t border-tesla-border hover:bg-tesla-muted/50">
-                  <td className="px-3 py-2">
+      <StackedListShell>
+        {isLoading ? (
+          <StackedListEmpty>Loading…</StackedListEmpty>
+        ) : assets.length === 0 ? (
+          <StackedListEmpty>No machines yet.</StackedListEmpty>
+        ) : (
+          <StackedList>
+            {assets.map((a) => (
+              <StackedListRow key={a.id}>
+                <StackedListHeading
+                  title={
                     <Link
                       to={`/workspace/machines/${a.id}`}
-                      className="font-medium text-tesla-text underline-offset-2 hover:underline"
+                      className="underline-offset-2 hover:underline"
                     >
                       {a.name}
                     </Link>
-                  </td>
-                  <td className="px-3 py-2 text-tesla-text-secondary">
-                    {clientName(a.clientId)}
-                  </td>
-                  <td className="px-3 py-2 text-tesla-text-secondary">{a.site}</td>
-                  <td className="px-3 py-2 text-tesla-text-secondary">{a.line}</td>
-                  <td className="px-3 py-2 text-tesla-text-secondary">{a.serial ?? "—"}</td>
-                  {isAdmin ? (
-                    <td className="px-3 py-2">
+                  }
+                  actions={
+                    isAdmin ? (
                       <button
                         type="button"
-                        className="text-red-700 underline"
+                        className="text-sm text-red-700 underline"
                         onClick={() =>
                           setDeleteTarget({ id: a.id, label: a.name })
                         }
                       >
                         Delete
                       </button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                    ) : null
+                  }
+                />
+                <StackedMetaGrid>
+                  <StackedMetaItem label="Customer">
+                    {clientName(a.clientId)}
+                  </StackedMetaItem>
+                  <StackedMetaItem label="Site">{a.site}</StackedMetaItem>
+                  <StackedMetaItem label="Line">{a.line}</StackedMetaItem>
+                  <StackedMetaItem label="Serial">{a.serial ?? "—"}</StackedMetaItem>
+                </StackedMetaGrid>
+              </StackedListRow>
+            ))}
+          </StackedList>
+        )}
+      </StackedListShell>
 
       <DeleteConfirmModal
         open={Boolean(deleteTarget)}

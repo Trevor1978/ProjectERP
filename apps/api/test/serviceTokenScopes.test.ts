@@ -26,6 +26,16 @@ assert.equal(writeTodo.requiredScope, "work:write");
 const blockOrg = serviceTokenAllowsWorkRoute("GET", "/api/org/users");
 assert.equal(blockOrg.allowed, false);
 
+const outstandingWork = serviceTokenAllowsWorkRoute(
+  "GET",
+  "/api/assets/machine-1/outstanding-work",
+);
+assert.equal(outstandingWork.allowed, true);
+assert.equal(outstandingWork.requiredScope, "work:read");
+
+const blockAssetCreate = serviceTokenAllowsWorkRoute("POST", "/api/assets");
+assert.equal(blockAssetCreate.allowed, false);
+
 const entity = inferAccessLogEntity("/api/tasks/task-uuid");
 assert.equal(entity.entityType, "task");
 assert.equal(entity.entityId, "task-uuid");

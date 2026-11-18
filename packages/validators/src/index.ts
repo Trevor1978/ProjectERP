@@ -103,6 +103,7 @@ export const taskCreate = z.object({
   useDerivedPercent: z.boolean().default(true),
   orderIndex: z.number().int().min(0).default(0),
   assigneeId: id.nullable().optional(),
+  assetId: id.nullable().optional(),
 });
 
 export const taskPatch = z
@@ -118,6 +119,7 @@ export const taskPatch = z
     useDerivedPercent: z.boolean().optional(),
     orderIndex: z.number().int().min(0).optional(),
     assigneeId: id.nullable().optional(),
+    assetId: id.nullable().optional(),
     version,
   })
   .strict();
@@ -133,6 +135,7 @@ export const todoCreate = z.object({
   priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
   orderIndex: z.number().int().min(0).default(0),
   assigneeId: id.nullable().optional(),
+  assetId: id.nullable().optional(),
 });
 
 export const todoPatch = z
@@ -148,6 +151,7 @@ export const todoPatch = z
       .optional(),
     orderIndex: z.number().int().min(0).optional(),
     assigneeId: id.nullable().optional(),
+    assetId: id.nullable().optional(),
     version,
   })
   .strict();

@@ -8,6 +8,13 @@ import {
   PROJECT_ITEM_STATUSES,
   projectItemStatusLabel,
 } from "../workspace/projectItemTypes";
+import {
+  StackedList,
+  StackedListRow,
+  StackedMetaField,
+  StackedMetaGrid,
+  StackedMetaItem,
+} from "./StackedDataList";
 
 type ItemFilter = "all" | "hardware" | "purchased_hardware";
 
@@ -181,31 +188,18 @@ export function ProjectItemsPanel({ projectId }: { projectId: string }) {
               : "No items yet — add one below."}
         </p>
       ) : (
-        <div className="mb-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="w-full min-w-[36rem] border-collapse text-sm">
-            <thead>
-              <tr className="border-b bg-slate-50 text-left">
-                <th className="px-2 py-2 font-medium">Kind</th>
-                <th className="px-2 py-2 font-medium">Part #</th>
-                <th className="px-2 py-2 font-medium">Description</th>
-                <th className="px-2 py-2 font-medium text-right">Qty</th>
-                <th className="px-2 py-2 font-medium">Status</th>
-                <th className="px-2 py-2 font-medium text-right">On POs</th>
-                <th className="px-2 py-2 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map((item) => (
-                <ProjectItemRow
-                  key={item.id}
-                  item={item}
-                  disabled={busy}
-                  onSaved={refresh}
-                  onRemove={() => void removeItem(item)}
-                />
-              ))}
-            </tbody>
-          </table>
+        <div className="mb-4 rounded-lg border border-slate-200 bg-white">
+          <StackedList>
+            {filteredItems.map((item) => (
+              <ProjectItemRow
+                key={item.id}
+                item={item}
+                disabled={busy}
+                onSaved={refresh}
+                onRemove={() => void removeItem(item)}
+              />
+            ))}
+          </StackedList>
         </div>
       )}
       <div className="max-w-3xl rounded-lg border border-dashed border-slate-300 bg-slate-50/80 p-3">
@@ -342,100 +336,106 @@ function ProjectItemRow({
   };
 
   return (
-    <tr className="border-b border-slate-100">
-      <td className="px-2 py-1.5">
-        <select
-          className="w-full min-w-[5rem] rounded border border-slate-200 px-1 py-0.5 text-sm"
-          value={kind}
-          disabled={disabled || saving}
-          onChange={(e) => {
-            const k = e.target.value as ProjectItemKind;
-            setKind(k);
-            void save({ kind: k });
-          }}
-        >
-          {PROJECT_ITEM_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-2 py-1.5">
-        <input
-          className="w-full min-w-[4rem] rounded border border-slate-200 px-1 py-0.5 text-sm"
-          value={partNumber}
-          disabled={disabled || saving}
-          onChange={(e) => setPartNumber(e.target.value)}
-          onBlur={() => void save()}
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <input
-          className="w-full min-w-[8rem] rounded border border-slate-200 px-1 py-0.5 text-sm"
-          value={description}
-          disabled={disabled || saving}
-          onChange={(e) => setDescription(e.target.value)}
-          onBlur={() => void save()}
-        />
-      </td>
-      <td className="px-2 py-1.5 text-right">
-        <input
-          className="w-16 rounded border border-slate-200 px-1 py-0.5 text-right text-sm"
-          value={quantity}
-          disabled={disabled || saving}
-          onChange={(e) => setQuantity(e.target.value)}
-          onBlur={() => void save()}
-        />
-        {item.unit ? (
-          <span className="ml-1 text-xs text-slate-500">{item.unit}</span>
-        ) : (
-          <input
-            className="ml-1 w-12 rounded border border-slate-200 px-1 py-0.5 text-sm"
-            placeholder="unit"
-            value={unit}
+    <StackedListRow>
+      <StackedMetaGrid>
+        <StackedMetaField label="Kind">
+          <select
+            className="w-full rounded border border-slate-200 px-2 py-1 text-sm"
+            value={kind}
             disabled={disabled || saving}
-            onChange={(e) => setUnit(e.target.value)}
+            onChange={(e) => {
+              const k = e.target.value as ProjectItemKind;
+              setKind(k);
+              void save({ kind: k });
+            }}
+          >
+            {PROJECT_ITEM_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+          </select>
+        </StackedMetaField>
+        <StackedMetaField label="Part #">
+          <input
+            className="w-full rounded border border-slate-200 px-2 py-1 text-sm"
+            value={partNumber}
+            disabled={disabled || saving}
+            onChange={(e) => setPartNumber(e.target.value)}
             onBlur={() => void save()}
           />
-        )}
-      </td>
-      <td className="px-2 py-1.5">
-        <select
-          className={`rounded px-1.5 py-0.5 text-xs font-medium ${statusClass(status)}`}
-          value={status}
-          disabled={disabled || saving}
-          onChange={(e) => {
-            const s = e.target.value as ProjectItemStatus;
-            setStatus(s);
-            void save({ status: s });
-          }}
-        >
-          {PROJECT_ITEM_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {projectItemStatusLabel(s)}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-2 py-1.5 text-right tabular-nums text-slate-600">
-        {item.linkedLineCount ?? 0}
-        {(item.orderedTotal != null || (item.receivedTotal ?? 0) > 0) && (
-          <span className="block text-xs">
-            rcv {item.receivedTotal ?? 0}/{item.orderedTotal ?? "—"}
+        </StackedMetaField>
+        <StackedMetaField label="Description" className="sm:col-span-2 lg:col-span-3">
+          <input
+            className="w-full rounded border border-slate-200 px-2 py-1 text-sm"
+            value={description}
+            disabled={disabled || saving}
+            onChange={(e) => setDescription(e.target.value)}
+            onBlur={() => void save()}
+          />
+        </StackedMetaField>
+        <StackedMetaField label="Qty">
+          <div className="flex flex-wrap items-center gap-1">
+            <input
+              className="w-20 rounded border border-slate-200 px-2 py-1 text-sm"
+              value={quantity}
+              disabled={disabled || saving}
+              onChange={(e) => setQuantity(e.target.value)}
+              onBlur={() => void save()}
+            />
+            {item.unit ? (
+              <span className="text-xs text-slate-500">{item.unit}</span>
+            ) : (
+              <input
+                className="w-16 rounded border border-slate-200 px-2 py-1 text-sm"
+                placeholder="unit"
+                value={unit}
+                disabled={disabled || saving}
+                onChange={(e) => setUnit(e.target.value)}
+                onBlur={() => void save()}
+              />
+            )}
+          </div>
+        </StackedMetaField>
+        <StackedMetaField label="Status">
+          <select
+            className={`w-full rounded border border-slate-200 px-2 py-1 text-sm ${statusClass(status)}`}
+            value={status}
+            disabled={disabled || saving}
+            onChange={(e) => {
+              const s = e.target.value as ProjectItemStatus;
+              setStatus(s);
+              void save({ status: s });
+            }}
+          >
+            {PROJECT_ITEM_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {projectItemStatusLabel(s)}
+              </option>
+            ))}
+          </select>
+        </StackedMetaField>
+        <StackedMetaItem label="On POs">
+          <span className="tabular-nums">
+            {item.linkedLineCount ?? 0}
+            {(item.orderedTotal != null || (item.receivedTotal ?? 0) > 0) && (
+              <span className="block text-xs text-slate-500">
+                rcv {item.receivedTotal ?? 0}/{item.orderedTotal ?? "—"}
+              </span>
+            )}
           </span>
-        )}
-      </td>
-      <td className="px-2 py-1.5">
-        <button
-          type="button"
-          className="text-xs text-red-600 hover:underline disabled:opacity-50"
-          disabled={disabled || saving}
-          onClick={onRemove}
-        >
-          Remove
-        </button>
-      </td>
-    </tr>
+        </StackedMetaItem>
+        <StackedMetaItem label="Actions">
+          <button
+            type="button"
+            className="text-sm text-red-600 hover:underline disabled:opacity-50"
+            disabled={disabled || saving}
+            onClick={onRemove}
+          >
+            Remove
+          </button>
+        </StackedMetaItem>
+      </StackedMetaGrid>
+    </StackedListRow>
   );
 }

@@ -17,6 +17,13 @@ import {
   calcProcurementTotals,
   procurementLineRowClass,
 } from "../workspace/procurementLineStatus";
+import {
+  StackedList,
+  StackedListHeading,
+  StackedListRow,
+  StackedMetaField,
+  StackedMetaGrid,
+} from "./StackedDataList";
 
 type Project = { id: string; name: string };
 type Supplier = { id: string; name: string };
@@ -111,80 +118,94 @@ function PurchasingDetailLineRow({
   );
 
   return (
-    <tr className={`border-b align-top ${rowClass}`}>
-      <td className="py-1 pr-2">
-        <input
-          className="w-full min-w-[6rem] rounded border border-tesla-border px-2 py-1"
-          value={partNumber}
-          onChange={(e) => setPartNumber(e.target.value)}
-          placeholder="Part #"
-        />
-      </td>
-      <td className="py-1 pr-2">
-        {err && <p className="mb-1 text-xs text-red-600">{err}</p>}
-        <textarea
-          className="w-full min-w-[12rem] rounded border border-tesla-border px-2 py-1"
-          rows={2}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </td>
-      <td className="py-1 pr-2">
-        <QuickCreateSelect
-          entity="project"
-          value={projectId}
-          onChange={setProjectId}
-          className="w-full min-w-[8rem] rounded border border-tesla-border px-2 py-1"
-        />
-      </td>
-      <td className="py-1 pr-2">
-        <input
-          type="number"
-          className="w-24 rounded border border-tesla-border px-2 py-1"
-          value={estUnitPrice}
-          onChange={(e) => setEstUnitPrice(e.target.value)}
-        />
-      </td>
-      <td className="py-1 pr-2">
-        <input className="w-20 rounded border border-tesla-border px-2 py-1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-      </td>
-      <td className="py-1 pr-2">
-        <input
-          className="w-20 rounded border border-tesla-border px-2 py-1 tabular-nums"
-          value={orderedQty}
-          onChange={(e) => setOrderedQty(e.target.value)}
-          placeholder="—"
-        />
-      </td>
-      <td className="py-1 pr-2">
-        <input
-          type="number"
-          min={0}
-          step={1}
-          className="w-20 rounded border border-tesla-border px-2 py-1"
-          value={receivedQty}
-          onChange={(e) => setReceivedQty(e.target.value)}
-        />
-      </td>
-      <td className="py-1 whitespace-nowrap">
-        <button
-          type="button"
-          className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-50"
-          disabled={removing}
-          onClick={() => {
-            if (!window.confirm("Remove this line?")) return;
-            setErr(null);
-            setRemoving(true);
-            void api("/api/procurement-lines/" + line.id, { method: "DELETE" })
-              .then(() => onRemoved(line.id))
-              .catch((e: Error) => setErr(e.message))
-              .finally(() => setRemoving(false));
-          }}
-        >
-          Remove
-        </button>
-      </td>
-    </tr>
+    <StackedListRow className={rowClass}>
+      <StackedListHeading
+        title={
+          <span className="text-tesla-text-secondary">
+            {partNumber.trim() || "Line"}
+            {description.trim() ? ` · ${description.trim().slice(0, 80)}` : ""}
+          </span>
+        }
+        actions={
+          <button
+            type="button"
+            className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-50"
+            disabled={removing}
+            onClick={() => {
+              if (!window.confirm("Remove this line?")) return;
+              setErr(null);
+              setRemoving(true);
+              void api("/api/procurement-lines/" + line.id, { method: "DELETE" })
+                .then(() => onRemoved(line.id))
+                .catch((e: Error) => setErr(e.message))
+                .finally(() => setRemoving(false));
+            }}
+          >
+            Remove
+          </button>
+        }
+      />
+      {err ? <p className="mb-2 text-xs text-red-600">{err}</p> : null}
+      <StackedMetaGrid>
+        <StackedMetaField label="Part #">
+          <input
+            className="w-full rounded border border-tesla-border px-2 py-1"
+            value={partNumber}
+            onChange={(e) => setPartNumber(e.target.value)}
+            placeholder="Part #"
+          />
+        </StackedMetaField>
+        <StackedMetaField label="Description" className="sm:col-span-2">
+          <textarea
+            className="w-full rounded border border-tesla-border px-2 py-1"
+            rows={2}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </StackedMetaField>
+        <StackedMetaField label="Project">
+          <QuickCreateSelect
+            entity="project"
+            value={projectId}
+            onChange={setProjectId}
+            className="w-full rounded border border-tesla-border px-2 py-1"
+          />
+        </StackedMetaField>
+        <StackedMetaField label="Est $">
+          <input
+            type="number"
+            className="w-full rounded border border-tesla-border px-2 py-1"
+            value={estUnitPrice}
+            onChange={(e) => setEstUnitPrice(e.target.value)}
+          />
+        </StackedMetaField>
+        <StackedMetaField label="Qty">
+          <input
+            className="w-full rounded border border-tesla-border px-2 py-1"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+          />
+        </StackedMetaField>
+        <StackedMetaField label="Ordered">
+          <input
+            className="w-full rounded border border-tesla-border px-2 py-1 tabular-nums"
+            value={orderedQty}
+            onChange={(e) => setOrderedQty(e.target.value)}
+            placeholder="—"
+          />
+        </StackedMetaField>
+        <StackedMetaField label="Received">
+          <input
+            type="number"
+            min={0}
+            step={1}
+            className="w-full rounded border border-tesla-border px-2 py-1"
+            value={receivedQty}
+            onChange={(e) => setReceivedQty(e.target.value)}
+          />
+        </StackedMetaField>
+      </StackedMetaGrid>
+    </StackedListRow>
   );
 }
 
@@ -540,42 +561,26 @@ export function PurchasingDetailView({
         Changes save automatically. Green = received, amber = partial, red = overdue. Use{" "}
         <strong>RFQ / PO report</strong> above to open the order in a new tab (Print → Save as PDF when ready).
       </p>
-      <div className="mb-4 overflow-x-auto rounded-sm border border-tesla-border">
-        <table className="w-full min-w-[42rem] border-collapse text-sm">
-          <thead>
-            <tr className="border-b bg-tesla-muted text-left">
-              <th className="px-2 py-2 font-medium">Part #</th>
-              <th className="px-2 py-2 font-medium">Description</th>
-              <th className="px-2 py-2 font-medium">Project</th>
-              <th className="px-2 py-2 font-medium">Est $</th>
-              <th className="px-2 py-2 font-medium">Qty</th>
-              <th className="px-2 py-2 font-medium">Ordered</th>
-              <th className="px-2 py-2 font-medium">Received</th>
-              <th className="px-2 py-2 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            {lines.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-2 py-3 text-tesla-text-secondary">
-                  No lines yet — add one below.
-                </td>
-              </tr>
-            ) : (
-              lines.map((l) => (
-                <PurchasingDetailLineRow
-                  key={l.id}
-                  line={l}
-                  procStatus={status}
-                  needBy={row.needBy}
-                  fullyReceivedOverride={fullyReceivedOverride}
-                  onLineSaved={onLineSaved}
-                  onRemoved={onLineRemoved}
-                />
-              ))
-            )}
-          </tbody>
-        </table>
+      <div className="mb-4 rounded-sm border border-tesla-border bg-white">
+        {lines.length === 0 ? (
+          <p className="px-3 py-4 text-sm text-tesla-text-secondary">
+            No lines yet — add one below.
+          </p>
+        ) : (
+          <StackedList>
+            {lines.map((l) => (
+              <PurchasingDetailLineRow
+                key={l.id}
+                line={l}
+                procStatus={status}
+                needBy={row.needBy}
+                fullyReceivedOverride={fullyReceivedOverride}
+                onLineSaved={onLineSaved}
+                onRemoved={onLineRemoved}
+              />
+            ))}
+          </StackedList>
+        )}
       </div>
 
       {lineErr && <p className="mb-2 text-sm text-red-600">{lineErr}</p>}
