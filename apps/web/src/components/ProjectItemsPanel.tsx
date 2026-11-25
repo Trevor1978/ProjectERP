@@ -365,7 +365,7 @@ function ProjectItemRow({
             onBlur={() => void save()}
           />
         </StackedMetaField>
-        <StackedMetaField label="Description" className="sm:col-span-2 lg:col-span-3">
+        <StackedMetaField label="Description" className="col-span-2 md:min-w-[12rem] md:flex-[2]">
           <input
             className="w-full rounded border border-slate-200 px-2 py-1 text-sm"
             value={description}

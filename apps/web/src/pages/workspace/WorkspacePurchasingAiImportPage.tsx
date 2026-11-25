@@ -667,7 +667,7 @@ export function WorkspacePurchasingAiImportPage() {
                         }
                       />
                     </StackedMetaField>
-                    <StackedMetaField label="Description" className="sm:col-span-2">
+                    <StackedMetaField label="Description" className="col-span-2 md:min-w-[14rem] md:flex-[2]">
                       <input
                         className={cellInput}
                         value={line.description}

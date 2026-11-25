@@ -68,7 +68,7 @@ export function MachineOutstandingWorkList({
             }
           />
           <StackedMetaGrid>
-            <StackedMetaItem label="Project">
+            <StackedMetaItem label="Project" title={t.projectName}>
               <Link
                 to={`/workspace/projects/${t.projectId}`}
                 className="text-blue-700 underline-offset-2 hover:underline"
@@ -76,7 +76,9 @@ export function MachineOutstandingWorkList({
                 {t.projectName}
               </Link>
             </StackedMetaItem>
-            <StackedMetaItem label="Assignee">{t.assigneeName ?? "—"}</StackedMetaItem>
+            <StackedMetaItem label="Assignee" title={t.assigneeName ?? undefined}>
+              {t.assigneeName ?? "—"}
+            </StackedMetaItem>
             <StackedMetaItem label="Progress">
               {Math.round(t.percentComplete)}% complete
             </StackedMetaItem>

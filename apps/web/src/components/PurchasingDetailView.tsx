@@ -118,12 +118,12 @@ function PurchasingDetailLineRow({
   );
 
   return (
-    <StackedListRow className={rowClass}>
+      <StackedListRow className={rowClass}>
       <StackedListHeading
         title={
-          <span className="text-tesla-text-secondary">
+          <span className="text-tesla-text" title={description.trim() || undefined}>
             {partNumber.trim() || "Line"}
-            {description.trim() ? ` · ${description.trim().slice(0, 80)}` : ""}
+            {description.trim() ? ` · ${description.trim().slice(0, 48)}` : ""}
           </span>
         }
         actions={
@@ -155,10 +155,9 @@ function PurchasingDetailLineRow({
             placeholder="Part #"
           />
         </StackedMetaField>
-        <StackedMetaField label="Description" className="sm:col-span-2">
-          <textarea
+        <StackedMetaField label="Description" className="md:min-w-[8rem] md:flex-[1.5]">
+          <input
             className="w-full rounded border border-tesla-border px-2 py-1"
-            rows={2}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />

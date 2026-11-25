@@ -789,7 +789,7 @@ export function CrudWorkspace({
       })),
     },
     projects: {
-      dataHeaders: ["Name", "Code", "Customer", "Status", "Start", "End"],
+      dataHeaders: ["Name", "Customer", "Status", "Start", "End"],
       rows: projects.map((p) => ({
         key: p.id,
         action: rowActions("projects", p.id, p.name, undefined, { openHref: `/workspace/projects/${p.id}` }),
@@ -801,16 +801,6 @@ export function CrudWorkspace({
               api("/api/projects/" + p.id, {
                 method: "PATCH",
                 body: JSON.stringify({ name: v, version: p.version }),
-              }).then(refreshProjects)
-            }
-          />,
-          <InlineText
-            key="code"
-            value={p.code ?? ""}
-            onSave={(v) =>
-              api("/api/projects/" + p.id, {
-                method: "PATCH",
-                body: JSON.stringify({ code: v || null, version: p.version }),
               }).then(refreshProjects)
             }
           />,
@@ -858,7 +848,7 @@ export function CrudWorkspace({
           />,
         ],
         search: `${p.name} ${p.code ?? ""} ${clientName.get(p.clientId) ?? ""} ${p.status}`,
-        sort: [p.name, p.code ?? "", clientName.get(p.clientId) ?? "", p.status, p.startAt ?? "", p.endAt ?? ""],
+        sort: [p.name, clientName.get(p.clientId) ?? "", p.status, p.startAt ?? "", p.endAt ?? ""],
       })),
     },
     milestones: {
@@ -1918,7 +1908,6 @@ function CrudAppendRow({
 
   const [projClientId, setProjClientId] = useState(clients[0]?.id ?? "");
   const [projName, setProjName] = useState("");
-  const [projCode, setProjCode] = useState("");
   useEffect(() => {
     if (clients.length && !clients.some((c) => c.id === projClientId)) {
       setProjClientId(clients[0]!.id);
@@ -2173,14 +2162,6 @@ function CrudAppendRow({
           />
         </td>
         <td className="p-2 align-top">
-          <input
-            className={newRowInputClass}
-            placeholder="Code (optional)"
-            value={projCode}
-            onChange={(e) => setProjCode(e.target.value)}
-          />
-        </td>
-        <td className="p-2 align-top">
           <QuickCreateSelect
             entity="client"
             value={projClientId}
@@ -2189,7 +2170,7 @@ function CrudAppendRow({
           />
         </td>
         <td colSpan={4} className="p-2 align-middle text-xs text-slate-500">
-          Status defaults to <strong>active</strong>; edit dates inline after create.
+          Status defaults to <strong>active</strong>; set optional code on the project detail page.
         </td>
         <td className={stickyActionsTd}>
           {createBtn(async () => {
@@ -2202,12 +2183,10 @@ function CrudAppendRow({
                 organizationId: me.organizationId,
                 clientId: projClientId,
                 name,
-                code: projCode.trim() || undefined,
                 status: "active",
               }),
             });
             setProjName("");
-            setProjCode("");
             await refreshProjects();
           }, !projName.trim() || !projClientId)}
           {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
@@ -2810,7 +2789,7 @@ function FilterSortTable({
         </div>
       )}
       <div className="rounded border border-slate-200 bg-white">
-        <div className="grid gap-2 border-b border-slate-200 bg-slate-50 p-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-1.5 border-b border-slate-200 bg-slate-50 p-1.5 sm:grid-cols-2 lg:grid-cols-4">
           {leadingColumn ? (
             <p className="col-span-full text-xs font-medium text-slate-500">
               {leadingColumn.label} filters apply in row view below.

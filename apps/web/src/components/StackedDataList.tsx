@@ -27,7 +27,7 @@ export function StackedTypeBadge({
   return (
     <span
       className={
-        "shrink-0 rounded-sm px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide " +
+        "shrink-0 rounded-sm px-1 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-wide " +
         (badgeTone[tone] ?? badgeTone.slate)
       }
     >
@@ -59,7 +59,7 @@ export function StackedListEmpty({
 }: {
   children: ReactNode;
 }) {
-  return <p className="px-3 py-4 text-sm text-tesla-text-secondary">{children}</p>;
+  return <p className="px-2 py-3 text-sm text-tesla-text-secondary">{children}</p>;
 }
 
 export function StackedList({
@@ -78,7 +78,14 @@ export function StackedListRow({
   className?: string;
 }) {
   return (
-    <li className={"px-3 py-3 hover:bg-tesla-muted/40 " + className}>{children}</li>
+    <li
+      className={
+        "px-2 py-1.5 hover:bg-tesla-muted/40 md:flex md:flex-col md:gap-0.5 md:py-1 " +
+        className
+      }
+    >
+      {children}
+    </li>
   );
 }
 
@@ -92,15 +99,33 @@ export function StackedListHeading({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-2">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+    <div className="flex items-center justify-between gap-2 md:min-h-[1.25rem]">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
         {badge}
-        <div className="min-w-0 flex-1 text-sm font-medium leading-snug text-tesla-text">
+        <div className="min-w-0 flex-1 truncate text-sm font-medium leading-tight text-tesla-text">
           {title}
         </div>
       </div>
-      {actions ? <div className="shrink-0">{actions}</div> : null}
+      {actions ? <div className="shrink-0 text-xs">{actions}</div> : null}
     </div>
+  );
+}
+
+/** Wrap display values so long text ellipsizes on laptop (use title for full string). */
+export function StackedMetaValue({
+  children,
+  title,
+}: {
+  children: ReactNode;
+  title?: string;
+}) {
+  return (
+    <span
+      className="block min-w-0 truncate md:max-w-[12rem] lg:max-w-[16rem]"
+      title={title}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -114,7 +139,9 @@ export function StackedMetaGrid({
   return (
     <dl
       className={
-        "mt-2 grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3 " + className
+        "mt-1 grid grid-cols-2 gap-x-2 gap-y-1 text-xs sm:grid-cols-2 " +
+        "md:mt-0 md:flex md:max-h-7 md:flex-nowrap md:items-center md:gap-x-3 md:overflow-x-auto md:pb-0.5 lg:gap-x-4 " +
+        className
       }
     >
       {children}
@@ -126,22 +153,37 @@ export function StackedMetaItem({
   label,
   children,
   className = "",
+  title,
 }: {
   label: string;
   children: ReactNode;
   className?: string;
+  /** Tooltip for truncated value (plain text). */
+  title?: string;
 }) {
   return (
-    <div className={"min-w-0 " + className}>
-      <dt className="text-[11px] font-medium uppercase tracking-wide text-tesla-text-secondary">
-        {label}
+    <div
+      className={
+        "min-w-0 md:flex md:max-w-full md:items-baseline md:gap-1 " + className
+      }
+    >
+      <dt className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-tesla-text-secondary md:text-[11px] md:normal-case md:tracking-normal md:text-slate-500">
+        <span className="md:after:content-[':']">{label}</span>
       </dt>
-      <dd className="mt-0.5 min-w-0 break-words text-tesla-text">{children}</dd>
+      <dd className="mt-0.5 min-w-0 text-tesla-text md:mt-0 md:flex-1">
+        {title ? (
+          <StackedMetaValue title={title}>{children}</StackedMetaValue>
+        ) : (
+          <span className="block min-w-0 truncate md:max-w-[12rem] lg:max-w-[16rem]">
+            {children}
+          </span>
+        )}
+      </dd>
     </div>
   );
 }
 
-/** Editable field block inside a stacked row (label above control). */
+/** Editable field block inside a stacked row (label above control on phone; inline on laptop). */
 export function StackedMetaField({
   label,
   children,
@@ -152,11 +194,16 @@ export function StackedMetaField({
   className?: string;
 }) {
   return (
-    <div className={"min-w-0 " + className}>
-      <label className="text-[11px] font-medium uppercase tracking-wide text-tesla-text-secondary">
-        {label}
+    <div
+      className={
+        "min-w-0 md:flex md:min-w-[8.5rem] md:flex-1 md:items-center md:gap-1.5 " +
+        className
+      }
+    >
+      <label className="block shrink-0 text-[10px] font-medium uppercase tracking-wide text-tesla-text-secondary md:text-[11px] md:normal-case md:tracking-normal md:text-slate-500">
+        <span className="md:after:content-[':']">{label}</span>
       </label>
-      <div className="mt-0.5 min-w-0">{children}</div>
+      <div className="mt-0.5 min-w-0 md:mt-0 md:flex-1">{children}</div>
     </div>
   );
 }
