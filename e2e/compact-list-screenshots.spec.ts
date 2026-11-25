@@ -42,18 +42,62 @@ test("capture workspace stacked list UI", async ({ page, request }, testInfo) =>
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Register" }).click();
   await expect(page).toHaveURL("/", { timeout: 20_000 });
+  await page.waitForLoadState("networkidle");
 
-  await page.goto("/workspace");
-  await expect(page.getByRole("button", { name: "Projects", exact: true })).toBeVisible({
+  await page.evaluate(async () => {
+    const j = (await (
+      await fetch("/api/auth/me", { credentials: "include" })
+    ).json()) as { user: { organizationId: string } | null };
+    if (!j.user?.organizationId) throw new Error("Not authenticated");
+    const orgId = j.user.organizationId;
+    const clientRes = await fetch("/api/clients", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        organizationId: orgId,
+        name: "Screenshot Customer",
+        code: "SS",
+      }),
+    });
+    if (!clientRes.ok) throw new Error("client create failed");
+    const client = (await clientRes.json()) as { client: { id: string } };
+    for (const name of ["Pump Upgrade Alpha", "Site Commissioning Bravo"]) {
+      const pr = await fetch("/api/projects", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: orgId,
+          clientId: client.client.id,
+          name,
+          status: "active",
+        }),
+      });
+      if (!pr.ok) throw new Error(`project create failed: ${name}`);
+    }
+    const ar = await fetch("/api/assets", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "CNC Line 1", site: "Sydney", line: "Fab A" }),
+    });
+    if (!ar.ok) throw new Error("asset create failed");
+  });
+
+  await page.goto("/workspace/projects");
+  await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible({
     timeout: 15_000,
   });
+  await expect(page.getByText("Pump Upgrade Alpha")).toBeVisible({ timeout: 15_000 });
 
   for (const vp of viewports) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.waitForTimeout(300);
 
-    const list = page.locator(".divide-y").first();
-    await expect(list).toBeVisible({ timeout: 10_000 });
+    const panel = page.locator(".divide-y").first();
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Pump Upgrade Alpha")).toBeVisible();
 
     await page.screenshot({
       path: path.join(artifactDir, `${prefix}-${vp.name}-projects.png`),
@@ -62,15 +106,14 @@ test("capture workspace stacked list UI", async ({ page, request }, testInfo) =>
   }
 
   await page.goto("/workspace/machines");
+  await expect(page.getByText("CNC Line 1")).toBeVisible({ timeout: 15_000 });
   for (const vp of viewports) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.waitForTimeout(300);
-    const list = page.locator(".divide-y").first();
-    if (await list.isVisible().catch(() => false)) {
-      await page.screenshot({
-        path: path.join(artifactDir, `${prefix}-${vp.name}-machines.png`),
-        fullPage: false,
-      });
-    }
+    await expect(page.getByText("CNC Line 1")).toBeVisible();
+    await page.screenshot({
+      path: path.join(artifactDir, `${prefix}-${vp.name}-machines.png`),
+      fullPage: false,
+    });
   }
 });
