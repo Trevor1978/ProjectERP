@@ -102,7 +102,7 @@ export function StackedListHeading({
     <div className="flex items-center justify-between gap-2 md:min-h-[1.25rem]">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         {badge}
-        <div className="min-w-0 flex-1 truncate text-sm font-medium leading-tight text-tesla-text">
+        <div className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight text-tesla-text">
           {title}
         </div>
       </div>
@@ -140,7 +140,7 @@ export function StackedMetaGrid({
     <dl
       className={
         "mt-1 grid grid-cols-2 gap-x-2 gap-y-1 text-xs sm:grid-cols-2 " +
-        "md:mt-0 md:flex md:max-h-7 md:flex-nowrap md:items-center md:gap-x-3 md:overflow-x-auto md:pb-0.5 lg:gap-x-4 " +
+        "md:mt-0 md:flex md:flex-wrap md:items-center md:gap-x-2 md:gap-y-1 lg:gap-x-3 " +
         className
       }
     >
@@ -184,26 +184,39 @@ export function StackedMetaItem({
 }
 
 /** Editable field block inside a stacked row (label above control on phone; inline on laptop). */
+/** Narrow numeric inputs (qty / ordered / received, up to ~4 digits). */
+export const stackedNumericInputClass =
+  "w-14 max-w-[4.5rem] min-w-[3.25rem] tabular-nums";
+
 export function StackedMetaField({
   label,
   children,
   className = "",
+  narrow,
 }: {
   label: string;
   children: ReactNode;
   className?: string;
+  /** Short numeric field — no grow on md+. */
+  narrow?: boolean;
 }) {
   return (
     <div
       className={
-        "min-w-0 md:flex md:min-w-[8.5rem] md:flex-1 md:items-center md:gap-1.5 " +
+        "min-w-0 " +
+        (narrow
+          ? "md:flex md:flex-none md:items-center md:gap-1"
+          : "md:flex md:max-w-[9.5rem] md:flex-none md:items-center md:gap-1.5 lg:max-w-[11rem]") +
+        " " +
         className
       }
     >
       <label className="block shrink-0 text-[10px] font-medium uppercase tracking-wide text-tesla-text-secondary md:text-[11px] md:normal-case md:tracking-normal md:text-slate-500">
         <span className="md:after:content-[':']">{label}</span>
       </label>
-      <div className="mt-0.5 min-w-0 md:mt-0 md:flex-1">{children}</div>
+      <div className={"mt-0.5 min-w-0 md:mt-0 " + (narrow ? "" : "md:min-w-0 md:flex-1")}>
+        {children}
+      </div>
     </div>
   );
 }

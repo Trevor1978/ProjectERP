@@ -26,7 +26,7 @@ export const MOBILE_PRIMARY_COLUMN: Record<string, number> = {
   todos: 2,
   timeEntries: 0,
   procurement: 1,
-  procurementLines: 3,
+  procurementLines: 4,
 };
 
 export function primaryColumnIndex(layoutKey: string | undefined): number {
