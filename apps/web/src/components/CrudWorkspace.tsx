@@ -11,7 +11,10 @@ import { GanttView } from "./GanttView";
 import { workspaceSlugToTab, workspaceTabToSlug } from "../lib/workspaceNav";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
-import { procurementLineRowClass } from "../workspace/procurementLineStatus";
+import {
+  isProcurementLineFulfilled,
+  procurementLineRowClass,
+} from "../workspace/procurementLineStatus";
 import { columnFilterMatches, filterCell, TABS_WITH_COMPLETED } from "../lib/workspaceTableUtils";
 import { WorkspaceCsvToolbar } from "./WorkspaceCsvToolbar";
 import { ColumnFilterInput } from "./ColumnFilterInput";
@@ -175,6 +178,8 @@ type TableRow = {
   filterValues?: string[];
   isCompleted?: boolean;
   rowClassName?: string;
+  /** Stacked card title when the primary column cell is not suitable (e.g. placeholders). */
+  headingTitle?: React.ReactNode;
 };
 
 type EditTarget = { tab: Tab; id: string } | null;
@@ -661,6 +666,7 @@ export function CrudWorkspace({
   const wsTaskId = searchParams.get("taskId")?.trim() ?? "";
   const wsMilestoneId = searchParams.get("milestoneId")?.trim() ?? "";
   const wsSupplierId = searchParams.get("supplierId")?.trim() ?? "";
+  const showFulfilledProcLines = searchParams.get("fulfilled") === "1";
 
   const [ganttProjectId, setGanttProjectId] = useState(
     () => fixedProjectId ?? "",
@@ -1269,8 +1275,18 @@ export function CrudWorkspace({
         const proc = procById.get(l.procurementId);
         const supplierId = proc?.supplierId ?? "";
         const supplierLabel = supplierName.get(supplierId) ?? "";
+        const titleText =
+          l.description.trim() ||
+          l.partNumber?.trim() ||
+          procName.get(l.procurementId) ||
+          "Line item";
         return {
         key: l.id,
+        headingTitle: (
+          <span className="truncate" title={titleText}>
+            {titleText}
+          </span>
+        ),
         rowClassName: procurementLineRowClass(
           {
             quantity: l.quantity,
@@ -1342,6 +1358,7 @@ export function CrudWorkspace({
           />,
           <InlineText
             key="q"
+            compact
             value={l.quantity}
             onSave={(v) =>
               api("/api/procurement-lines/" + l.id, {
@@ -1352,6 +1369,8 @@ export function CrudWorkspace({
           />,
           <InlineText
             key="ord-qty"
+            compact
+            emptyDisplay=""
             value={l.orderedQty ?? ""}
             onSave={(v) =>
               api("/api/procurement-lines/" + l.id, {
@@ -1362,6 +1381,7 @@ export function CrudWorkspace({
           />,
           <InlineNumber
             key="rcv"
+            compact
             value={l.receivedQty}
             min={0}
             integer
@@ -1420,6 +1440,22 @@ export function CrudWorkspace({
     if (!showCompleted && (TABS_WITH_COMPLETED as readonly string[]).includes(tab)) {
       rows = rows.filter((r) => !r.isCompleted);
     }
+    if (tab === "procurementLines" && !showFulfilledProcLines) {
+      const procById = new Map(procurement.map((p) => [p.id, p] as const));
+      rows = rows.filter((r) => {
+        const line = procLines.find((l) => l.id === r.key);
+        if (!line) return false;
+        const proc = procById.get(line.procurementId);
+        return !isProcurementLineFulfilled(
+          {
+            quantity: line.quantity,
+            orderedQty: line.orderedQty,
+            receivedQty: line.receivedQty,
+          },
+          { fullyReceivedOverride: proc?.fullyReceivedOverride ?? false },
+        );
+      });
+    }
     return { ...current, rows };
   }, [
     tab,
@@ -1436,6 +1472,7 @@ export function CrudWorkspace({
     projects,
     procurement,
     showCompleted,
+    showFulfilledProcLines,
   ]);
 
   const csvImportHandler = useMemo(() => {
@@ -1680,6 +1717,22 @@ export function CrudWorkspace({
           }
           extraToolbar={
             <>
+              {tab === "procurementLines" && (
+                <label className="flex cursor-pointer items-center gap-1.5 text-sm text-tesla-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={showFulfilledProcLines}
+                    onChange={(e) => {
+                      const next = new URLSearchParams(searchParams);
+                      if (e.target.checked) next.set("fulfilled", "1");
+                      else next.delete("fulfilled");
+                      setSearchParams(next, { replace: true });
+                    }}
+                    className="rounded border-tesla-border"
+                  />
+                  Show fulfilled lines
+                </label>
+              )}
               {(tab === "procurement" || tab === "procurementLines") && (
                 <label className="flex items-center gap-1.5 text-sm text-slate-600">
                   <span>Supplier</span>
@@ -2840,7 +2893,7 @@ function FilterSortTable({
                         {leadingColumn.renderCell(r)}
                       </span>
                     ) : null}
-                    {r.cells[primaryCol] ?? r.cells[0]}
+                    {r.headingTitle ?? r.cells[primaryCol] ?? r.cells[0]}
                   </div>
                 }
                 actions={r.action}
@@ -3900,20 +3953,45 @@ function ProcurementLineEditModal({
   );
 }
 
-function InlineText({ value, onSave }: { value: string; onSave: (v: string) => Promise<unknown> }) {
+function InlineText({
+  value,
+  onSave,
+  compact,
+  emptyDisplay,
+}: {
+  value: string;
+  onSave: (v: string) => Promise<unknown>;
+  compact?: boolean;
+  /** Display when empty (default em dash). */
+  emptyDisplay?: string;
+}) {
   const [v, setV] = useState(value);
   const [edit, setEdit] = useState(false);
   useEffect(() => setV(value), [value]);
+  const empty = emptyDisplay ?? "—";
+  const btnClass = compact
+    ? "w-14 max-w-[4.5rem] tabular-nums text-left hover:bg-slate-50 rounded px-0.5"
+    : "w-full text-left hover:bg-slate-50 rounded px-0.5";
+  const inputClass = compact
+    ? "w-14 max-w-[4.5rem] tabular-nums rounded border px-1.5 py-0.5 text-sm"
+    : "w-full rounded border px-2 py-1";
   if (!edit) {
     return (
-      <button type="button" className="w-full text-left hover:bg-slate-50 rounded px-0.5" onClick={() => { setV(value); setEdit(true); }}>
-        {value || "—"}
+      <button
+        type="button"
+        className={btnClass}
+        onClick={() => {
+          setV(value);
+          setEdit(true);
+        }}
+      >
+        {value.trim() ? value : empty || "\u00a0"}
       </button>
     );
   }
   return (
     <input
-      className="w-full rounded border px-2 py-1"
+      className={inputClass}
       value={v}
       onChange={(e) => setV(e.target.value)}
       onBlur={() => {
@@ -3976,19 +4054,25 @@ function InlineNumber({
   min,
   max,
   integer,
+  compact,
 }: {
   value: number;
   onSave: (v: number) => Promise<unknown>;
   min?: number;
   max?: number;
   integer?: boolean;
+  compact?: boolean;
 }) {
   const [v, setV] = useState(String(value));
   useEffect(() => setV(String(value)), [value]);
   return (
     <input
       type="number"
-      className="w-24 rounded border px-2 py-1"
+      className={
+        compact
+          ? "w-14 max-w-[4.5rem] tabular-nums rounded border px-1.5 py-0.5 text-sm"
+          : "w-24 rounded border px-2 py-1"
+      }
       value={v}
       min={min}
       max={max}

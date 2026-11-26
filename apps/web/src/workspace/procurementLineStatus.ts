@@ -7,6 +7,15 @@ export type LineReceiptInput = {
   receivedQty: number;
 };
 
+/** True when the line is treated as fully received (PO override or qty received). */
+export function isProcurementLineFulfilled(
+  line: LineReceiptInput,
+  ctx: { fullyReceivedOverride: boolean },
+): boolean {
+  if (ctx.fullyReceivedOverride) return true;
+  return lineFullyReceived(line.quantity, line.receivedQty, line.orderedQty);
+}
+
 export function procurementLineRowClass(
   line: LineReceiptInput,
   opts: {

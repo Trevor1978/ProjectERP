@@ -8,13 +8,14 @@ import { projectItemStatusLabel } from "../workspace/projectItemTypes";
 import { openProcurementPdfReport } from "../lib/procurementReport";
 import { useDebouncedPatch } from "../hooks/useDebouncedPatch";
 import { isoToLocal, localToIso } from "../workspace/workspaceDates";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { QuickCreateSelect } from "./QuickCreateSelect";
 import type { Procurement, ProcurementLine } from "../workspace/purchasingTypes";
 import type { OrgProfile } from "../workspace/orgProfileTypes";
 import { PROC_STATUS } from "../workspace/purchasingTypes";
 import {
   calcProcurementTotals,
+  isProcurementLineFulfilled,
   procurementLineRowClass,
 } from "../workspace/procurementLineStatus";
 import {
@@ -23,6 +24,7 @@ import {
   StackedListRow,
   StackedMetaField,
   StackedMetaGrid,
+  stackedNumericInputClass,
 } from "./StackedDataList";
 
 type Project = { id: string; name: string };
@@ -121,9 +123,13 @@ function PurchasingDetailLineRow({
       <StackedListRow className={rowClass}>
       <StackedListHeading
         title={
-          <span className="text-tesla-text" title={description.trim() || undefined}>
-            {partNumber.trim() || "Line"}
-            {description.trim() ? ` · ${description.trim().slice(0, 48)}` : ""}
+          <span
+            className="text-tesla-text"
+            title={description.trim() || partNumber.trim() || undefined}
+          >
+            {description.trim() ||
+              partNumber.trim() ||
+              "Line"}
           </span>
         }
         actions={
@@ -146,18 +152,21 @@ function PurchasingDetailLineRow({
         }
       />
       {err ? <p className="mb-2 text-xs text-red-600">{err}</p> : null}
-      <StackedMetaGrid>
-        <StackedMetaField label="Part #">
+      <StackedMetaGrid className="md:gap-x-2 lg:gap-x-3">
+        <StackedMetaField label="Part #" className="md:max-w-[6rem]">
           <input
-            className="w-full rounded border border-tesla-border px-2 py-1"
+            className="w-full min-w-0 rounded border border-tesla-border px-2 py-1"
             value={partNumber}
             onChange={(e) => setPartNumber(e.target.value)}
             placeholder="Part #"
           />
         </StackedMetaField>
-        <StackedMetaField label="Description" className="md:min-w-[8rem] md:flex-[1.5]">
+        <StackedMetaField
+          label="Description"
+          className="md:max-w-[12rem] lg:max-w-[14rem]"
+        >
           <input
-            className="w-full rounded border border-tesla-border px-2 py-1"
+            className="w-full min-w-0 rounded border border-tesla-border px-2 py-1"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
@@ -170,35 +179,44 @@ function PurchasingDetailLineRow({
             className="w-full rounded border border-tesla-border px-2 py-1"
           />
         </StackedMetaField>
-        <StackedMetaField label="Est $">
+        <StackedMetaField label="Est $" narrow className="md:max-w-[5.5rem]">
           <input
             type="number"
-            className="w-full rounded border border-tesla-border px-2 py-1"
+            className="w-16 max-w-[5rem] tabular-nums rounded border border-tesla-border px-1.5 py-0.5 text-sm"
             value={estUnitPrice}
             onChange={(e) => setEstUnitPrice(e.target.value)}
           />
         </StackedMetaField>
-        <StackedMetaField label="Qty">
+        <StackedMetaField label="Qty" narrow>
           <input
-            className="w-full rounded border border-tesla-border px-2 py-1"
+            className={
+              stackedNumericInputClass +
+              " rounded border border-tesla-border"
+            }
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
           />
         </StackedMetaField>
-        <StackedMetaField label="Ordered">
+        <StackedMetaField label="Ordered" narrow>
           <input
-            className="w-full rounded border border-tesla-border px-2 py-1 tabular-nums"
+            className={
+              stackedNumericInputClass +
+              " rounded border border-tesla-border"
+            }
             value={orderedQty}
             onChange={(e) => setOrderedQty(e.target.value)}
-            placeholder="—"
+            placeholder=""
           />
         </StackedMetaField>
-        <StackedMetaField label="Received">
+        <StackedMetaField label="Received" narrow>
           <input
             type="number"
             min={0}
             step={1}
-            className="w-full rounded border border-tesla-border px-2 py-1"
+            className={
+              stackedNumericInputClass +
+              " rounded border border-tesla-border"
+            }
             value={receivedQty}
             onChange={(e) => setReceivedQty(e.target.value)}
           />
@@ -234,6 +252,8 @@ export function PurchasingDetailView({
   onLineRemoved: (lineId: string) => void;
 }) {
   const nav = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const showFulfilledLines = searchParams.get("fulfilled") === "1";
   const [reportOpening, setReportOpening] = useState(false);
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docNotes, setDocNotes] = useState("");
@@ -267,6 +287,20 @@ export function PurchasingDetailView({
 
   const supplier = suppliers.find((s) => s.id === row.supplierId);
   const totals = useMemo(() => calcProcurementTotals(lines), [lines]);
+  const visibleLines = useMemo(() => {
+    if (showFulfilledLines) return lines;
+    return lines.filter(
+      (l) =>
+        !isProcurementLineFulfilled(
+          {
+            quantity: l.quantity,
+            orderedQty: l.orderedQty,
+            receivedQty: l.receivedQty,
+          },
+          { fullyReceivedOverride },
+        ),
+    );
+  }, [lines, showFulfilledLines, fullyReceivedOverride]);
 
   const procurementId = row.id;
   const headerSyncedVersion = useRef(row.version);
@@ -555,7 +589,25 @@ export function PurchasingDetailView({
         </div>
       </div>
 
-      <h3 className="mb-2 text-sm font-semibold text-tesla-text">Line items</h3>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-tesla-text">Line items</h3>
+        {lines.length > 0 ? (
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-tesla-text-secondary">
+            <input
+              type="checkbox"
+              checked={showFulfilledLines}
+              onChange={(e) => {
+                const next = new URLSearchParams(searchParams);
+                if (e.target.checked) next.set("fulfilled", "1");
+                else next.delete("fulfilled");
+                setSearchParams(next, { replace: true });
+              }}
+              className="rounded border-tesla-border"
+            />
+            Show fulfilled lines
+          </label>
+        ) : null}
+      </div>
       <p className="mb-2 text-xs text-tesla-text-secondary">
         Changes save automatically. Green = received, amber = partial, red = overdue. Use{" "}
         <strong>RFQ / PO report</strong> above to open the order in a new tab (Print → Save as PDF when ready).
@@ -565,9 +617,13 @@ export function PurchasingDetailView({
           <p className="px-3 py-4 text-sm text-tesla-text-secondary">
             No lines yet — add one below.
           </p>
+        ) : visibleLines.length === 0 ? (
+          <p className="px-3 py-4 text-sm text-tesla-text-secondary">
+            All lines are fulfilled. Turn on <strong>Show fulfilled lines</strong> to see them.
+          </p>
         ) : (
           <StackedList>
-            {lines.map((l) => (
+            {visibleLines.map((l) => (
               <PurchasingDetailLineRow
                 key={l.id}
                 line={l}
